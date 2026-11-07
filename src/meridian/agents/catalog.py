@@ -11,6 +11,7 @@ from meridian.agents.rbqm.csm import Csm
 from meridian.agents.rbqm.kri_monitor import KriMonitor
 from meridian.agents.rbqm.qtl_detector import QtlDetector
 from meridian.agents.registry import AgentRegistry, RegistrationError
+from meridian.agents.safety.sae_reconciler import SaeReconciler
 from meridian.platform.config import AgentsSettings
 
 
@@ -20,6 +21,7 @@ def build_registry(cfg: AgentsSettings) -> AgentRegistry:
         (KriMonitor(), cfg.kri_monitor),
         (QtlDetector(), cfg.qtl_detector),
         (Csm(), cfg.csm),
+        (SaeReconciler(), cfg.sae_reconciler),
     ]
     unknown = sorted(set(cfg.enabled) - {agent.agent_id for agent, _ in known})
     if unknown:

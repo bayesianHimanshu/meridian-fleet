@@ -29,7 +29,11 @@ class DraftsDocument(BaseModel):
     drafts: tuple[FindingDraft, ...]
 
     def dumps(self) -> str:
-        return canonical_json(self.model_dump(mode="json"))
+        data = self.model_dump(mode="json")
+        for draft in data["drafts"]:
+            if draft["visible_to"] is None:
+                del draft["visible_to"]  # documents of agents without it stay as they were
+        return canonical_json(data)
 
     @classmethod
     def loads(cls, text: str) -> DraftsDocument:

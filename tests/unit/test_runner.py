@@ -302,3 +302,50 @@ def test_legacy_suspended_without_version_does_not_complete_a_versioned_agent(
 def test_stub_reader_satisfies_protocol() -> None:
     reader: StudyReader = StubReader("X")
     assert reader.cut_id == "X"
+
+
+def test_a_draft_may_narrow_visibility_but_never_widen_it(ledger: SqliteLedger) -> None:
+    _cut(ledger, "DC-A")
+    agent = FakeAgent(agent_id="rbqm.scoped")
+    original_run = agent.run
+
+    def narrow(trigger: Event, ctx: AgentContext[AgentConfig]) -> Sequence[FindingDraft]:
+        return [
+            d.model_copy(update={"visible_to": (Role.CLINICAL_OPS_LEAD,)})
+            for d in original_run(trigger, ctx)
+        ]
+
+    agent.run = narrow  # type: ignore[method-assign]
+    assert not _runner(ledger, agent).run_pending().failed
+    (raised,) = ledger.read(event_types=[EventType.FINDING_RAISED])
+    assert isinstance(raised, Event)
+    assert isinstance(raised.payload, FindingRaised)
+    assert raised.payload.finding.visible_to == frozenset({Role.CLINICAL_OPS_LEAD})
+
+
+def test_a_draft_naming_a_role_outside_the_agent_fails_the_run_unrecorded(
+    ledger: SqliteLedger,
+) -> None:
+    _cut(ledger, "DC-A")
+    agent = FakeAgent(agent_id="rbqm.wide", sites=("1001", "1002"))
+    original_run = agent.run
+
+    def widen(trigger: Event, ctx: AgentContext[AgentConfig]) -> Sequence[FindingDraft]:
+        drafts = list(original_run(trigger, ctx))
+        return [drafts[0], drafts[1].model_copy(update={"visible_to": (Role.PORTFOLIO_LEAD,)})]
+
+    agent.run = widen  # type: ignore[method-assign]
+    report = _runner(ledger, agent).run_pending()
+    assert report.failed
+    assert "portfolio_lead" in report.failed[0][2]
+    assert ledger.read(event_types=[EventType.FINDING_RAISED]) == []  # not even the first
+
+
+def test_run_pending_can_be_limited_to_agents_and_cuts(ledger: SqliteLedger) -> None:
+    _cut(ledger, "DC-A")
+    _cut(ledger, "DC-B")
+    a, b = FakeAgent(agent_id="rbqm.a"), FakeAgent(agent_id="rbqm.b")
+    report = _runner(ledger, a, b).run_pending(agents={"rbqm.a"}, cuts={"DC-B"})
+    assert report.completed == [("rbqm.a", 2)]
+    rest = _runner(ledger, a, b).run_pending()
+    assert sorted(rest.completed) == [("rbqm.a", 1), ("rbqm.b", 1), ("rbqm.b", 2)]

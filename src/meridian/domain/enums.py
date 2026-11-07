@@ -28,6 +28,7 @@ class FindingKind(StrEnum):
     QTL_BREACH = "qtl_breach"
     SITE_DATA_ANOMALY = "site_data_anomaly"
     UNDER_REPORTING = "under_reporting"
+    SAE_RECONCILIATION = "sae_reconciliation"
 
 
 class EventType(StrEnum):

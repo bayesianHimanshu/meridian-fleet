@@ -10,6 +10,7 @@ raw_dir = "data/raw/cdisc_pilot"
 curated_root = "data/curated"
 sites_file = "config/sites.toml"
 ground_truth_dir = "data/ground_truth"
+safety_root = "data/safety_db"  # the synthetic safety database, one snapshot per cut
 evals_dir = "data/evals"
 
 # Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
@@ -97,7 +98,7 @@ openapi_file = "openapi/meridian-api.json"
 # Agents. enabled lists the agent ids the runner wakes; [agents.<name>] is each agent's
 # own configuration and is all the agent ever sees.
 [agents]
-enabled = ["rbqm.kri_monitor", "rbqm.qtl_detector", "rbqm.csm"]
+enabled = ["rbqm.kri_monitor", "rbqm.qtl_detector", "rbqm.csm", "safety.sae_reconciler"]
 
 [agents.kri_monitor]
 alpha = 0.01
@@ -126,3 +127,15 @@ sd_ratio_max = 0.6
 min_subjects = 5
 min_readings = 50
 parameters = ["SYSBP", "DIABP", "PULSE"]
+
+[agents.sae_reconciler]
+# SAE reconciliation (phase 3 step 3a), deterministic. Set before the evaluation in
+# docs/safety-eval.md and not changed in response to it. Matching rule: docs/safety-notes.md.
+onset_tolerance_days = 1   # onsets more than 1 day apart are an onset mismatch
+fallback_window_days = 3   # fallback match: same subject and preferred term, within 3 days
+late_after_hours = 24.0    # receipt more than 24 hours after site awareness is late
+site_late_min = 2          # a site with 2 or more late cases gets a site-level finding
+# Who may see which finding. Subject-level findings carry the subject id; the site-level
+# finding (sae_late_reporting_site) carries no subject id and may also reach portfolio_lead.
+subject_visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor"]
+site_visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
