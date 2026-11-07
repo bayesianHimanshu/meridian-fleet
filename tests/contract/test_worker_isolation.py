@@ -1,4 +1,9 @@
-"""meridian-worker's import closure: no ledger store, faults, evals, ingest or network."""
+"""The workers' import closures.
+
+meridian-worker: no ledger store, faults, evals, ingest or network.
+meridian-narrator-worker: none of those either, no study data and no detection code; it
+reaches the network only through meridian.llm.client.
+"""
 
 import ast
 from pathlib import Path
@@ -41,11 +46,11 @@ def _imports(path: Path) -> set[str]:
     return found
 
 
-def _closure() -> dict[str, set[str]]:
-    """Every meridian module reachable from meridian.worker, with its direct imports."""
+def _closure(root: str = "meridian.worker") -> dict[str, set[str]]:
+    """Every meridian module reachable from root, with its direct imports."""
     modules = {_module(p): p for p in SRC.rglob("*.py")}
     seen: dict[str, set[str]] = {}
-    stack = ["meridian.worker"]
+    stack = [root]
     while stack:
         current = stack.pop()
         if current in seen or current not in modules:
@@ -78,3 +83,26 @@ def test_worker_reaches_no_forbidden_meridian_module() -> None:
 def test_no_meridian_module_on_the_worker_path_imports_the_network(module: str) -> None:
     direct = sorted(m for m in _closure()[module] if _hit(m, NETWORK))
     assert direct == [], f"{module} imports {direct}"
+
+
+NARRATOR_FORBIDDEN = (
+    *FORBIDDEN,
+    "meridian.data.study_store",
+    "meridian.data.cut_writer",
+    "meridian.agents",
+    "meridian.worker",
+)
+NARRATOR_NETWORK_ONLY_IN = "meridian.llm.client"
+
+
+def test_narrator_worker_reaches_no_forbidden_module() -> None:
+    closure = _closure("meridian.narrator_worker")
+    assert NARRATOR_NETWORK_ONLY_IN in closure
+    reached = sorted(m for m in closure if _hit(m, NARRATOR_FORBIDDEN))
+    assert reached == []
+
+
+def test_narrator_worker_reaches_the_network_only_through_the_model_client() -> None:
+    closure = _closure("meridian.narrator_worker")
+    networked = sorted(m for m, direct in closure.items() if any(_hit(d, NETWORK) for d in direct))
+    assert networked == [NARRATOR_NETWORK_ONLY_IN]

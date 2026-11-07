@@ -18,7 +18,14 @@ from meridian.data.sites import SiteMappingError, load_site_map
 from meridian.data.study_store import StudyAccessError, StudyReader
 from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import DataCut, Event, EventDraft, FindingRaised, RedactedEvent
+from meridian.domain.events import (
+    DataCut,
+    Event,
+    EventDraft,
+    FindingNarrative,
+    FindingRaised,
+    RedactedEvent,
+)
 from meridian.domain.findings import Evidence, Finding
 from meridian.evals.matching import VersionFilter
 from meridian.evals.rules import condition_truth
@@ -429,6 +436,71 @@ def agents_run(executor: ExecutorOption = None) -> None:
             typer.echo(f"  FAILED {agent_id} on DataCut seq {seq}: {error}")
         if report.failed:
             raise typer.Exit(code=1)
+
+
+def _narrator_policy_conforms(c: Container) -> str | None:
+    """None if the latest conformance run of rbqm.narrator passed with the committed
+    policy; otherwise why the narrator may not run."""
+    from meridian.domain.events import ContainmentCheckCompleted
+
+    latest = None
+    for entry in c.ledger.read(event_types=[EventType.CONTAINMENT_CHECK_COMPLETED]):
+        if (
+            isinstance(entry, Event)
+            and isinstance(entry.payload, ContainmentCheckCompleted)
+            and entry.payload.policy_name == policies.NARRATOR_POLICY
+        ):
+            latest = entry.payload
+    if latest is None:
+        return "no conformance run of rbqm.narrator in the ledger"
+    if not latest.passed or latest.credential_value_visible is not False:
+        return f"the latest conformance run of rbqm.narrator ({latest.sandbox}) did not pass"
+    expected = policies.sha256_text(
+        policies.expected_effective(policies.ALL_POLICIES[policies.NARRATOR_POLICY])
+    )
+    if latest.policy_sha256 != expected:
+        return "rbqm.narrator changed since its latest conformance run"
+    return None
+
+
+@agents_app.command("narrate")
+def agents_narrate(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only findings of these cuts; repeatable.")
+    ] = None,
+    max_calls: Annotated[
+        int | None,
+        typer.Option("--max-calls", help="Default: [narrator] max_calls_per_pass.", min=1),
+    ] = None,
+) -> None:
+    """One rbqm.narrator pass in an OpenShell sandbox with the meridian-anthropic provider."""
+    settings = Settings()
+    if max_calls is not None:
+        narr = settings.narrator.model_copy(update={"max_calls_per_pass": max_calls})
+        settings = settings.model_copy(update={"narrator": narr})
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        problem = _narrator_policy_conforms(c)
+        if problem:
+            typer.echo(
+                f"error: {problem}; run meridian sandbox conformance --policy rbqm.narrator",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        try:
+            report = c.narrator_runner(log).run_pass(cuts)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    counts = ", ".join(f"{k} {v}" for k, v in sorted(report.counts.items())) or "nothing"
+    typer.echo(f"narrated: {counts}; over budget, for the next pass: {len(report.deferred)}")
+    if report.batch_error:
+        typer.echo(f"  batch failed: {report.batch_error}")
+    for event in report.events:
+        p = event.payload
+        assert isinstance(p, FindingNarrative)
+        detail = p.headline if p.status == "accepted" else ", ".join(p.rejection_reasons)
+        typer.echo(f"  seq {event.seq} {p.finding_id} {p.status:<8} {detail or p.error}")
 
 
 @findings_app.command("show")

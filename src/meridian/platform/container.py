@@ -7,6 +7,7 @@ from typing import Self
 import structlog
 
 from meridian.agents.catalog import build_registry
+from meridian.agents.narration import NarrationExecutor, NarratorRunner
 from meridian.agents.registry import AgentRegistry
 from meridian.agents.runner import AgentRunner
 from meridian.data.ingest import IngestService
@@ -24,6 +25,7 @@ from meridian.sandbox.executor import (
     OpenShellExecutor,
 )
 from meridian.sandbox.image import default_image
+from meridian.sandbox.narration import OpenShellNarrationExecutor
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
@@ -107,6 +109,41 @@ class Container:
             policies_dir=rt.policies_dir,
             exec_timeout_seconds=rt.exec_timeout_seconds,
             keep_failed=rt.keep_failed,
+            log=log,
+        )
+
+    def narrator_runner(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        executor: NarrationExecutor | None = None,
+        client: OpenShellClient | None = None,
+    ) -> NarratorRunner:
+        """The narrator pass. Real calls go through the OpenShell executor only."""
+        if executor is None:
+            rt = self.settings.runtime
+            resolved = client or SubprocessOpenShellClient()
+            tracker = self.sandbox_tracker()
+            executor = OpenShellNarrationExecutor(
+                client=resolved,
+                image=self.image_ref(),
+                policies_dir=rt.policies_dir,
+                tracker=tracker,
+                deleter=BackgroundDeleter(
+                    delete=resolved.delete,
+                    tracker=tracker,
+                    workers=rt.delete_workers,
+                    log=log,
+                    live=resolved.names,
+                    confirm_seconds=rt.delete_confirm_seconds,
+                ),
+                log=log,
+            )
+        return NarratorRunner(
+            ledger=self.ledger,
+            executor=executor,
+            clock=self.clock,
+            llm=self.settings.llm,
+            max_calls=self.settings.narrator.max_calls_per_pass,
             log=log,
         )
 

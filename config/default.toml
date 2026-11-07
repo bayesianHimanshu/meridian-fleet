@@ -69,6 +69,13 @@ temperature = 0.0
 disable_thinking = true  # sends thinking {type: disabled}; output stays within max_tokens
 timeout_seconds = 30.0
 
+# rbqm.narrator: explains findings of rbqm.kri_monitor, rbqm.qtl_detector and rbqm.csm.
+# It runs only in an OpenShell sandbox with policies/rbqm.narrator.yaml and the
+# meridian-anthropic provider, and only after that policy passed meridian sandbox
+# conformance --policy rbqm.narrator.
+[narrator]
+max_calls_per_pass = 20
+
 # Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
 # They were tuned only on DC-BASE, DC-RBQM-CORE and DC-NULL-S1 to S5; the defaults were
 # kept (see docs/tuning-phase1.md). Do not change them in response to holdout or sweep results.

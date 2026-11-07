@@ -97,6 +97,15 @@ class LlmSettings(BaseModel):
     timeout_seconds: float = Field(30.0, gt=0)
 
 
+class NarratorSettings(BaseModel):
+    """rbqm.narrator ([narrator] in TOML)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    # Model calls per runner pass; findings over budget wait for the next pass.
+    max_calls_per_pass: int = Field(20, ge=1)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MERIDIAN_", env_nested_delimiter="__", extra="ignore", frozen=True
@@ -118,6 +127,7 @@ class Settings(BaseSettings):
     agents: AgentsSettings
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
     llm: LlmSettings = Field(default_factory=LlmSettings)
+    narrator: NarratorSettings = Field(default_factory=NarratorSettings)
 
     @classmethod
     def settings_customise_sources(
