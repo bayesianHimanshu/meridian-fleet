@@ -1,4 +1,10 @@
-"""rbqm.narrator 1.0.0: a plain-language summary of one finding, checked before acceptance.
+"""rbqm.narrator 1.0.0 (frozen): input, prompt and validator as used in phase 2 step 3.
+
+Kept unchanged so its 53 narratives stay reproducible and validator 1.0.0 can be measured
+next to 1.1.0 (meridian.agents.rbqm.narrator). The number, sentence and fence helpers here
+are shared with 1.1.0.
+
+rbqm.narrator 1.0.0: a plain-language summary of one finding, checked before acceptance.
 
 Detection stays deterministic; this agent only explains. Its input is the finding's kind,
 site, severity, title, template summary and evidence list, nothing from the cut. Before
@@ -80,7 +86,9 @@ def _strings(obj: object) -> list[str]:
     return [obj] if isinstance(obj, str) else []
 
 
-def deid_problems(serialized: str) -> list[str]:
+def deid_problems(
+    serialized: str, evidence_fields: frozenset[str] = ALLOWED_EVIDENCE_FIELDS
+) -> list[str]:
     """Why this serialized input may not be sent; empty when it may.
 
     Refused: a subject id pattern (201-NNNN-NNN) anywhere, a USUBJID or SRC_USUBJID key
@@ -109,7 +117,7 @@ def deid_problems(serialized: str) -> list[str]:
         if not isinstance(item, dict):
             problems.append("field_not_allowed:evidence[]")
             continue
-        extra |= set(item) - ALLOWED_EVIDENCE_FIELDS
+        extra |= set(item) - evidence_fields
     problems += [f"field_not_allowed:evidence.{k}" for k in sorted(extra)]
     return problems
 
@@ -269,6 +277,7 @@ def sentence_count(text: str) -> int:
 
 
 def validate(text: str, inp: dict[str, Any], stop_reason: str | None = None) -> Validation:
+    """Validator 1.0.0."""
     reasons: list[str] = []
     if stop_reason == "refusal":
         reasons.append("model_refusal")

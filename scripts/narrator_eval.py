@@ -28,6 +28,7 @@ CUTS = ("DC-BASE", "DC-RBQM-CORE", "DC-51448ab6")
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--cut", action="append", dest="cuts", default=None)
+    parser.add_argument("--version", default=narrator.VERSION, help="narrator version")
     args = parser.parse_args()
     cuts = set(args.cuts or CUTS)
     s = Settings()
@@ -44,7 +45,7 @@ def main() -> None:
             continue
         n = e.payload
         finding, cut = raised[n.finding_seq]
-        if n.agent_version == narrator.VERSION and cut in cuts:
+        if n.agent_version == args.version and cut in cuts:
             rows.append((e.seq, n, finding, cut))
     ledger.close()
 
