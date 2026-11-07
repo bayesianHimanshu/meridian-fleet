@@ -230,11 +230,16 @@ def test_holdout_and_sweep_cuts_have_no_trace(tmp_path: Path, ledger: SqliteLedg
         assert not any(name.lower() in payload for name in names), path.name
 
 
-def test_repo_faulted_cut_has_no_trace_if_present() -> None:
-    cut = REPO_ROOT / "data" / "curated" / STUDY / RBQM_CORE_OUT_CUT
-    scenario = REPO_ROOT / "config" / "scenarios" / "rbqm_core.toml"
+def _repo_scenarios() -> list[Path]:
+    root = REPO_ROOT / "config" / "scenarios"
+    return sorted([*root.glob("*.toml"), *(root / "sweep").glob("*.toml")])
+
+
+@pytest.mark.parametrize("scenario", _repo_scenarios(), ids=lambda p: p.stem)
+def test_repo_faulted_cuts_have_no_trace_if_present(scenario: Path) -> None:
+    cut = REPO_ROOT / "data" / "curated" / STUDY / load_scenario(scenario).out_cut
     if not cut.exists():
-        pytest.skip("no local DC-RBQM-CORE cut")
+        pytest.skip(f"no local {cut.name} cut")
     names, values = _tokens(scenario)
     _assert_no_trace(cut, names, values)
 
