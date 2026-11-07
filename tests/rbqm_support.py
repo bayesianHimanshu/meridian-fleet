@@ -53,6 +53,7 @@ def _pilot_frames(
                     "RFSTDTC": "" if failed else start.isoformat(),
                     "SITEID": pilot_site,
                     "AGE": float(rng.integers(55, 85)),
+                    "SEX": "M" if k % 3 else "F",
                     "ARMCD": "Scrnfail" if failed else ("Pbo" if k % 2 else "Xan_Hi"),
                     "ARM": "Screen Failure" if failed else ("Placebo" if k % 2 else "Xan High"),
                     "ACTARMCD": "Scrnfail" if failed else ("Pbo" if k % 2 else "Xan_Hi"),
@@ -110,7 +111,16 @@ def _pilot_frames(
                         "AESTDTC": (start + timedelta(days=int(rng.integers(0, 120)))).isoformat(),
                     }
                 )
-            lb_rows.append({"USUBJID": usubjid, "LBSEQ": 1.0, "LBTESTCD": "ALT", "LBDTC": ""})
+            for j, flag in enumerate(("HIGH", "NORMAL", "LOW", "NORMAL")):
+                lb_rows.append(
+                    {
+                        "USUBJID": usubjid,
+                        "LBSEQ": float(j + 1),
+                        "LBTESTCD": "ALT",
+                        "LBNRIND": flag,
+                        "LBDTC": "",
+                    }
+                )
             ex_rows.append(
                 {
                     "USUBJID": usubjid,

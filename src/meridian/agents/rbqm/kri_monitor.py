@@ -1,9 +1,12 @@
-"""rbqm.kri_monitor v2: key risk indicators per site.
+"""rbqm.kri_monitor v2.1: key risk indicators per site.
 
 ae_rate and deviations use a quasi-Poisson test: leave-one-out expected counts, a robust
 dispersion phi estimated across the tested sites, and z = (O - E) / sqrt(phi * E). Real
 sites differ more than a Poisson model allows; phi absorbs that. data_entry_lag and
 query_aging compare site medians with absolute operational thresholds.
+
+2.1.0 (step 5): the expected AE count comes from the configured variant in
+meridian.stats.ae_expectation; variant a is the 2.0.0 subject-days expectation.
 """
 
 from collections.abc import Sequence
@@ -15,7 +18,8 @@ from meridian.domain.enums import FindingKind, Severity
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
 from meridian.platform.agent_settings import KriMonitorConfig
-from meridian.stats.robust import neg_log10, quasi_poisson
+from meridian.stats.ae_expectation import AE_VARIANTS, ae_expectation
+from meridian.stats.robust import neg_log10, quasi_poisson, quasi_poisson_test
 from meridian.stats.rules import entry_lag, query_aging
 from meridian.stats.site_metrics import counts_by_site, exposure, sites_with_min_treated
 
@@ -50,6 +54,7 @@ def _median_severity(median: float, threshold: float) -> Severity:
 
 class KriMonitor(RbqmAgentBase):
     agent_id = "rbqm.kri_monitor"
+    version = "2.1.0"  # 2.0.0 plus the configurable expected-AE variant (step 5)
     config_model = KriMonitorConfig
 
     def run(self, trigger: Event, ctx: AgentContext[KriMonitorConfig]) -> Sequence[FindingDraft]:
@@ -75,19 +80,33 @@ class KriMonitor(RbqmAgentBase):
 
         drafts: list[FindingDraft] = []
         included = exp.per_subject.select("USUBJID", "SITEID")
+        ae_rows = ae_expectation(
+            cfg.ae_variant,
+            dm=dm,
+            sv=sv,
+            ae=study.table("ae"),
+            lb=study.table("lb"),
+            tested=tested,
+            early_window_days=cfg.early_window_days,
+        )
+        deviation_counts = counts_by_site(study.table("deviations"), included)
         rate_checks = (
-            ("ae_rate", study.table("ae"), True, FindingKind.UNDER_REPORTING, "blinded/ae"),
+            (
+                "ae_rate",
+                quasi_poisson_test(ae_rows, lower_tail=True),
+                True,
+                FindingKind.UNDER_REPORTING,
+                "blinded/ae",
+            ),
             (
                 "deviations",
-                study.table("deviations"),
+                quasi_poisson(deviation_counts, exp.days(), tested, lower_tail=False),
                 False,
                 FindingKind.KRI_BREACH,
                 "ops/deviations",
             ),
         )
-        for check, rows, lower, kind, source in rate_checks:
-            counts = counts_by_site(rows, included)
-            result = quasi_poisson(counts, exp.days(), tested, lower_tail=lower)
+        for check, result, lower, kind, source in rate_checks:
             n_tested = len(result.sites)
             for res in result.sites:
                 adjusted = min(1.0, res.p * n_tested)
@@ -106,14 +125,19 @@ class KriMonitor(RbqmAgentBase):
                     ev("p_adjusted", adjusted, cfg.alpha),
                     ev("excluded_subjects", site_exp["excluded"]),
                 ]
-                if check == "ae_rate":
+                if check == "ae_rate" and site_exp["subject_days"] > 0:
                     evidence.append(
                         ev(
                             "per_100_subject_days",
                             100 * res.observed / site_exp["subject_days"],
-                            100 * res.rate_others,
+                            100 * res.expected / site_exp["subject_days"],
                         )
                     )
+                basis = (
+                    f" (expected-AE variant {cfg.ae_variant}, {AE_VARIANTS[cfg.ae_variant]})"
+                    if check == "ae_rate"
+                    else ""
+                )
                 direction = "fewer" if lower else "more"
                 noun = "adverse events" if check == "ae_rate" else "protocol deviations"
                 drafts.append(
@@ -126,7 +150,8 @@ class KriMonitor(RbqmAgentBase):
                         summary=(
                             f"Site {res.site} has {res.observed} {noun} over "
                             f"{site_exp['subject_days']} subject-days; the rest of the study "
-                            f"implies {res.expected:.1f}. With dispersion phi = {result.phi:.2f}, "
+                            f"implies {res.expected:.1f}{basis}. With dispersion phi = "
+                            f"{result.phi:.2f}, "
                             f"z = {res.z:.2f}, p = {res.p:.2e}, {adjusted:.2e} after Bonferroni "
                             f"over {n_tested} sites."
                         ),
