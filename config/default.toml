@@ -61,6 +61,14 @@ delete_confirm_seconds = 60.0  # until a deleted sandbox must be gone from sandb
 sandboxes_log = "var/sandboxes.jsonl"
 conformance_log_timeout_seconds = 30.0  # wait for the NET:OPEN DENIED line
 
+# The model the narrator (rbqm.narrator) calls, through the OpenShell provider only.
+[llm]
+model = "claude-haiku-5-5"
+max_tokens = 300
+temperature = 0.0
+disable_thinking = true  # sends thinking {type: disabled}; output stays within max_tokens
+timeout_seconds = 30.0
+
 # Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
 # They were tuned only on DC-BASE, DC-RBQM-CORE and DC-NULL-S1 to S5; the defaults were
 # kept (see docs/tuning-phase1.md). Do not change them in response to holdout or sweep results.
