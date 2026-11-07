@@ -10,13 +10,15 @@ import polars as pl
 import structlog
 import typer
 
+from meridian.agents.base import parse_dedup_key
+from meridian.agents.registry import RegistrationError
 from meridian.data.cut_writer import CutExistsError
 from meridian.data.fetch import FetchError, fetch
 from meridian.data.ingest import IngestError
 from meridian.data.sites import SiteMappingError, load_site_map
 from meridian.data.study_store import StudyAccessError, StudyReader
-from meridian.domain.enums import FindingKind, Role, Severity, Visibility
-from meridian.domain.events import DataCut, EventDraft, FindingRaised
+from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
+from meridian.domain.events import DataCut, Event, EventDraft, FindingRaised, RedactedEvent
 from meridian.domain.findings import Evidence, Finding
 from meridian.faults.catalog import FaultError
 from meridian.faults.inject import InjectionError
@@ -30,10 +32,14 @@ from meridian.platform.container import Container
 app = typer.Typer(no_args_is_help=True, help="Meridian Agent Fleet.")
 ledger_app = typer.Typer(no_args_is_help=True, help="Inspect and manage the event ledger.")
 faults_app = typer.Typer(no_args_is_help=True, help="Plant known faults into a copy of a cut.")
+agents_app = typer.Typer(no_args_is_help=True, help="List and run oversight agents.")
+findings_app = typer.Typer(no_args_is_help=True, help="Inspect findings in the ledger.")
 data_app = typer.Typer(no_args_is_help=True, help="Fetch, ingest and inspect study data.")
 app.add_typer(ledger_app, name="ledger")
 app.add_typer(data_app, name="data")
 app.add_typer(faults_app, name="faults")
+app.add_typer(agents_app, name="agents")
+app.add_typer(findings_app, name="findings")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -185,6 +191,7 @@ DATA_ERRORS = (
     FaultError,
     InjectionError,
     ScenarioError,
+    RegistrationError,
 )
 
 
@@ -347,3 +354,77 @@ def faults_inject(
             )
         verb = "appended" if result.event_appended else "already recorded"
         typer.echo(f"DataCut {verb} at ledger seq {result.event.seq}")
+
+
+@agents_app.command("list")
+def agents_list() -> None:
+    """Every known agent, whether it is enabled, and what wakes it."""
+    with _container() as c:
+        for registered in c.agent_registry().all():
+            agent = registered.agent
+            state = "enabled" if registered.enabled else "disabled"
+            triggers = ",".join(sorted(t.value for t in agent.subscribes_to))
+            typer.echo(
+                f"{agent.agent_id:<20} v{agent.version:<7} zone {agent.zone.value:<10} "
+                f"{state:<9} wakes on {triggers}"
+            )
+
+
+@agents_app.command("run")
+def agents_run() -> None:
+    """One runner pass over every pending (agent, DataCut) pair."""
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        try:
+            report = c.agent_runner(log).run_pending()
+        except DATA_ERRORS as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(
+            f"completed {len(report.completed)} agent run(s), failed {len(report.failed)}, "
+            f"findings appended {len(report.findings_appended)}, "
+            f"skipped as duplicates {len(report.findings_skipped)}"
+        )
+        for agent_id, seq in report.completed:
+            typer.echo(f"  done   {agent_id} on DataCut seq {seq}")
+        for agent_id, seq, error in report.failed:
+            typer.echo(f"  FAILED {agent_id} on DataCut seq {seq}: {error}")
+        if report.failed:
+            raise typer.Exit(code=1)
+
+
+@findings_app.command("show")
+def findings_show(
+    cut: Annotated[str | None, typer.Option("--cut", help="Only findings on this cut.")] = None,
+    role: Annotated[
+        Role | None,
+        typer.Option("--role", help="Viewer role. Restricted findings are redacted for others."),
+    ] = None,
+) -> None:
+    """One line per finding: id, agent, kind, site, severity, score, title."""
+    with _container() as c:
+        try:
+            entries = c.ledger.read(event_types=[EventType.FINDING_RAISED], viewer_role=role)
+        except DATA_ERRORS as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        shown = 0
+        for entry in entries:
+            if isinstance(entry, RedactedEvent):
+                if cut is None:
+                    typer.echo(f"seq {entry.seq:<5} [restricted]")
+                    shown += 1
+                continue
+            assert isinstance(entry, Event)
+            assert isinstance(entry.payload, FindingRaised)
+            parts = parse_dedup_key(entry.payload.dedup_key)
+            if cut is not None and parts.cut_id != cut:
+                continue
+            f = entry.payload.finding
+            typer.echo(
+                f"{f.finding_id or '-':<10} {f.agent_id:<18} {f.kind.value:<17} "
+                f"{f.site_id or 'STUDY':<6} {f.severity.value:<6} {f.score:>8.2f}  {f.title}"
+            )
+            shown += 1
+        if shown == 0:
+            typer.echo("no findings")

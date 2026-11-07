@@ -2,6 +2,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import structlog
 
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import FixedClock
@@ -22,3 +23,10 @@ def ledger_path(tmp_path: Path) -> Path:
 def ledger(ledger_path: Path, clock: FixedClock) -> Iterator[SqliteLedger]:
     with make_ledger(ledger_path, clock) as opened:
         yield opened
+
+
+@pytest.fixture(autouse=True)
+def _reset_structlog() -> Iterator[None]:
+    """CLI commands configure structlog globally (to CliRunner's stderr); undo it."""
+    yield
+    structlog.reset_defaults()

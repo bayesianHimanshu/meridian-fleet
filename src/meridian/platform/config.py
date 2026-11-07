@@ -17,6 +17,9 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
+from meridian.agents.rbqm.csm import CsmConfig
+from meridian.agents.rbqm.kri_monitor import KriMonitorConfig
+from meridian.agents.rbqm.qtl_detector import QtlDetectorConfig
 from meridian.data.ops_synth import OpsSynthParams
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
@@ -49,6 +52,17 @@ class PilotSource(BaseModel):
     timeout_seconds: float = 120.0
 
 
+class AgentsSettings(BaseModel):
+    """Which agents run, and each agent's own configuration ([agents.<name>] in TOML)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    enabled: tuple[str, ...] = ("rbqm.kri_monitor", "rbqm.qtl_detector", "rbqm.csm")
+    kri_monitor: KriMonitorConfig = Field(default_factory=KriMonitorConfig)
+    qtl_detector: QtlDetectorConfig
+    csm: CsmConfig = Field(default_factory=CsmConfig)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MERIDIAN_", env_nested_delimiter="__", extra="ignore", frozen=True
@@ -66,6 +80,7 @@ class Settings(BaseSettings):
     ground_truth_dir: Path = Path("data/ground_truth")
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)
+    agents: AgentsSettings
 
     @classmethod
     def settings_customise_sources(
