@@ -154,32 +154,101 @@
       },
       "AssetStatic": {
         "additionalProperties": false,
-        "description": "Served as written in config/portfolio.toml.",
+        "description": "Served as written in config/portfolio.toml; nothing here is computed.",
         "properties": {
           "indication": {
             "title": "Indication",
             "type": "string"
           },
-          "modality": {
-            "title": "Modality",
+          "intervention": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervention"
+          },
+          "milestone": {
+            "title": "Milestone",
             "type": "string"
           },
-          "name": {
-            "title": "Name",
+          "milestone_due": {
+            "title": "Milestone Due",
             "type": "string"
+          },
+          "probability_of_success": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probability Of Success"
+          },
+          "progress_percent": {
+            "title": "Progress Percent",
+            "type": "integer"
           },
           "stage": {
+            "enum": [
+              "preclinical",
+              "phase_1",
+              "phase_2",
+              "phase_3"
+            ],
             "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssetStatus"
+          },
+          "title": {
+            "title": "Title",
             "type": "string"
           }
         },
         "required": [
-          "name",
+          "title",
           "stage",
           "indication",
-          "modality"
+          "intervention",
+          "milestone",
+          "milestone_due",
+          "progress_percent",
+          "probability_of_success",
+          "status"
         ],
         "title": "AssetStatic",
+        "type": "object"
+      },
+      "AssetStatus": {
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "enum": [
+              "good",
+              "warning",
+              "critical",
+              "info"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "level",
+          "text"
+        ],
+        "title": "AssetStatus",
         "type": "object"
       },
       "ContainmentCheck": {
@@ -479,6 +548,14 @@
             "title": "Opaque",
             "type": "boolean"
           },
+          "scope": {
+            "enum": [
+              "operational",
+              "evaluation"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
           "trigger_seq": {
             "title": "Trigger Seq",
             "type": "integer"
@@ -490,6 +567,7 @@
           "kind",
           "label",
           "opaque",
+          "scope",
           "created",
           "agent_runs_completed"
         ],
@@ -728,6 +806,50 @@
           "artifact"
         ],
         "title": "DocumentFiled",
+        "type": "object"
+      },
+      "Enrollment": {
+        "additionalProperties": false,
+        "description": "Cumulative treated subjects by month of first treatment (blinded DM RFSTDTC).",
+        "properties": {
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "months": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Months",
+            "type": "array"
+          },
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/SiteEnrollment"
+            },
+            "title": "Sites",
+            "type": "array"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "total": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Total",
+            "type": "array"
+          }
+        },
+        "required": [
+          "study_id",
+          "cut_id",
+          "months",
+          "total",
+          "sites"
+        ],
+        "title": "Enrollment",
         "type": "object"
       },
       "Event": {
@@ -1426,6 +1548,14 @@
             "title": "Raised At",
             "type": "string"
           },
+          "scope": {
+            "enum": [
+              "operational",
+              "evaluation"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
           "score": {
             "title": "Score",
             "type": "number"
@@ -1466,6 +1596,21 @@
             "title": "Summary",
             "type": "string"
           },
+          "superseded": {
+            "title": "Superseded",
+            "type": "boolean"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
           "title": {
             "title": "Title",
             "type": "string"
@@ -1487,9 +1632,12 @@
           "raised_at",
           "study_id",
           "cut_id",
+          "scope",
           "check",
           "agent_id",
           "agent_version",
+          "superseded",
+          "superseded_by",
           "kind",
           "site_id",
           "severity",
@@ -1834,6 +1982,30 @@
           "sandbox"
         ],
         "title": "NarrativeView",
+        "type": "object"
+      },
+      "PersonView": {
+        "additionalProperties": false,
+        "description": "A demo person from config/people.toml (development identity, not an account).",
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "actor",
+          "name",
+          "role"
+        ],
+        "title": "PersonView",
         "type": "object"
       },
       "PolicyDenied": {
@@ -2232,6 +2404,28 @@
         "title": "Severity",
         "type": "string"
       },
+      "SiteEnrollment": {
+        "additionalProperties": false,
+        "properties": {
+          "cumulative": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Cumulative",
+            "type": "array"
+          },
+          "site_id": {
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id",
+          "cumulative"
+        ],
+        "title": "SiteEnrollment",
+        "type": "object"
+      },
       "SiteMetrics": {
         "additionalProperties": false,
         "properties": {
@@ -2477,9 +2671,34 @@
   "paths": {
     "/api/v1/findings": {
       "get": {
-        "description": "Newest first (ledger seq descending).",
+        "description": "Newest first (ledger seq descending). By default only operational cuts and no\nsuperseded findings; widen with scope=all and include_superseded=true.",
         "operationId": "findings_api_v1_findings_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "operational",
+              "enum": [
+                "operational",
+                "evaluation",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_superseded",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Superseded",
+              "type": "boolean"
+            }
+          },
           {
             "in": "query",
             "name": "cut",
@@ -3109,6 +3328,32 @@
         ]
       }
     },
+    "/api/v1/people": {
+      "get": {
+        "description": "The demo people of config/people.toml, for the development role switcher. Needs no\nidentity headers: this is development identity, not sign-in.",
+        "operationId": "people_api_v1_people_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PersonView"
+                  },
+                  "title": "Response People Api V1 People Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "People",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
     "/api/v1/portfolio": {
       "get": {
         "operationId": "portfolio_api_v1_portfolio_get",
@@ -3259,9 +3504,34 @@
     },
     "/api/v1/review-queue": {
       "get": {
-        "description": "Open and escalated findings the caller may see, newest first.",
+        "description": "Open and escalated findings the caller may see, newest first. By default only\noperational cuts (never evaluation cuts) and no superseded findings.",
         "operationId": "review_queue_api_v1_review_queue_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "scope",
+            "required": false,
+            "schema": {
+              "default": "operational",
+              "enum": [
+                "operational",
+                "evaluation",
+                "all"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_superseded",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Superseded",
+              "type": "boolean"
+            }
+          },
           {
             "description": "Person id from config/people.toml (development only).",
             "in": "header",
@@ -3477,6 +3747,101 @@
           }
         },
         "summary": "Cuts",
+        "tags": [
+          "studies"
+        ]
+      }
+    },
+    "/api/v1/studies/{study}/enrollment": {
+      "get": {
+        "description": "Cumulative treated subjects by month (blinded DM RFSTDTC), per site and in total.\nDefault cut: the study's operational cut.",
+        "operationId": "study_enrollment_api_v1_studies__study__enrollment_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cut",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cut"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Enrollment"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Study Enrollment",
         "tags": [
           "studies"
         ]
