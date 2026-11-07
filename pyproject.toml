@@ -25,6 +25,7 @@ dev = [
     "hypothesis",
     "ruff",
     "mypy",
+    "scipy-stubs>=1.18.1.1",
 ]
 
 [build-system]
