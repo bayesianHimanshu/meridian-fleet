@@ -8,6 +8,8 @@ from meridian.domain.enums import DecisionAction, EventType, Role, Visibility
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
+    ContainmentCheck,
+    ContainmentCheckCompleted,
     DataCut,
     DocumentFiled,
     Event,
@@ -31,6 +33,42 @@ PAYLOADS: list[EventPayload] = [
         resource="unblinded/arms.parquet",
         policy="blinding",
         reason="agent is blinded",
+    ),
+    PolicyDenied(
+        agent_id="system.conformance",
+        resource="192.0.2.1:443",
+        policy="policies/rbqm.yaml",
+        reason="transparent_tcp_policy_denied",
+        source="openshell_log",
+        zone="rbqm",
+        check="egress_test_net",
+        sandbox="mer-cf-rb-1a2b3c4d",
+        policy_sha256="0" * 64,
+        raw_line=(
+            "[1794055103.727] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED "
+            "/usr/bin/bash(0) -> 192.0.2.1:443 [reason:transparent_tcp_policy_denied]"
+        ),
+    ),
+    ContainmentCheckCompleted(
+        zone="rbqm",
+        sandbox="mer-cf-rb-1a2b3c4d",
+        image="meridian-agent:0.1.0",
+        image_digest="sha256:" + "1" * 64,
+        policy_sha256="2" * 64,
+        checks=(
+            ContainmentCheck(
+                name="read_outside_allow_list",
+                expect="refused",
+                command="cat /etc/os-release",
+                outcome="refused",
+                exit_code=1,
+                message="cat: /etc/os-release: Permission denied",
+                passed=True,
+            ),
+        ),
+        log_line_found=True,
+        all_refused=True,
+        passed=True,
     ),
     HumanDecision(
         decision=Decision(

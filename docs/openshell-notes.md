@@ -156,3 +156,17 @@ paths, no network) stays the primary filesystem check; the prover is a second on
    process '/bin/bash' ... Permission denied`.
 9. **`exec` takes the name as a positional argument or as `-n/--name`**, and has
    `--no-tty` and `--no-login-shell`; the login shell otherwise sources startup files.
+
+## Conformance check (`meridian sandbox conformance --zone ZONE|all`)
+
+A unit test for a zone's committed policy, in a real sandbox from the production image:
+read `/etc/os-release`, write `/var/tmp/conformance` and `/opt/meridian/conformance`,
+connect to 192.0.2.1:443, and a `/tmp` control. A refusal counts only when the error
+names the target: `touch` is not in the allow-list, so `touch X` would be refused before
+it ever tried X, and the check would prove nothing. Writes use bash redirection.
+
+The `NET:OPEN ... DENIED` line appears in `openshell logs` about 1 s after the connect,
+with the sandbox's `ocsf_json_enabled` setting never set; so the check does not set it
+and does not wait for its 10 s poll. It polls the log for at most
+`conformance_log_timeout_seconds`. Results: PolicyDenied events (`harness` for files,
+`openshell_log` with the raw line for the network) and one ContainmentCheckCompleted.

@@ -87,6 +87,47 @@ class PolicyDenied(BaseModel):
     resource: Annotated[str, Field(min_length=1)]
     policy: Annotated[str, Field(min_length=1)]
     reason: Annotated[str, Field(min_length=1)]
+    # Phase 2 step 2b, all optional (null on older events). source says who observed the
+    # refusal: "harness" (the exit code and stderr seen from outside the sandbox) or
+    # "openshell_log" (the OpenShell supervisor's log line, stored verbatim in raw_line).
+    source: Literal["harness", "openshell_log"] | None = None
+    zone: str | None = None
+    check: str | None = None
+    sandbox: str | None = None
+    policy_sha256: Sha256Hex | None = None
+    raw_line: str | None = None
+
+
+class ContainmentCheck(BaseModel):
+    """One command of a conformance run and what happened to it."""
+
+    model_config = _FROZEN
+
+    name: Annotated[str, Field(min_length=1)]
+    expect: Literal["refused", "allowed"]
+    command: Annotated[str, Field(min_length=1)]
+    outcome: Literal["refused", "allowed", "inconclusive"]
+    exit_code: int | None
+    message: str
+    passed: bool
+
+
+class ContainmentCheckCompleted(BaseModel):
+    """A zone's committed policy was checked in a real sandbox (meridian sandbox conformance)."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.CONTAINMENT_CHECK_COMPLETED] = EventType.CONTAINMENT_CHECK_COMPLETED
+    zone: Annotated[str, Field(min_length=1)]
+    sandbox: Annotated[str, Field(min_length=1)]
+    image: Annotated[str, Field(min_length=1)]
+    image_digest: Sha256Digest
+    policy_sha256: Sha256Hex | None
+    checks: tuple[ContainmentCheck, ...]
+    log_line_found: bool
+    # Every expected refusal was refused. passed adds the control and the log line.
+    all_refused: bool
+    passed: bool
 
 
 class HumanDecision(BaseModel):
@@ -103,6 +144,7 @@ EventPayload = Annotated[
     | ActorSuspended
     | FindingRaised
     | PolicyDenied
+    | ContainmentCheckCompleted
     | HumanDecision,
     Field(discriminator="type"),
 ]

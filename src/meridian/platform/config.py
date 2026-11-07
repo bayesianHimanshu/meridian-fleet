@@ -80,6 +80,8 @@ class RuntimeSettings(BaseModel):
     delete_confirm_seconds: float = Field(60.0, gt=0)
     # Append-only record of every sandbox this code creates and its teardown.
     sandboxes_log: Path = Path("var/sandboxes.jsonl")
+    # meridian sandbox conformance: how long to poll openshell logs for the denial line.
+    conformance_log_timeout_seconds: float = Field(30.0, gt=0)
 
 
 class Settings(BaseSettings):

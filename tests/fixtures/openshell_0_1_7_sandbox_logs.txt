@@ -1,0 +1,12 @@
+[1794050707.336] [sandbox] [OCSF ] [ocsf] CONFIG:ENABLED [INFO] TLS termination enabled: ephemeral CA generated
+[1794050707.336] [sandbox] [OCSF ] [ocsf] CONFIG:READY [INFO] Policy DNS connected to isolation boundary
+[1794050707.336] [sandbox] [OCSF ] [ocsf] NET:LISTEN [INFO] 127.0.0.1:3128
+[1794050707.355] [sandbox] [OCSF ] [ocsf] SSH:LISTEN [INFO]
+[1794050707.375] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] 127.0.0.1:17670
+[1794050707.395] [sandbox] [OCSF ] [ocsf] CONFIG:LOADED [INFO] Acknowledged initial policy revision as loaded [version:1] [hash:fbbd6c26af847061bcf02adcae893f18a9811d79ad75311cd9467b4880297100]
+[1794050714.232] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay open (channel_id=d6c7207f-8ed7-454d-bccc-ea93f1414497, target=unix:/run/openshell/ssh.sock)
+[1794050714.232] [sandbox] [OCSF ] [ocsf] SSH:OPEN [INFO] ALLOWED
+[1794050714.253] [sandbox] [WARN ] [openshell_supervisor_network::proxy] Denied staged transparent connection destination=192.0.2.1:443 reason=network connections not allowed by policy
+[1794050714.254] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> 192.0.2.1:443 [reason:transparent_tcp_policy_denied]
+[1794050714.255] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=d6c7207f-8ed7-454d-bccc-ea93f1414497, target=unix:/run/openshell/ssh.sock)
+[1794048890.895] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/local/bin/python3.14(0) -> 151.101.0.223:443 [reason:transparent_tcp_policy_denied]
