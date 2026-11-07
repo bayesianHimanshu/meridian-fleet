@@ -36,6 +36,9 @@ class RunOutcome(Protocol):
     @property
     def policy_sha256(self) -> str | None: ...
 
+    @property
+    def inputs_manifest_sha256(self) -> str | None: ...
+
 
 class AgentExecutor(Protocol):
     """Where a run happens (meridian.sandbox.executor.Executor)."""
@@ -156,6 +159,7 @@ class AgentRunner:
                 executor=self._executor.name,
                 image_digest=outcome.image_digest,
                 policy_sha256=outcome.policy_sha256,
+                inputs_manifest_sha256=outcome.inputs_manifest_sha256,
             ),
         )
         report.completed.append((agent.agent_id, trigger.seq))

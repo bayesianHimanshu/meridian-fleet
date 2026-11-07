@@ -2,13 +2,15 @@
 
 The staged folder is called "cut" and is uploaded to SANDBOX_ROOT, so the worker sees
 /tmp/cut/blinded, /tmp/cut/ops and /tmp/cut/trigger.json. It never holds unblinded/,
-the manifest (which lists the unblinded files) or any ground truth.
+the cut's manifest (which lists the unblinded files) or any ground truth.
+inputs_manifest.json (size and sha256 of every staged file) is written last.
 """
 
 import shutil
 from pathlib import Path
 
 from meridian.data.cut_writer import BLINDED_AREA, OPS_AREA
+from meridian.data.inputs_manifest import MANIFEST_FILE, write_manifest
 from meridian.domain.events import Event
 from meridian.ledger.hashing import canonical_json
 
@@ -38,15 +40,18 @@ def stage_cut(cut_dir: Path, trigger: Event, dest_root: Path) -> Path:
                 raise StagingError(f"unexpected entry {entry} in {area}/")
             shutil.copyfile(entry, stage / area / entry.name)
     (stage / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
+    write_manifest(stage)  # last, so it covers every other staged file
     assert_clean_stage(stage)
     return stage
 
 
 def assert_clean_stage(stage: Path) -> None:
-    """Raise unless the stage holds only blinded/*.parquet, ops/*.parquet, trigger.json."""
+    """Raise unless the stage holds only blinded/*.parquet, ops/*.parquet, trigger.json
+    and inputs_manifest.json."""
+    allowed = {*AREAS, TRIGGER_FILE, MANIFEST_FILE}
     top = {p.name for p in stage.iterdir()}
-    if top != {*AREAS, TRIGGER_FILE}:
-        raise StagingError(f"stage holds {sorted(top)}; only {sorted({*AREAS, TRIGGER_FILE})}")
+    if top != allowed:
+        raise StagingError(f"stage holds {sorted(top)}; only {sorted(allowed)}")
     for path in stage.rglob("*"):
         rel = path.relative_to(stage)
         if path.is_symlink():
@@ -57,7 +62,7 @@ def assert_clean_stage(stage: Path) -> None:
             if len(rel.parts) != 1:
                 raise StagingError(f"nested directory in stage: {rel}")
             continue
-        if rel.as_posix() == TRIGGER_FILE:
+        if rel.as_posix() in (TRIGGER_FILE, MANIFEST_FILE):
             continue
         if len(rel.parts) != 2 or rel.parts[0] not in AREAS or path.suffix != ".parquet":
             raise StagingError(f"unexpected file in stage: {rel}")

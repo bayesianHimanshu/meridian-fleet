@@ -1,5 +1,6 @@
 """OpenShellExecutor against a fake openshell client: staging, cleanup, failures."""
 
+import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,6 +45,7 @@ class FakeOpenShellClient:
     created: list[str] = field(default_factory=list)
     deleted: list[str] = field(default_factory=list)
     uploaded: list[set[str]] = field(default_factory=list)
+    manifests: list[str] = field(default_factory=list)
     policies: list[Path] = field(default_factory=list)
 
     def create(
@@ -55,6 +57,7 @@ class FakeOpenShellClient:
         for local, remote in uploads:
             assert remote == "/tmp"
             self.uploaded.append({p.relative_to(local.parent).as_posix() for p in local.rglob("*")})
+            self.manifests.append((local / "inputs_manifest.json").read_text())
 
     def exec(self, name: str, argv: Sequence[str], timeout_seconds: int) -> ExecOutput:
         assert name in self.live
@@ -119,6 +122,8 @@ def test_success_returns_the_drafts_records_policy_and_deletes(cut_dir: Path) ->
         cut_dir
     )
     assert result.stderr_tail == "log line\n"
+    (manifest,) = client.manifests
+    assert result.inputs_manifest_sha256 == hashlib.sha256(manifest.encode()).hexdigest()
     assert client.deleted == client.created
     assert client.live == set()
     assert client.policies == [REPO / "policies" / "rbqm.yaml"]
@@ -131,8 +136,10 @@ def test_staging_holds_only_blinded_ops_and_the_trigger(cut_dir: Path) -> None:
     _executor(client, cut_dir).run("rbqm.csm", cut_trigger(), "DC-TINY")
     (seen,) = client.uploaded
     tops = {p.split("/")[1] for p in seen if p.count("/") >= 1}
-    assert tops == {"blinded", "ops", "trigger.json"}
-    assert not [p for p in seen if "unblinded" in p or "ground_truth" in p or "manifest" in p]
+    assert tops == {"blinded", "ops", "trigger.json", "inputs_manifest.json"}
+    assert not [
+        p for p in seen if "unblinded" in p or "ground_truth" in p or p.endswith("/manifest.json")
+    ]
     assert all(p.endswith(".parquet") for p in seen if p.count("/") == 2)
 
 
