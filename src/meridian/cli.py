@@ -3,7 +3,7 @@
 import sys
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import httpx
 import polars as pl
@@ -49,6 +49,9 @@ from meridian.sandbox.executor import ExecutionError
 from meridian.sandbox.image import ImageError
 from meridian.sandbox.openshell import OpenShellError
 
+if TYPE_CHECKING:
+    from fastapi import FastAPI
+
 app = typer.Typer(no_args_is_help=True, help="Meridian Agent Fleet.")
 ledger_app = typer.Typer(no_args_is_help=True, help="Inspect and manage the event ledger.")
 faults_app = typer.Typer(no_args_is_help=True, help="Plant known faults into a copy of a cut.")
@@ -68,6 +71,8 @@ sandbox_app = typer.Typer(no_args_is_help=True, help="Run agents in OpenShell sa
 app.add_typer(image_app, name="image")
 app.add_typer(policy_app, name="policy")
 app.add_typer(sandbox_app, name="sandbox")
+api_app = typer.Typer(no_args_is_help=True, help="Serve the Fleet API (development identity).")
+app.add_typer(api_app, name="api")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -861,3 +866,53 @@ def sandbox_conformance(
             raise typer.Exit(code=1) from exc
     if failed:
         raise typer.Exit(code=1)
+
+
+def _api(settings: Settings, clock: Clock) -> FastAPI:
+    from meridian.api.app import context_from_settings, create_app
+
+    ctx = context_from_settings(
+        settings, clock, settings.api.people_file, settings.api.portfolio_file
+    )
+    return create_app(ctx)
+
+
+def openapi_text(settings: Settings) -> str:
+    """The OpenAPI document as committed: sorted keys, two-space indent, final newline."""
+    import json
+
+    from meridian.platform.clock import SystemClock
+
+    schema = _api(settings, SystemClock()).openapi()
+    return json.dumps(schema, indent=2, sort_keys=True) + "\n"
+
+
+@api_app.command("serve")
+def api_serve(
+    port: Annotated[int | None, typer.Option("--port", help="Default: [api] port.")] = None,
+) -> None:
+    """Run the Fleet API with uvicorn on 127.0.0.1 (never another interface)."""
+    import uvicorn
+
+    from meridian.api.app import HOST
+    from meridian.platform.clock import SystemClock
+
+    settings = Settings()
+    if not settings.ledger_path.exists():
+        typer.echo(f"error: no ledger at {settings.ledger_path}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(
+        f"Fleet API on http://{HOST}:{port or settings.api.port}/api/v1 "
+        "(development identity, not authentication)"
+    )
+    uvicorn.run(_api(settings, SystemClock()), host=HOST, port=port or settings.api.port)
+
+
+@api_app.command("openapi")
+def api_openapi() -> None:
+    """Write the OpenAPI document to [api] openapi_file (openapi/meridian-api.json)."""
+    settings = Settings()
+    path = settings.api.openapi_file
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(openapi_text(settings), encoding="utf-8")
+    typer.echo(f"wrote {path}")

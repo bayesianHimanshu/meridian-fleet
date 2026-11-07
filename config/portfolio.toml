@@ -1,0 +1,35 @@
+# The Meridian Therapeutics portfolio shown by GET /api/v1/portfolio. Fictional assets;
+# every field here is static (served as written). Only MRD-201 has live data in this
+# project: its open finding count comes from the ledger.
+
+[[assets]]
+asset_id = "MRD-101"
+name = "MRD-101"
+stage = "preclinical"
+indication = "Solid tumours (fictional)"
+modality = "Small molecule"
+live_study = false
+
+[[assets]]
+asset_id = "MRD-110"
+name = "MRD-110"
+stage = "phase_1"
+indication = "Healthy volunteers, first in human (fictional)"
+modality = "Small molecule"
+live_study = false
+
+[[assets]]
+asset_id = "MRD-201"
+name = "MRD-201"
+stage = "phase_2"
+indication = "Mild to moderate Alzheimer's disease (data from the CDISC SDTM pilot)"
+modality = "Transdermal patch"
+live_study = true
+
+[[assets]]
+asset_id = "MRD-301"
+name = "MRD-301"
+stage = "phase_3"
+indication = "Type 2 diabetes (fictional)"
+modality = "Oral tablet"
+live_study = false
