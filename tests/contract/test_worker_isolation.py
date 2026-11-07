@@ -106,3 +106,47 @@ def test_narrator_worker_reaches_the_network_only_through_the_model_client() -> 
     closure = _closure("meridian.narrator_worker")
     networked = sorted(m for m, direct in closure.items() if any(_hit(d, NETWORK) for d in direct))
     assert networked == [NARRATOR_NETWORK_ONLY_IN]
+
+
+API_PACKAGES = ("fastapi", "uvicorn", "starlette", "meridian.api")
+
+
+@pytest.mark.parametrize("root", ["meridian.worker", "meridian.narrator_worker"])
+def test_workers_import_neither_fastapi_nor_uvicorn(root: str) -> None:
+    closure = _closure(root)
+    reached = sorted(
+        m
+        for m in closure
+        if _hit(m, API_PACKAGES) or any(_hit(d, API_PACKAGES) for d in closure[m])
+    )
+    assert reached == [], f"{root} reaches {reached}"
+
+
+def test_the_agent_image_export_excludes_the_api_group() -> None:
+    """The Dockerfile's export (no dependency groups) lists neither package."""
+    import shutil
+    import subprocess
+
+    uv = shutil.which("uv")
+    if uv is None:
+        pytest.skip("uv is not on PATH")
+    dockerfile = (SRC.parent / "docker" / "agent.Dockerfile").read_text(encoding="utf-8")
+    assert "uv export --frozen --no-default-groups --no-emit-project" in dockerfile
+    out = subprocess.run(  # noqa: S603 (fixed argv)
+        [
+            uv,
+            "export",
+            "--frozen",
+            "--no-default-groups",
+            "--no-emit-project",
+            "--format",
+            "requirements-txt",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=SRC.parent,
+    ).stdout
+    names = {line.split("==")[0].strip().lower() for line in out.splitlines() if "==" in line}
+    assert {"fastapi", "uvicorn", "starlette"}.isdisjoint(names)
+    assert {"polars", "httpx"} <= names

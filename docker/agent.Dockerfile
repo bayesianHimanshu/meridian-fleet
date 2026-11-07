@@ -19,9 +19,10 @@ ENV UV_NO_CACHE=1 UV_PYTHON_DOWNLOADS=never
 WORKDIR /src
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
-# The wheel, and the runtime dependencies exactly as locked (no dev group, with hashes).
+# The wheel, and the runtime dependencies exactly as locked (no dependency groups: not
+# dev, not api; with hashes).
 RUN uv build --wheel --out-dir /dist \
- && uv export --frozen --no-dev --no-emit-project --format requirements-txt -o /dist/requirements.txt
+ && uv export --frozen --no-default-groups --no-emit-project --format requirements-txt -o /dist/requirements.txt
 RUN uv venv /opt/meridian/venv --python /usr/local/bin/python3.14 \
  && uv pip install --python /opt/meridian/venv/bin/python --compile-bytecode --require-hashes -r /dist/requirements.txt \
  && uv pip install --python /opt/meridian/venv/bin/python --compile-bytecode --no-deps /dist/*.whl
