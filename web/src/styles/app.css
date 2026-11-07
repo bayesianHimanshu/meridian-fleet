@@ -385,10 +385,17 @@ main {
   background: var(--restricted-soft);
   color: var(--restricted);
 }
-.chip.static {
+.chip.static,
+.chip.status,
+.chip.outline {
   background: transparent;
-  border: var(--hairline);
+  border: 1px solid var(--line-strong);
+  color: var(--fg);
   font-weight: 500;
+}
+.chip.status-warning {
+  border-color: var(--warning);
+  color: var(--warning);
 }
 
 /* Tables scroll in their own container */
@@ -401,7 +408,7 @@ table {
   border-collapse: collapse;
   font-size: var(--text-md);
 }
-th {
+thead th {
   text-align: left;
   font-size: var(--text-xs);
   letter-spacing: 0.05em;
@@ -411,6 +418,25 @@ th {
   padding: 6px var(--space-2);
   border-bottom: var(--hairline);
   white-space: nowrap;
+}
+thead th[title] {
+  cursor: help;
+  text-decoration: underline dotted var(--line-strong);
+  text-underline-offset: 3px;
+}
+tbody th {
+  text-align: left;
+  font-weight: 500;
+  padding: 7px var(--space-2);
+  border-bottom: var(--hairline);
+  vertical-align: top;
+}
+tbody th .sub {
+  display: block;
+  font-family: var(--font-ui);
+  font-size: var(--text-sm);
+  font-weight: 400;
+  color: var(--muted);
 }
 td {
   padding: 7px var(--space-2);
@@ -563,15 +589,12 @@ dl.facts dd {
   font-size: var(--text-sm);
   white-space: nowrap;
 }
-.heat .l0 {
-  background: var(--good-soft);
-  color: var(--good);
-}
-.heat .l1 {
+/* Normal cells have no fill: only the warning and critical bands stand out. */
+.heat .warning {
   background: var(--warning-soft);
   color: var(--warning);
 }
-.heat .l2 {
+.heat .critical {
   background: var(--critical-soft);
   color: var(--critical);
   font-weight: 500;
@@ -599,17 +622,36 @@ dl.facts dd {
   vertical-align: -1px;
   margin-right: var(--space-1);
 }
-.swatch.l0 {
-  background: var(--good-soft);
-  border: 1px solid var(--good);
-}
-.swatch.l1 {
+.swatch.warning {
   background: var(--warning-soft);
   border: 1px solid var(--warning);
 }
-.swatch.l2 {
+.swatch.critical {
   background: var(--critical-soft);
   border: 1px solid var(--critical);
+}
+.legend-list {
+  display: grid;
+  grid-template-columns: minmax(140px, max-content) minmax(0, 1fr);
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-3) 0 0;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+.legend-list dt {
+  color: var(--fg);
+  font-weight: 500;
+}
+.legend-list dd {
+  margin: 0;
+}
+@media (max-width: 560px) {
+  .legend-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .legend-list dd {
+    margin-bottom: var(--space-2);
+  }
 }
 .swatch.flagged {
   border: 2px solid var(--fg);
@@ -635,7 +677,7 @@ dl.facts dd {
   left: 0;
   top: 3px;
   bottom: 3px;
-  background: var(--accent);
+  background: var(--series);
   border-radius: 2px;
 }
 .qtl-bar .fill.breached {
@@ -660,9 +702,8 @@ dl.facts dd {
 
 /* Chart */
 .chart svg {
-  width: 100%;
-  height: auto;
   display: block;
+  max-width: 100%;
 }
 .chart .axis {
   stroke: var(--line-strong);
@@ -671,14 +712,22 @@ dl.facts dd {
   stroke: var(--line);
 }
 .chart .series {
-  stroke: var(--accent);
+  stroke: var(--series);
   fill: none;
   stroke-width: 2;
 }
 .chart text {
   fill: var(--muted);
   font-family: var(--font-data);
-  font-size: 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.chart .end-point {
+  fill: var(--series);
+}
+.chart text.end-label {
+  fill: var(--fg);
+  font-weight: 500;
 }
 
 /* Ledger */
@@ -726,7 +775,7 @@ dl.facts dd {
 .bar > span {
   display: block;
   height: 100%;
-  background: var(--accent);
+  background: var(--series);
 }
 @media (max-width: 760px) {
   .pipeline {

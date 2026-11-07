@@ -1,13 +1,22 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
-import { ErrorNote, Loading, SeverityChip, StatusChip, agentName, when } from "../components/common";
+import { ErrorNote, Loading, SeverityChip, StatusChip, Time, agentName } from "../components/common";
 import { useApi } from "../queries";
 
 type Finding = Schemas["FindingSummary"];
 
 function uniq(values: string[]): string[] {
   return [...new Set(values)].sort();
+}
+
+/** The line under the title: the accepted narrative headline, otherwise the primary
+ * evidence displays joined with "; ". Never the template summary (it repeats the title). */
+export function secondLine(f: Finding): string {
+  if (f.latest_narrative) {
+    return f.latest_narrative.headline;
+  }
+  return f.primary_evidence.join("; ");
 }
 
 export function ReviewQueue() {
@@ -105,7 +114,22 @@ export function ReviewQueue() {
           <p className="muted" aria-live="polite">
             Showing {shown.length} of {items.length} findings.
           </p>
-          {shown.length === 0 ? (
+          {items.length === 0 && !includeEvaluation ? (
+            <div className="message empty">
+              <p>No open findings on the study's current data.</p>
+              <p>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setIncludeEvaluation(true);
+                  }}
+                >
+                  Include evaluation cuts
+                </button>
+              </p>
+            </div>
+          ) : shown.length === 0 ? (
             <p className="message">Nothing waits for review with these filters.</p>
           ) : (
             <ul className="findings" aria-label="Findings to review">
@@ -123,16 +147,12 @@ export function ReviewQueue() {
                       </span>
                       <span className="mono">{f.cut_id}</span>
                       {f.scope === "evaluation" ? <span className="chip">evaluation cut</span> : null}
-                      <span>{when(f.raised_at)}</span>
+                      <Time iso={f.raised_at} />
                     </div>
                     <h3>
                       <Link to={`/findings/${f.finding_id}`}>{f.title}</Link>
                     </h3>
-                    {f.latest_narrative ? (
-                      <p className="headline">{f.latest_narrative.headline}</p>
-                    ) : (
-                      <p className="headline muted">No accepted narrative yet.</p>
-                    )}
+                    {secondLine(f) ? <p className="headline">{secondLine(f)}</p> : null}
                   </div>
                 </li>
               ))}

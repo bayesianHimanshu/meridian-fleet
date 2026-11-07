@@ -72,6 +72,9 @@
   --critical-soft: #fae1de;
   --low: #8d97a8;
 
+  /* Data marks (chart lines, bars): neutral, never the accent */
+  --series: #3d4a60;
+
   /* Restricted: unblinded content only */
   --restricted: #9f1f4c;
   --restricted-soft: #f9e3eb;
@@ -119,6 +122,7 @@
     --critical: #ff7d73;
     --critical-soft: #3b1a19;
     --low: #6a7487;
+    --series: #b3bdcf;
     --restricted: #f173a1;
     --restricted-soft: #3a1829;
   }

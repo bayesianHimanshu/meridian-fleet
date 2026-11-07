@@ -1,6 +1,6 @@
 import { api, unwrap } from "../api/client";
 import { Hash } from "../components/Hash";
-import { ErrorNote, Loading, when } from "../components/common";
+import { ErrorNote, Loading, Time } from "../components/common";
 import { useApi } from "../queries";
 
 const OUTCOME_CLASS: Record<string, string> = {
@@ -60,7 +60,7 @@ export function FleetView() {
                         <br />
                         <Hash value={a.policy_sha256} label={`policy sha256 of ${a.agent_id}`} />
                       </td>
-                      <td className="mono">{a.last_run_at ? when(a.last_run_at) : "never"}</td>
+                      <td className="mono">{a.last_run_at ? <Time iso={a.last_run_at} /> : "never"}</td>
                       <td>
                         {a.last_outcome ? (
                           <span className={`chip ${OUTCOME_CLASS[a.last_outcome] ?? ""}`}>
@@ -90,7 +90,7 @@ export function FleetView() {
                     <span className={`chip ${c.passed ? "good" : "critical"}`}>{c.passed ? "passed" : "failed"}</span>
                   </h3>
                   <p className="muted">
-                    {when(c.recorded_at)}, ledger seq <span className="mono">{c.seq}</span>, image{" "}
+                    <Time iso={c.recorded_at} />, ledger seq <span className="mono">{c.seq}</span>, image{" "}
                     <Hash value={c.image_digest} label={`image digest for ${c.policy}`} />
                     {c.credential_value_visible === null
                       ? null

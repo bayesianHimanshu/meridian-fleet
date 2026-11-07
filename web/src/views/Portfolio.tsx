@@ -13,7 +13,7 @@ const STATUS_CLASS: Record<Schemas["AssetStatus"]["level"], string> = {
   good: "good",
   warning: "warning",
   critical: "critical",
-  info: "accent",
+  info: "outline",
 };
 
 export function PortfolioView() {
@@ -66,7 +66,7 @@ export function PortfolioView() {
                     </p>
                     {a.live ? (
                       <p>
-                        <span className="chip accent">live</span>{" "}
+                        <span className="chip outline">live</span>{" "}
                         <span className="num">{a.live.open_findings}</span> open findings to review
                       </p>
                     ) : null}

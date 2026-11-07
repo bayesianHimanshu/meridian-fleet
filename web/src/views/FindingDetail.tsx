@@ -3,7 +3,7 @@ import { useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react
 import { Link, useParams } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
-import { ErrorNote, Loading, SeverityChip, StatusChip, isStatus, when } from "../components/common";
+import { ErrorNote, Loading, SeverityChip, StatusChip, Time, isStatus } from "../components/common";
 import { ROLE_LABELS, useIdentity } from "../identity";
 import { useApi } from "../queries";
 
@@ -16,7 +16,31 @@ const ACTIONS: { value: Action; label: string }[] = [
   { value: "dismissed", label: "Dismiss" },
 ];
 
-export function DecisionForm({ findingId, status }: { findingId: string; status: string }) {
+const CLOSED = new Set(["accepted", "dismissed"]);
+
+/** One line for a closed finding: who closed it, when, why, and where in the ledger. */
+export function ClosedLine({ decision }: { decision: Schemas["DecisionView"] }) {
+  const { people } = useIdentity();
+  const who = people.find((p) => p.actor === decision.actor)?.name ?? decision.actor;
+  const verb = decision.action === "accepted" ? "Accepted" : "Dismissed";
+  return (
+    <p className="message" data-testid="closed-line">
+      {verb} by {who} ({ROLE_LABELS[decision.role]}) on <Time iso={decision.recorded_at} />
+      {decision.reason ? `: ${decision.reason}` : ", no reason given"}. Ledger seq{" "}
+      <span className="mono">{decision.seq}</span>.
+    </p>
+  );
+}
+
+export function DecisionForm({
+  findingId,
+  status,
+  closing,
+}: {
+  findingId: string;
+  status: string;
+  closing: Schemas["DecisionView"] | undefined;
+}) {
   const { person } = useIdentity();
   const queryClient = useQueryClient();
   const reasonRef = useRef<HTMLInputElement>(null);
@@ -37,6 +61,9 @@ export function DecisionForm({ findingId, status }: { findingId: string; status:
     },
   });
 
+  if (CLOSED.has(status) && closing) {
+    return <ClosedLine decision={closing} />;
+  }
   if (person.role === "qa_auditor") {
     return (
       <p className="message" data-testid="qa-note">
@@ -64,9 +91,6 @@ export function DecisionForm({ findingId, status }: { findingId: string; status:
 
   return (
     <form className="decision" onSubmit={submit} onKeyDown={guardEnter} aria-label="Record a decision">
-      {status === "accepted" || status === "dismissed" ? (
-        <p className="message">This finding is already {status}. A further decision will be refused.</p>
-      ) : null}
       <fieldset>
         <legend className="label">Decision</legend>
         {ACTIONS.map((a) => (
@@ -198,6 +222,12 @@ export function FindingDetail() {
           </div>
           <h1 id="finding-title">{f.title}</h1>
           <p>{f.summary}</p>
+          {f.retired ? (
+            <p className="message">
+              Retired: version <span className="mono">{f.retired_by_version}</span> of this agent ran on
+              this cut and did not raise it again. It stays in the record.
+            </p>
+          ) : null}
           {f.superseded ? (
             <p className="message">
               A newer version of this agent replaced this finding:{" "}
@@ -244,7 +274,7 @@ export function FindingDetail() {
               {d.evidence.map((e, i) => (
                 <tr key={`${e.statistic}-${i}`}>
                   <td>
-                    <span className={`chip ${e.role === "primary" ? "accent" : ""}`}>{e.role ?? "not stated"}</span>
+                    <span className={`chip ${e.role === "primary" ? "outline" : ""}`}>{e.role ?? "not stated"}</span>
                   </td>
                   <td>{e.display ?? <span className="mono">{e.value}</span>}</td>
                   <td className="mono">{e.statistic}</td>
@@ -261,7 +291,7 @@ export function FindingDetail() {
           <div className="panel-head">
             <h2 id="decide-title">Decide</h2>
           </div>
-          <DecisionForm findingId={f.finding_id} status={f.status} />
+          <DecisionForm findingId={f.finding_id} status={f.status} closing={d.decisions.at(-1)} />
         </section>
         <section className="panel" aria-labelledby="history-title">
           <div className="panel-head">
@@ -285,7 +315,9 @@ export function FindingDetail() {
                 <tbody>
                   {d.decisions.map((h) => (
                     <tr key={h.seq}>
-                      <td className="mono">{when(h.recorded_at)}</td>
+                      <td className="mono">
+                        <Time iso={h.recorded_at} />
+                      </td>
                       <td>
                         <StatusChip status={h.action} />
                       </td>

@@ -207,7 +207,7 @@ export interface paths {
         /**
          * Review Queue
          * @description Open and escalated findings the caller may see, newest first. By default only
-         *     operational cuts (never evaluation cuts) and no superseded findings.
+         *     operational cuts (never evaluation cuts), and no superseded or retired findings.
          */
         get: operations["review_queue_api_v1_review_queue_get"];
         put?: never;
@@ -562,7 +562,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "open" | "accepted" | "escalated" | "dismissed";
+            status: "open" | "accepted" | "escalated" | "dismissed" | "retired";
         };
         /** DecisionView */
         DecisionView: {
@@ -835,11 +835,17 @@ export interface components {
             finding_id: string;
             kind: components["schemas"]["FindingKind"];
             latest_narrative: components["schemas"]["LatestNarrative"] | null;
+            /** Primary Evidence */
+            primary_evidence: string[];
             /**
              * Raised At
              * Format: date-time
              */
             raised_at: string;
+            /** Retired */
+            retired: boolean;
+            /** Retired By Version */
+            retired_by_version: string | null;
             /**
              * Scope
              * @enum {string}
@@ -856,7 +862,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "open" | "accepted" | "escalated" | "dismissed";
+            status: "open" | "accepted" | "escalated" | "dismissed" | "retired";
             /** Study Id */
             study_id: string;
             /** Summary */
@@ -1151,6 +1157,24 @@ export interface components {
             /** Site Id */
             site_id: string;
         };
+        /**
+         * SiteFlag
+         * @description A current finding (newest version, not superseded, not retired) at this site.
+         */
+        SiteFlag: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string;
+            /** Check */
+            check: string;
+            /** Finding Id */
+            finding_id: string;
+            /** Parameters */
+            parameters: string[];
+            /** Status */
+            status: string;
+        };
         /** SiteMetrics */
         SiteMetrics: {
             /** Ae Rate Z */
@@ -1161,6 +1185,8 @@ export interface components {
             };
             /** Deviation Z */
             deviation_z: number | null;
+            /** Flagged By */
+            flagged_by: components["schemas"]["SiteFlag"][];
             /** Flagged Checks */
             flagged_checks: string[];
             /** Median Entry Lag Days */
@@ -1238,12 +1264,13 @@ export interface operations {
             query?: {
                 scope?: "operational" | "evaluation" | "all";
                 include_superseded?: boolean;
+                include_retired?: boolean;
                 cut?: string | null;
                 agent?: string | null;
                 kind?: components["schemas"]["FindingKind"] | null;
                 site?: string | null;
                 severity?: components["schemas"]["Severity"] | null;
-                status?: ("open" | "accepted" | "escalated" | "dismissed") | null;
+                status?: ("open" | "accepted" | "escalated" | "dismissed" | "retired") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -1577,6 +1604,7 @@ export interface operations {
             query?: {
                 scope?: "operational" | "evaluation" | "all";
                 include_superseded?: boolean;
+                include_retired?: boolean;
             };
             header?: {
                 /** @description Person id from config/people.toml (development only). */

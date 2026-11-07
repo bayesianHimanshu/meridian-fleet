@@ -2,7 +2,7 @@ import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
-import { ErrorNote, Loading, when } from "../components/common";
+import { ErrorNote, Loading, Time } from "../components/common";
 import { useIdentity } from "../identity";
 
 type Entry = Schemas["LedgerPage"]["entries"][number];
@@ -155,7 +155,7 @@ export function LedgerView() {
                   isRedacted(e) ? (
                     <tr key={e.seq} className="ledger-row redacted" data-testid="redacted-row">
                       <td className="num">{e.seq}</td>
-                      <td className="mono">{when(e.recorded_at)}</td>
+                      <td className="mono"><Time iso={e.recorded_at} /></td>
                       <td>{e.event_type.replaceAll("_", " ")}</td>
                       <td>Redacted: a restricted event your role may not read.</td>
                       <td>
@@ -165,7 +165,7 @@ export function LedgerView() {
                   ) : (
                     <tr key={e.seq} className={`ledger-row${e.visibility === "restricted" ? " restricted-row" : ""}`}>
                       <td className="num">{e.seq}</td>
-                      <td className="mono">{when(e.recorded_at)}</td>
+                      <td className="mono"><Time iso={e.recorded_at} /></td>
                       <td>{e.payload.type.replaceAll("_", " ")}</td>
                       <td>
                         {describe(e)}

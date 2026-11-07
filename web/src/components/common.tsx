@@ -19,19 +19,21 @@ const SEVERITY_CLASS: Record<Schemas["Severity"], string> = {
   low: "",
 };
 
-export function SeverityChip({ severity }: { severity: Schemas["Severity"] }) {
-  return <span className={`chip ${SEVERITY_CLASS[severity]}`}>{severity} severity</span>;
-}
-
-const STATUS_CLASS: Record<string, string> = {
-  open: "accent",
-  escalated: "warning",
-  accepted: "good",
-  dismissed: "",
+const SEVERITY_TEXT: Record<Schemas["Severity"], string> = {
+  high: "High",
+  medium: "Medium",
+  low: "Low",
 };
 
+export function SeverityChip({ severity }: { severity: Schemas["Severity"] }) {
+  return <span className={`chip ${SEVERITY_CLASS[severity]}`}>{SEVERITY_TEXT[severity]}</span>;
+}
+
+/** Status chips are neutral and outlined; only escalated gets the warning outline. The
+ * accent colour is kept for navigation, selection and actions. */
 export function StatusChip({ status }: { status: string }) {
-  return <span className={`chip ${STATUS_CLASS[status] ?? ""}`}>{status}</span>;
+  const label = status.charAt(0).toUpperCase() + status.slice(1);
+  return <span className={`chip status${status === "escalated" ? " status-warning" : ""}`}>{label}</span>;
 }
 
 export function when(iso: string): string {
@@ -40,6 +42,20 @@ export function when(iso: string): string {
     return iso;
   }
   return `${d.toISOString().slice(0, 16).replace("T", " ")} UTC`;
+}
+
+export function localTime(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : `Your local time: ${d.toLocaleString()}`;
+}
+
+/** A time in UTC, with the reader's local time on hover. */
+export function Time({ iso }: { iso: string }) {
+  return (
+    <time dateTime={iso} title={localTime(iso)}>
+      {when(iso)}
+    </time>
+  );
 }
 
 export function agentName(agentId: string): string {
