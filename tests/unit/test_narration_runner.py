@@ -137,7 +137,9 @@ def test_the_request_hash_is_of_the_canonical_body(ledger: SqliteLedger) -> None
     (request,) = client.requests
     assert narrative.request_sha256 == request.sha256()
     assert request.max_tokens == 300
-    assert request.temperature == 0.0
+    assert request.temperature is None  # claude-haiku-5-5 refuses temperature
+    assert "temperature" not in request.body()
+    assert request.body()["thinking"] == {"type": "disabled"}
 
 
 def test_a_rejection_records_reasons_and_no_text(ledger: SqliteLedger) -> None:

@@ -65,7 +65,8 @@ conformance_log_timeout_seconds = 30.0  # wait for the NET:OPEN DENIED line
 [llm]
 model = "claude-haiku-5-5"
 max_tokens = 300
-temperature = 0.0
+# temperature is left out: claude-haiku-5-5 answers HTTP 400 "`temperature` is deprecated
+# for this model." Set it (for example temperature = 0.0) only for a model that accepts it.
 disable_thinking = true  # sends thinking {type: disabled}; output stays within max_tokens
 timeout_seconds = 30.0
 

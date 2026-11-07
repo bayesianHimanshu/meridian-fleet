@@ -91,8 +91,9 @@ class LlmSettings(BaseModel):
 
     model: str = "claude-haiku-5-5"
     max_tokens: int = Field(300, ge=1)
-    # None leaves temperature out of the request.
-    temperature: float | None = 0.0
+    # None leaves temperature out of the request. claude-haiku-5-5 refuses it: HTTP 400
+    # "`temperature` is deprecated for this model." (measured 2026-11-07).
+    temperature: float | None = None
     disable_thinking: bool = True
     timeout_seconds: float = Field(30.0, gt=0)
 
