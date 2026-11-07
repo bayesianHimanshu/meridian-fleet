@@ -1,5 +1,10 @@
-"""meridian sandbox conformance for every zone, in real sandboxes. Run with -m openshell."""
+"""meridian sandbox conformance for every policy, in real sandboxes. Run with -m openshell.
 
+The rbqm.narrator test needs the meridian-anthropic provider (created by the user from
+profiles/anthropic.yaml) and makes one GET /v1/models through it.
+"""
+
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -63,3 +68,58 @@ def test_zone_policy_conforms_and_is_recorded(tmp_path: Path, zone: str) -> None
     assert isinstance(done, ContainmentCheckCompleted)
     assert done.all_refused
     assert done.passed
+
+
+def _provider_exists(name: str) -> bool:
+    done = subprocess.run(
+        ["openshell", "provider", "list"], capture_output=True, text=True, timeout=20, check=False
+    )
+    return done.returncode == 0 and any(
+        line.split()[:1] == [name] for line in done.stdout.splitlines()
+    )
+
+
+def test_the_narrator_policy_conforms_with_its_provider(tmp_path: Path) -> None:
+    policy = policies.ALL_POLICIES["rbqm.narrator"]
+    missing = [p for p in policy.providers if not _provider_exists(p)]
+    if missing:
+        pytest.skip(f"provider(s) {missing} not created; see docs/openshell-notes.md")
+    client = SubprocessOpenShellClient()
+    ref = image.default_image()
+    tracker = SandboxTracker(tmp_path / "sandboxes.jsonl", FixedClock(NOW))
+    result = run_conformance(
+        client=client,
+        zone="rbqm.narrator",
+        image=ref,
+        image_digest=image.inspect(ref).digest,
+        policies_dir=REPO / "policies",
+        tracker=tracker,
+        log=structlog.get_logger(),
+        log_timeout_seconds=30,
+    )
+    assert result.passed, result.failures()
+    assert result.credential_value_visible is False
+    assert tracker.pending() == []
+    assert result.sandbox not in client.names()
+    assert [r.policy for r in result.allowed_records] == ["_provider_meridian_anthropic"]
+
+    ledger = make_ledger(tmp_path / "ledger.sqlite3", FixedClock(NOW))
+    events = [ledger.append(d) for d in ledger_drafts(result, FixedClock(NOW))]
+    assert verify(ledger).ok
+    ledger.close()
+    sources = [
+        (e.payload.check, e.payload.source) for e in events if isinstance(e.payload, PolicyDenied)
+    ]
+    assert sources == [
+        ("write_var_tmp", "harness"),
+        ("write_opt_meridian", "harness"),
+        ("egress_example_com", "openshell_log"),
+        ("egress_test_net", "openshell_log"),
+    ]
+    done = events[-1].payload
+    assert isinstance(done, ContainmentCheckCompleted)
+    assert (done.policy_name, done.credential_value_visible, done.passed) == (
+        "rbqm.narrator",
+        False,
+        True,
+    )

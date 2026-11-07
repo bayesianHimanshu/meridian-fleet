@@ -11,6 +11,7 @@ from meridian.domain.events import (
     ContainmentCheckCompleted,
     Event,
     EventDraft,
+    FindingNarrative,
     PolicyDenied,
 )
 from meridian.ledger.hashing import (
@@ -199,3 +200,53 @@ def test_old_policy_denied_verifies_next_to_containment_events(tmp_path: Path) -
         report = verify(ledger)
         assert report.ok, report
         assert report.events_checked == 4
+
+
+def test_step_2b_containment_check_verifies_next_to_narratives(tmp_path: Path) -> None:
+    """A ContainmentCheckCompleted written before policy_name, providers and
+    credential_value_visible existed still verifies, and FindingNarrative appends after."""
+    path = tmp_path / "ledger.sqlite3"
+    clock = FixedClock(T0)
+    with make_ledger(path, clock) as ledger:
+        cut = ledger.append(data_cut_draft(1))
+    old: dict[str, object] = {
+        "type": "containment_check_completed",
+        "zone": "rbqm",
+        "sandbox": "mer-cf-rb-1a2b3c4d",
+        "image": "meridian-agent:0.1.0",
+        "image_digest": "sha256:" + "a" * 64,
+        "policy_sha256": "b" * 64,
+        "checks": [],
+        "log_line_found": True,
+        "all_refused": True,
+        "passed": True,
+    }
+    _insert_legacy(path, 2, cut.hash, old)
+    with make_ledger(path, clock) as ledger:
+        assert verify(ledger).ok
+        (legacy,) = ledger.read(event_types=[EventType.CONTAINMENT_CHECK_COMPLETED])
+        assert isinstance(legacy, Event)
+        assert isinstance(legacy.payload, ContainmentCheckCompleted)
+        assert legacy.payload.policy_name is None
+        assert legacy.payload.providers == ()
+        assert legacy.payload.credential_value_visible is None
+        ledger.append(
+            EventDraft(
+                occurred_at=T0,
+                actor="rbqm.narrator",
+                visibility=Visibility.BLINDED,
+                payload=FindingNarrative(
+                    finding_id="RBQM-0001",
+                    finding_seq=2,
+                    agent_id="rbqm.narrator",
+                    agent_version="1.0.0",
+                    status="error",
+                    error="transport: down",
+                    model="claude-haiku-5-5",
+                    request_sha256="c" * 64,
+                ),
+            )
+        )
+        report = verify(ledger)
+        assert report.ok, report
+        assert report.events_checked == 3

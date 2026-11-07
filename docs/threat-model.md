@@ -36,10 +36,13 @@ Evidence:
 * `tests/unit/test_policies.py`: the committed files equal their rendering and list only
   allowed paths; `meridian policy prove` checks them against the boundary in CI.
 
-## 3. There is no outbound network
+## 3. There is no outbound network, except the narrator's one endpoint
 
 No zone policy has a network rule, so the OpenShell policy proxy refuses every outbound
-connection from a sandbox.
+connection from a sandbox. The one exception is rbqm.narrator (phase 2 step 3): its policy
+allows `POST /v1/messages` on api.anthropic.com:443 for the python binary only, proved
+against its own boundary, and its sandbox gets the key from the meridian-anthropic
+provider: the sandbox holds a placeholder and the proxy inserts the key at that endpoint.
 
 Evidence:
 * The conformance check connects to 192.0.2.1:443 (RFC 5737, never routable, no bytes
@@ -47,6 +50,10 @@ Evidence:
   supervisor logs `NET:OPEN [MED] DENIED /usr/bin/bash(0) -> 192.0.2.1:443
   [reason:transparent_tcp_policy_denied]`. That line is stored verbatim in a PolicyDenied
   event with `source = "openshell_log"`. A missing line fails the check.
+* `meridian sandbox conformance --policy rbqm.narrator`: GET /v1/models returns 200 through
+  the provider, example.com and 192.0.2.1 are refused (both logged), and the
+  `ANTHROPIC_API_KEY` inside the sandbox does not start with `sk-ant-` (recorded as true
+  or false only). `meridian agents narrate` refuses to run until this passed.
 
 ## Other controls, briefly
 
@@ -57,10 +64,16 @@ Evidence:
 * Every sandbox is tracked in `var/sandboxes.jsonl` and deleted; `meridian sandbox reap`
   cleans up any that were left.
 
-## Known gap
+* The narrator sees only a finding's kind, site, severity, title, summary and evidence,
+  after a de-identification check; the host validates every reply before recording it.
+
+## Known gaps
 
 * **Filesystem refusals have no OpenShell log record on 0.1.7.** Landlock returns EACCES
   without any line in `openshell logs`, so file refusals are recorded from what the
   conformance harness observed from outside the sandbox (exit code and stderr,
   `source = "harness"`), not from an independent record. Backlog: kernel-level Landlock
   audit records as an independent source.
+* **The narrator's sandbox reads more of the image.** Any network rule makes 0.1.7 add
+  `/usr`, `/lib`, `/etc`, `/var/log` and `/proc` to the read-only paths. It holds no study
+  data (only the job), so this exposes the image, not the trial.

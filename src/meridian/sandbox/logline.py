@@ -5,6 +5,12 @@ Pinned to the 0.1.7 format, taken from real lines (one line, wrapped here):
     [1794055103.727] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0)
         -> 192.0.2.1:443 [reason:transparent_tcp_policy_denied]
 
+an allowed connection, which names the policy that allowed it instead of a reason:
+
+    [1794067456.128] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] ALLOWED
+        /usr/local/bin/python3.14(0) -> api.anthropic.com:443
+        [policy:_provider_meridian_anthropic engine:opa]
+
 and the supervisor's own connections, which carry no disposition:
 
     [1794050707.375] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] 127.0.0.1:17670
@@ -25,7 +31,8 @@ _NET = re.compile(
     r"^\[(?P<ts>\d+(?:\.\d+)?)\] \[sandbox\] \[OCSF \] \[ocsf\] NET:OPEN "
     r"\[(?P<severity>[A-Z]+)\] (?P<disposition>[A-Z]+) "
     r"(?P<binary>\S+)\((?P<pid>\d+)\) -> (?P<host>[^\s:\[\]]+):(?P<port>\d{1,5}) "
-    r"\[reason:(?P<reason>[^\]]+)\]$"
+    r"\[(?:reason:(?P<reason>[^\]\s]+)"
+    r"|policy:(?P<policy>[^\]\s]+) engine:(?P<engine>[^\]\s]+))\]$"
 )
 _SUPERVISOR = re.compile(
     r"^\[(?P<ts>\d+(?:\.\d+)?)\] \[sandbox\] \[OCSF \] \[ocsf\] NET:OPEN "
@@ -41,8 +48,9 @@ class NetLogRecord:
     binary: str
     host: str
     port: int
-    reason: str
+    reason: str  # why it was denied; empty when allowed
     raw: str
+    policy: str = ""  # the policy rule that allowed it; empty when denied
 
     @property
     def denied(self) -> bool:
@@ -68,12 +76,13 @@ def parse_line(line: str) -> NetLogRecord | None:
     raw = line.rstrip("\r\n")
     match = _NET.match(raw)
     if match is not None:
-        disposition, binary, reason = match["disposition"], match["binary"], match["reason"]
+        disposition, binary = match["disposition"], match["binary"]
+        reason, policy = match["reason"] or "", match["policy"] or ""
     else:
         match = _SUPERVISOR.match(raw)
         if match is None:
             return None
-        disposition, binary, reason = "SUPERVISOR", "", ""
+        disposition, binary, reason, policy = "SUPERVISOR", "", "", ""
     port = int(match["port"])
     if not 0 < port < 65536:
         return None
@@ -86,6 +95,7 @@ def parse_line(line: str) -> NetLogRecord | None:
         port=port,
         reason=reason,
         raw=raw,
+        policy=policy,
     )
 
 

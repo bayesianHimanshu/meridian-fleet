@@ -18,7 +18,14 @@ from meridian.data.sites import SiteMappingError, load_site_map
 from meridian.data.study_store import StudyAccessError, StudyReader
 from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import DataCut, Event, EventDraft, FindingRaised, RedactedEvent
+from meridian.domain.events import (
+    DataCut,
+    Event,
+    EventDraft,
+    FindingNarrative,
+    FindingRaised,
+    RedactedEvent,
+)
 from meridian.domain.findings import Evidence, Finding
 from meridian.evals.matching import VersionFilter
 from meridian.evals.rules import condition_truth
@@ -431,6 +438,71 @@ def agents_run(executor: ExecutorOption = None) -> None:
             raise typer.Exit(code=1)
 
 
+def _narrator_policy_conforms(c: Container) -> str | None:
+    """None if the latest conformance run of rbqm.narrator passed with the committed
+    policy; otherwise why the narrator may not run."""
+    from meridian.domain.events import ContainmentCheckCompleted
+
+    latest = None
+    for entry in c.ledger.read(event_types=[EventType.CONTAINMENT_CHECK_COMPLETED]):
+        if (
+            isinstance(entry, Event)
+            and isinstance(entry.payload, ContainmentCheckCompleted)
+            and entry.payload.policy_name == policies.NARRATOR_POLICY
+        ):
+            latest = entry.payload
+    if latest is None:
+        return "no conformance run of rbqm.narrator in the ledger"
+    if not latest.passed or latest.credential_value_visible is not False:
+        return f"the latest conformance run of rbqm.narrator ({latest.sandbox}) did not pass"
+    expected = policies.sha256_text(
+        policies.expected_effective(policies.ALL_POLICIES[policies.NARRATOR_POLICY])
+    )
+    if latest.policy_sha256 != expected:
+        return "rbqm.narrator changed since its latest conformance run"
+    return None
+
+
+@agents_app.command("narrate")
+def agents_narrate(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only findings of these cuts; repeatable.")
+    ] = None,
+    max_calls: Annotated[
+        int | None,
+        typer.Option("--max-calls", help="Default: [narrator] max_calls_per_pass.", min=1),
+    ] = None,
+) -> None:
+    """One rbqm.narrator pass in an OpenShell sandbox with the meridian-anthropic provider."""
+    settings = Settings()
+    if max_calls is not None:
+        narr = settings.narrator.model_copy(update={"max_calls_per_pass": max_calls})
+        settings = settings.model_copy(update={"narrator": narr})
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        problem = _narrator_policy_conforms(c)
+        if problem:
+            typer.echo(
+                f"error: {problem}; run meridian sandbox conformance --policy rbqm.narrator",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        try:
+            report = c.narrator_runner(log).run_pass(cuts)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    counts = ", ".join(f"{k} {v}" for k, v in sorted(report.counts.items())) or "nothing"
+    typer.echo(f"narrated: {counts}; over budget, for the next pass: {len(report.deferred)}")
+    if report.batch_error:
+        typer.echo(f"  batch failed: {report.batch_error}")
+    for event in report.events:
+        p = event.payload
+        assert isinstance(p, FindingNarrative)
+        detail = p.headline if p.status == "accepted" else ", ".join(p.rejection_reasons)
+        typer.echo(f"  seq {event.seq} {p.finding_id} {p.status:<8} {detail or p.error}")
+
+
 @findings_app.command("show")
 def findings_show(
     cut: Annotated[str | None, typer.Option("--cut", help="Only findings on this cut.")] = None,
@@ -619,9 +691,9 @@ def image_build(
 
 @policy_app.command("render")
 def policy_render() -> None:
-    """Write policies/<zone>.yaml for every zone and policies/boundaries/<name>.yaml."""
+    """Write every policy, policies/boundaries/<name>.yaml and profiles/<provider>.yaml."""
     root = Settings().runtime.policies_dir
-    for path in policies.render_all(root):
+    for path in [*policies.render_all(root), *policies.render_profiles()]:
         typer.echo(f"wrote {path} (sha256 {policies.sha256_text(path.read_text())})")
 
 
@@ -631,7 +703,7 @@ def policy_prove(
         str, typer.Option("--prover", help="openshell-prover binary.")
     ] = "openshell-prover",
 ) -> None:
-    """Check every zone policy against its boundary with openshell-prover."""
+    """Check every committed policy against its boundary with openshell-prover."""
     from meridian.sandbox.prover import ProverError, prove_all
 
     root = Settings().runtime.policies_dir
@@ -642,7 +714,7 @@ def policy_prove(
         raise typer.Exit(code=1) from exc
     for zone, result in results.items():
         verdict = "pass" if result.passed else "FAIL"
-        typer.echo(f"{verdict}  {zone:<12} vs {result.boundary}: {result.explain()}")
+        typer.echo(f"{verdict}  {zone:<13} vs {result.boundary}: {result.explain()}")
     if not all(r.passed for r in results.values()):
         raise typer.Exit(code=1)
 
@@ -719,18 +791,24 @@ def sandbox_reap() -> None:
 @sandbox_app.command("conformance")
 def sandbox_conformance(
     zones: Annotated[
-        list[str], typer.Option("--zone", help="Zone to check; repeatable, or 'all'.")
-    ],
+        list[str] | None, typer.Option("--zone", help="Zone to check; repeatable, or 'all'.")
+    ] = None,
+    policy_names: Annotated[
+        list[str] | None,
+        typer.Option("--policy", help="An agent policy to check (rbqm.narrator); repeatable."),
+    ] = None,
 ) -> None:
-    """Check a zone's committed policy in a real sandbox and record the result."""
+    """Check committed policies in real sandboxes and record the results."""
     from meridian.sandbox.conformance import ledger_drafts, run_conformance
     from meridian.sandbox.openshell import SubprocessOpenShellClient
 
-    selected = sorted(policies.POLICIES) if zones == ["all"] else zones
-    unknown = sorted(set(selected) - set(policies.POLICIES))
-    if unknown:
+    selected = sorted(policies.POLICIES) if zones == ["all"] else list(zones or [])
+    selected += list(policy_names or [])
+    unknown = sorted(set(selected) - set(policies.ALL_POLICIES))
+    if unknown or not selected:
         typer.echo(
-            f"error: unknown zone(s) {unknown}; known: {sorted(policies.POLICIES)}", err=True
+            f"error: unknown or no policy {unknown}; known: {sorted(policies.ALL_POLICIES)}",
+            err=True,
         )
         raise typer.Exit(code=2)
     failed = []
@@ -763,8 +841,15 @@ def sandbox_conformance(
                         f"  {check.name:<24} expect {check.expect:<8} got {check.outcome:<12} "
                         f"exit {check.exit_code}  {check.message}"
                     )
+                if result.providers:
+                    typer.echo(
+                        f"  providers {', '.join(result.providers)}; ANTHROPIC_API_KEY in the "
+                        f"sandbox starts with sk-ant-: {result.credential_value_visible}"
+                    )
                 for record in result.log_records:
                     typer.echo(f"  log: {record.raw}")
+                for record in result.allowed_records:
+                    typer.echo(f"  log (allowed): {record.raw}")
                 if result.malformed_lines:
                     typer.echo(f"  malformed NET:OPEN lines: {len(result.malformed_lines)}")
                 for failure in result.failures():

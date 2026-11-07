@@ -34,12 +34,22 @@ def test_the_fixture_of_real_lines() -> None:
         ("SUPERVISOR", "127.0.0.1:17670"),
         ("DENIED", "192.0.2.1:443"),
         ("DENIED", "151.101.0.223:443"),
+        ("ALLOWED", "api.anthropic.com:443"),
+        ("DENIED", "example.com:443"),
     ]
     assert result.other == 9
     assert [r.raw for r in result.denied("192.0.2.1:443")] == [DENIED_BASH]
     assert result.denied("151.101.0.223:443")[0].binary == "/usr/local/bin/python3.14"
     # The proxy's WARN line names the same destination but is not the OCSF record.
     assert all("[OCSF ]" in r.raw for r in result.records)
+
+
+def test_a_real_allowed_line_names_the_policy() -> None:
+    (allowed,) = [r for r in scan(FIXTURE.read_text()).records if r.disposition == "ALLOWED"]
+    assert not allowed.denied
+    assert allowed.policy == "_provider_meridian_anthropic"
+    assert allowed.reason == ""
+    assert allowed.binary == "/usr/local/bin/python3.14"
 
 
 PREFIX = "[1794050714.254] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED "
@@ -49,6 +59,7 @@ PREFIX = "[1794050714.254] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED "
     "line",
     [
         PREFIX + "/usr/bin/bash(0) -> 192.0.2.1:443",  # no reason
+        PREFIX + "/usr/bin/bash(0) -> 192.0.2.1:443 [policy:p]",  # policy without engine
         PREFIX + "/usr/bin/bash -> 192.0.2.1:443 [reason:x]",  # no pid
         PREFIX + "/usr/bin/bash(0) -> 192.0.2.1:99999 [reason:x]",  # port out of range
         "[99999999999999999999] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] 127.0.0.1:17670",

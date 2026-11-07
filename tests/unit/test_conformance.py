@@ -12,10 +12,15 @@ from meridian.ledger.verify import verify
 from meridian.platform.clock import FixedClock
 from meridian.sandbox import policies
 from meridian.sandbox.conformance import (
+    ANTHROPIC_MODELS,
     CHECKS,
+    EGRESS_EXAMPLE,
+    KEY_PREFIX_COMMAND,
+    NARRATOR_CHECKS,
     ConformanceResult,
     conformance_name,
     ledger_drafts,
+    parse_key_prefix,
     run_conformance,
 )
 from meridian.sandbox.openshell import ExecOutput, ExecTimeoutError
@@ -29,9 +34,12 @@ DENIAL = (
     "[1794055316.838] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> "
     "192.0.2.1:443 [reason:transparent_tcp_policy_denied]"
 )
-# Real 0.1.7 lines without any 192.0.2.1:443 denial: what the log holds before the check.
+# Real 0.1.7 lines without any denied or allowed connection: what a fresh sandbox's log
+# holds before the checks run.
 BACKGROUND = "".join(
-    line for line in FIXTURE.read_text().splitlines(keepends=True) if "192.0.2.1:443" not in line
+    line
+    for line in FIXTURE.read_text().splitlines(keepends=True)
+    if "DENIED" not in line and "ALLOWED" not in line
 )
 GOOD: dict[str, ExecOutput] = {
     "cat /etc/os-release": ExecOutput(1, "", "cat: /etc/os-release: Permission denied\n"),
@@ -61,14 +69,21 @@ class FakeClient:
     raise_on: str | None = None
     live: set[str] = field(default_factory=set)
     created: list[str] = field(default_factory=list)
+    providers: list[tuple[str, ...]] = field(default_factory=list)
     deleted: list[str] = field(default_factory=list)
     log_calls: int = 0
 
     def create(
-        self, name: str, image: str, policy: Path, uploads: Sequence[tuple[Path, str]]
+        self,
+        name: str,
+        image: str,
+        policy: Path,
+        uploads: Sequence[tuple[Path, str]],
+        providers: Sequence[str] = (),
     ) -> None:
         assert uploads == []
         self.created.append(name)
+        self.providers.append(tuple(providers))
         self.live.add(name)
 
     def exec(self, name: str, argv: Sequence[str], timeout_seconds: int) -> ExecOutput:
@@ -93,10 +108,12 @@ class FakeClient:
         return self.log_texts[index]
 
 
-def _run(client: FakeClient, tmp_path: Path, timeout: float = 5.0) -> ConformanceResult:
+def _run(
+    client: FakeClient, tmp_path: Path, timeout: float = 5.0, zone: str = "rbqm"
+) -> ConformanceResult:
     return run_conformance(
         client=client,
-        zone="rbqm",
+        zone=zone,
         image="meridian-agent:test",
         image_digest="sha256:" + "a" * 64,
         policies_dir=REPO / "policies",
@@ -200,7 +217,7 @@ def test_the_sandbox_is_tracked_and_deleted(tmp_path: Path) -> None:
 
 
 def test_names_fit_the_gateway_limit() -> None:
-    for zone in policies.ZONES:
+    for zone in policies.ALL_POLICIES:
         assert len(conformance_name(zone)) <= 19
 
 
@@ -246,3 +263,113 @@ def test_a_failed_check_is_still_recorded(tmp_path: Path) -> None:
     done = events[-1].payload
     assert isinstance(done, ContainmentCheckCompleted)
     assert (done.all_refused, done.log_line_found, done.passed) == (False, False, False)
+
+
+EXAMPLE_DENIAL = (
+    "[1794067439.225] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED "
+    "/usr/local/bin/python3.14(0) -> example.com:443 [reason:transparent_tcp_policy_denied]"
+)
+ALLOWED_LINE = (
+    "[1794067456.128] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] ALLOWED "
+    "/usr/local/bin/python3.14(0) -> api.anthropic.com:443 "
+    "[policy:_provider_meridian_anthropic engine:opa]"
+)
+
+
+def _narrator_client(key_prefix: str = "False") -> FakeClient:
+    outputs = dict(GOOD)
+    outputs[ANTHROPIC_MODELS.command] = ExecOutput(0, "status 200\n", "")
+    outputs[EGRESS_EXAMPLE.command] = ExecOutput(
+        1, "", "ConnectError: [Errno 13] Permission denied\n"
+    )
+    outputs[KEY_PREFIX_COMMAND] = ExecOutput(0, key_prefix + "\n", "")
+    return FakeClient(
+        outputs=outputs,
+        log_texts=[BACKGROUND + ALLOWED_LINE + "\n" + EXAMPLE_DENIAL + "\n" + DENIAL + "\n"],
+        effective=policies.expected_effective(policies.ALL_POLICIES["rbqm.narrator"]),
+    )
+
+
+def test_the_narrator_policy_passes_with_its_provider_attached(tmp_path: Path) -> None:
+    client = _narrator_client()
+    result = _run(client, tmp_path, zone="rbqm.narrator")
+    assert result.passed, result.failures()
+    assert client.providers == [("meridian-anthropic",)]
+    assert [c.name for c in result.checks] == [s.name for s in NARRATOR_CHECKS]
+    assert result.credential_value_visible is False
+    assert [r.destination for r in result.log_records] == ["example.com:443", "192.0.2.1:443"]
+    assert [r.policy for r in result.allowed_records] == ["_provider_meridian_anthropic"]
+    assert result.sandbox.startswith("mer-cf-rn-")
+
+
+def test_zone_policies_attach_no_provider(tmp_path: Path) -> None:
+    client = FakeClient()
+    result = _run(client, tmp_path)
+    assert client.providers == [()]
+    assert result.credential_value_visible is None
+    assert result.credential_ok
+
+
+def test_a_real_key_inside_the_sandbox_fails(tmp_path: Path) -> None:
+    result = _run(_narrator_client("True"), tmp_path, zone="rbqm.narrator")
+    assert result.credential_value_visible is True
+    assert not result.passed
+    assert any("starts with sk-ant-" in f for f in result.failures())
+
+
+def test_an_unreadable_key_check_fails(tmp_path: Path) -> None:
+    result = _run(_narrator_client("maybe"), tmp_path, zone="rbqm.narrator")
+    assert result.credential_value_visible is None
+    assert not result.passed
+
+
+def test_a_401_from_the_models_endpoint_fails(tmp_path: Path) -> None:
+    client = _narrator_client()
+    client.outputs[ANTHROPIC_MODELS.command] = ExecOutput(1, "status 401\n", "")
+    result = _run(client, tmp_path, zone="rbqm.narrator")
+    assert _check(result, "anthropic_models") == "inconclusive"
+    assert "status 401" in " ".join(result.failures())
+    assert not result.passed
+
+
+def test_example_com_reachable_fails(tmp_path: Path) -> None:
+    client = _narrator_client()
+    client.outputs[EGRESS_EXAMPLE.command] = ExecOutput(0, "status 200\n", "")
+    result = _run(client, tmp_path, zone="rbqm.narrator")
+    assert _check(result, "egress_example_com") == "allowed"
+    assert not result.passed
+
+
+def test_the_key_check_prints_only_true_or_false() -> None:
+    # The one print is of the boolean startswith(...), never of the value.
+    assert KEY_PREFIX_COMMAND.count("print(") == 1
+    assert "print(os.environ.get('ANTHROPIC_API_KEY', '').startswith('sk-ant-'))" in (
+        KEY_PREFIX_COMMAND
+    )
+    assert parse_key_prefix(ExecOutput(0, "sk-ant-abc\n", "")) is None
+
+
+def test_narrator_ledger_records(tmp_path: Path) -> None:
+    result = _run(_narrator_client(), tmp_path, zone="rbqm.narrator")
+    events = _drafts_in_a_ledger(result, tmp_path)
+    denials = [e.payload for e in events if isinstance(e.payload, PolicyDenied)]
+    assert [(d.check, d.source) for d in denials] == [
+        ("write_var_tmp", "harness"),
+        ("write_opt_meridian", "harness"),
+        ("egress_example_com", "openshell_log"),
+        ("egress_test_net", "openshell_log"),
+    ]
+    assert denials[2].raw_line == EXAMPLE_DENIAL
+    assert all(d.zone == "rbqm" for d in denials)
+    assert all(d.policy == "policies/rbqm.narrator.yaml" for d in denials) or all(
+        d.policy.endswith("rbqm.narrator.yaml") for d in denials
+    )
+    done = events[-1].payload
+    assert isinstance(done, ContainmentCheckCompleted)
+    assert (done.zone, done.policy_name, done.providers) == (
+        "rbqm",
+        "rbqm.narrator",
+        ("meridian-anthropic",),
+    )
+    assert done.credential_value_visible is False
+    assert done.passed

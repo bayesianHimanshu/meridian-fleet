@@ -23,7 +23,7 @@ and no credentials. Sandboxed drafts are byte-identical to in-process ones. See
 
 ```sh
 uv run meridian image build                  # docker build meridian-agent:<version>, print digest
-uv run meridian policy render                # policies/<zone>.yaml (committed)
+uv run meridian policy render                # policies/*.yaml and profiles/ (committed)
 uv run meridian sandbox verify               # in process vs sandbox, byte for byte
 uv run meridian sandbox conformance --zone all   # each zone policy in a real sandbox
 uv run meridian sandbox reap                 # delete tracked sandboxes left behind
@@ -32,6 +32,19 @@ uv run pytest -m openshell                   # needs openshell, a gateway and th
 ```
 
 `[runtime] executor` in config/default.toml picks the default executor (inprocess).
+
+Step 3: the first LLM use. rbqm.narrator explains a finding in plain language for a
+clinical operations reader; detection stays deterministic, and a reply is recorded only if
+it passes validation against the evidence. It runs in its own sandbox
+(policies/rbqm.narrator.yaml) whose only egress is the Anthropic Messages API, with the
+key supplied by an OpenShell provider the user creates (see docs/openshell-notes.md).
+Results: [docs/narrator-eval.md](docs/narrator-eval.md).
+
+```sh
+uv run meridian sandbox conformance --policy rbqm.narrator   # first, after any image build
+uv run meridian agents narrate [--cut DC-BASE] [--max-calls 20]
+uv run python scripts/narrator_eval.py      # counts, tokens, cost, accepted narratives
+```
 
 ## Setup
 

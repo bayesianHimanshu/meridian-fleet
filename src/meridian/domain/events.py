@@ -11,6 +11,7 @@ from meridian.domain.ids import (
     ActorId,
     AgentId,
     DedupKey,
+    FindingId,
     Sha256Digest,
     Sha256Hex,
     StudyId,
@@ -128,6 +129,69 @@ class ContainmentCheckCompleted(BaseModel):
     # Every expected refusal was refused. passed adds the control and the log line.
     all_refused: bool
     passed: bool
+    # Phase 2 step 3, null or empty on older events. policy_name is set when an agent has
+    # its own policy (rbqm.narrator); providers were attached at create; and
+    # credential_value_visible says whether ANTHROPIC_API_KEY inside the sandbox started
+    # with "sk-ant-" (it must not). Only true or false is ever recorded, never the value.
+    policy_name: str | None = None
+    providers: tuple[str, ...] = ()
+    credential_value_visible: bool | None = None
+
+
+NarrativeStatus = Literal["accepted", "rejected", "refused", "error"]
+
+
+class FindingNarrative(BaseModel):
+    """A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
+
+    The finding itself is never changed. accepted: the model's text passed validation, and
+    only then are headline and explanation recorded. rejected: it failed validation
+    (reasons say why). refused: the de-identification check stopped the input; nothing
+    was sent. error: the call failed (retried on the next pass). Hashes are of the
+    canonical request body sent and of the raw response body received.
+    """
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.FINDING_NARRATIVE] = EventType.FINDING_NARRATIVE
+    finding_id: FindingId
+    finding_seq: PositiveInt
+    agent_id: AgentId
+    agent_version: Annotated[str, Field(min_length=1)]
+    status: NarrativeStatus
+    headline: str | None = None
+    explanation: str | None = None
+    model: Annotated[str, Field(min_length=1)]
+    request_sha256: Sha256Hex | None = None
+    response_sha256: Sha256Hex | None = None
+    rejection_reasons: tuple[str, ...] = ()
+    error: str | None = None
+    input_tokens: Annotated[int, Field(ge=0)] | None = None
+    output_tokens: Annotated[int, Field(ge=0)] | None = None
+    latency_ms: Annotated[int, Field(ge=0)] | None = None
+    executor: str | None = None
+    sandbox: str | None = None
+    policy_sha256: Sha256Hex | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        text = (self.headline, self.explanation)
+        if self.status == "accepted":
+            if not all(text):
+                raise ValueError("an accepted narrative needs a headline and an explanation")
+            if self.rejection_reasons:
+                raise ValueError("an accepted narrative has no rejection reasons")
+        elif any(t is not None for t in text):
+            raise ValueError(f"a {self.status} narrative records no headline or explanation")
+        if self.status in ("rejected", "refused") and not self.rejection_reasons:
+            raise ValueError(f"a {self.status} narrative needs its reasons")
+        if self.status == "error" and not self.error:
+            raise ValueError("an error narrative needs the error")
+        if self.status != "refused" and self.request_sha256 is None:
+            raise ValueError("a narrative that was sent needs the request sha256")
+        if self.status == "refused" and self.request_sha256 is not None:
+            raise ValueError("a refused narrative sent nothing")
+        return self
 
 
 class HumanDecision(BaseModel):
@@ -145,6 +209,7 @@ EventPayload = Annotated[
     | FindingRaised
     | PolicyDenied
     | ContainmentCheckCompleted
+    | FindingNarrative
     | HumanDecision,
     Field(discriminator="type"),
 ]

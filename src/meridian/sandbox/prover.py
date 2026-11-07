@@ -1,4 +1,4 @@
-"""meridian policy prove: every zone policy checked against its boundary by openshell-prover.
+"""meridian policy prove: every committed policy checked against its boundary.
 
     openshell-prover check <zone policy> --boundary <boundary> --output json
 
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from meridian.sandbox.policies import ZONE_BOUNDARY, boundary_path, policy_path
+from meridian.sandbox.policies import POLICY_BOUNDARY, boundary_path, policy_path
 
 PROVER = "openshell-prover"
 REQUIRED_DOMAINS = frozenset({"filesystem", "process", "landlock"})
@@ -100,5 +100,5 @@ def check(
 def prove_all(root: Path, binary: str = PROVER) -> dict[str, ProverResult]:
     return {
         zone: check(policy_path(zone, root), boundary_path(boundary, root), binary)
-        for zone, boundary in sorted(ZONE_BOUNDARY.items())
+        for zone, boundary in sorted(POLICY_BOUNDARY.items())
     }

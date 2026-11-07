@@ -170,3 +170,53 @@ with the sandbox's `ocsf_json_enabled` setting never set; so the check does not 
 and does not wait for its 10 s poll. It polls the log for at most
 `conformance_log_timeout_seconds`. Results: PolicyDenied events (`harness` for files,
 `openshell_log` with the raw line for the network) and one ContainmentCheckCompleted.
+
+## The narrator's provider (phase 2 step 3)
+
+OpenShell 0.1.7 has no `inference` command and no inference.local route. A sandbox calls
+the provider's own API, and a provider supplies the credential:
+
+* **Profile.** `profiles/anthropic.yaml` (rendered by `meridian policy render`, no secrets)
+  declares the credential `ANTHROPIC_API_KEY` sent as header `x-api-key`, the endpoint
+  `api.anthropic.com:443` with `protocol: rest` (L7 inspection: `POST /v1/messages` and
+  `GET /v1/models` only), and the binary `/usr/local/bin/python3.14`. The proxy names a
+  binary by its real path, so it is the interpreter, not the venv's symlink
+  `/opt/meridian/venv/bin/python`. Lint refuses an L4-only credentialed endpoint unless
+  `allow_uninspected_credentials: true`; we inspect instead. There are no built-in
+  profiles (`profile list` is empty); the schema is not documented with 0.1.7, so it was
+  read from lint's errors. Once imported, `profile lint` fails on the same id ("already
+  exists").
+* **GET /v1/models is in the profile only for `meridian sandbox conformance --policy
+  rbqm.narrator`**: status 200 there shows the proxy substituted the credential at the
+  allowed endpoint. The narrator's client only ever sends `POST /v1/messages`, and the
+  narrator's own policy rule allows only that.
+* **Creating the provider** (done by the user, never by this code):
+  `openshell profile import -f profiles/anthropic.yaml`, then `openshell provider create
+  --name meridian-anthropic --type meridian-anthropic --credential ANTHROPIC_API_KEY`.
+  * `--from-existing` does not work for a custom profile type on 0.1.7: "no existing local
+    credentials/config found for provider type 'meridian-anthropic'".
+  * `--credential ANTHROPIC_API_KEY` (a name with no `=VALUE`) stores the **value** of
+    that variable from the calling shell, not the literal name: with the provider attached,
+    GET /v1/models returns 200 (a literal name would give 401), while the sandbox's
+    `ANTHROPIC_API_KEY` is a placeholder that neither starts with `sk-ant-` nor equals the
+    variable's name. `provider get` shows only "Credential keys: ANTHROPIC_API_KEY".
+* **Attaching.** `sandbox create --provider meridian-anthropic` (with
+  `--no-auto-providers`). The effective policy then gains a rule
+  `_provider_meridian_anthropic` with the profile's endpoint, next to the policy's own.
+* **TLS.** The proxy is transparent (no `HTTPS_PROXY`). The supervisor sets
+  `SSL_CERT_FILE`, `REQUESTS_CA_BUNDLE` and `CURL_CA_BUNDLE` to
+  `/run/openshell-supervisor-ca/material/ca-bundle.crt` (the system CAs plus its own; the
+  sandbox can read it under Landlock) and `NODE_EXTRA_CA_CERTS` to `ca.crt` beside it.
+  The client builds its context from `SSL_CERT_FILE` (certifi otherwise); verification is
+  never turned off.
+* **Any network rule widens the filesystem.** With a rule in the policy (with or without a
+  provider), 0.1.7 appends `/usr`, `/lib`, `/etc`, `/var/log`, `/proc` and `/dev/urandom`
+  to the read-only paths and `/dev/null` to read-write. There is no setting for it;
+  `expected_effective` pins it, so a change shows up as a policy mismatch.
+* **Log lines.** An allowed connection names the rule that allowed it: `NET:OPEN [INFO]
+  ALLOWED /usr/local/bin/python3.14(0) -> api.anthropic.com:443
+  [policy:_provider_meridian_anthropic engine:opa]`. A refused HTTPS GET to example.com is
+  `DENIED ... -> example.com:443 [reason:transparent_tcp_policy_denied]`, with the host
+  name, not an address.
+* **The model.** claude-haiku-5-5 answers HTTP 400 "`temperature` is deprecated for this
+  model.", so requests leave temperature out; `thinking: {type: disabled}` is accepted.
