@@ -91,4 +91,10 @@ def site_metrics(
         parameters=list(csm.parameters),
         sites=sites,
         qtl=qtl,
+        thresholds={
+            "data_entry_lag_days": kri.lag_days,
+            "open_query_age_days": kri.query_age_days,
+            "csm_log_sd_z": -csm.z_threshold,
+            "kri_alpha": kri.alpha,
+        },
     )

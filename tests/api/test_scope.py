@@ -229,3 +229,12 @@ def test_rbqm_sites_carry_the_qtl(tmp_path: Path) -> None:
     assert qtl["treated"] > 0
     assert qtl["discontinued"] / qtl["treated"] == pytest.approx(qtl["rate"])
     assert qtl["status"] in ("within", "approaching", "breached")
+    thresholds = _get(fx.client(curated_root=tmp_path / "curated"), "/api/v1/rbqm/DC-SITES/sites")[
+        "thresholds"
+    ]
+    assert thresholds == {
+        "data_entry_lag_days": 7.0,
+        "open_query_age_days": 21.0,
+        "csm_log_sd_z": -3.5,
+        "kri_alpha": 0.01,
+    }

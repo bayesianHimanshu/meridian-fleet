@@ -303,6 +303,8 @@ class RbqmSites(BaseModel):
     parameters: list[str]
     sites: list[SiteMetrics]
     qtl: QtlView
+    # The configured thresholds the agents judge these metrics against.
+    thresholds: dict[str, float]
 
 
 class AssetStatus(BaseModel):

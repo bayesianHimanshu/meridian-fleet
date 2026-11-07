@@ -2325,6 +2325,13 @@
           "study_id": {
             "title": "Study Id",
             "type": "string"
+          },
+          "thresholds": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Thresholds",
+            "type": "object"
           }
         },
         "required": [
@@ -2332,7 +2339,8 @@
           "cut_id",
           "parameters",
           "sites",
-          "qtl"
+          "qtl",
+          "thresholds"
         ],
         "title": "RbqmSites",
         "type": "object"
