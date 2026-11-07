@@ -524,3 +524,33 @@ def ensure_ae_holdouts(directory: Path, base: FullCut) -> list[Path]:
     if missing:
         raise ScenarioError(f"AE holdout files missing: {missing}")
     return paths
+
+
+# Phase 2 step 1: a fresh copy of rbqm_core for the sandbox run.
+
+CORE_SANDBOX_FILE = "rbqm_core_sandbox.toml"
+CORE_SANDBOX_SEED = 20261112
+CORE_SANDBOX_LABEL = "rbqm_core_sandbox"
+
+
+def generate_core_sandbox(core: Scenario) -> str:
+    """rbqm_core's faults, sites and parameters, a new seed, an opaque cut id."""
+    scenario = Scenario(
+        seed=CORE_SANDBOX_SEED,
+        base_cut=core.base_cut,
+        out_cut="(opaque)",
+        faults=core.faults,
+        label=CORE_SANDBOX_LABEL,
+    )
+    header = [
+        "A fresh copy of rbqm_core for phase 2 step 1: the same faults, sites and parameters,",
+        f"seed {CORE_SANDBOX_SEED}, scored after the agents ran in OpenShell sandboxes.",
+        "The cut id is opaque: DC- plus the first 8 hex characters of sha256 of this file.",
+    ]
+    return render_scenario(scenario, header, opaque=True)
+
+
+def ensure_core_sandbox(path: Path, base: FullCut) -> None:
+    """Write the file once, from rbqm_core.toml in the same directory."""
+    del base  # the copy depends on rbqm_core only
+    _write_once(path, generate_core_sandbox(load_scenario(path.parent / CORE_FILE)))
