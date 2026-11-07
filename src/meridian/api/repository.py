@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from collections import defaultdict
-from collections.abc import Callable, Collection, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
@@ -25,9 +25,11 @@ from meridian.api.models import (
     AssetStatic,
     ContainmentView,
     CutKind,
+    CutScope,
     CutSummary,
     DecisionResponse,
     DecisionView,
+    Enrollment,
     FindingDetail,
     FindingPage,
     FindingStatus,
@@ -47,6 +49,7 @@ from meridian.api.models import (
     VerifyReport,
 )
 from meridian.api.sites import site_metrics
+from meridian.api.study import enrollment
 from meridian.data.study_store import MissingTableError, StudyAccessError, StudyReader
 from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import DecisionAction, EventType, Role
@@ -117,6 +120,9 @@ class Snapshot:
     woke: list[Event] = field(default_factory=list)
     suspended: list[Event] = field(default_factory=list)
     containment: list[Event] = field(default_factory=list)
+    # finding id -> id of the newest-version finding with the same (agent, cut, kind, site,
+    # check), for every finding a newer version superseded.
+    superseded_by: dict[str, str] = field(default_factory=dict)
 
     @classmethod
     def build(cls, entries: Sequence[LedgerEntry], role: Role) -> Snapshot:
@@ -161,6 +167,7 @@ class Snapshot:
             assert isinstance(e.payload, HumanDecision)
             if e.payload.decision.finding_id in snap.raised:
                 snap.decisions[e.payload.decision.finding_id].append(e)
+        snap.superseded_by = _supersession(snap.raised.values())
         return snap
 
     def status(self, finding_id: str) -> FindingStatus:
@@ -220,6 +227,30 @@ def _run_event(e: Event | None) -> RunEvent | None:
     return RunEvent(seq=e.seq, hash=e.hash, recorded_at=e.recorded_at, executor=p.executor)
 
 
+def _version(v: str) -> tuple[int, ...]:
+    try:
+        return tuple(int(part) for part in v.split("."))
+    except ValueError:
+        return ()
+
+
+def _supersession(raised: Iterable[_Raised]) -> dict[str, str]:
+    """Among findings of one agent with the same (cut, kind, site, check), every one but
+    the newest agent version is superseded by the newest. Computed over what the caller
+    may see only."""
+    groups: dict[tuple[str, str, str, str, str], list[_Raised]] = defaultdict(list)
+    for r in raised:
+        f = r.finding
+        groups[(f.agent_id, r.cut_id, f.kind.value, f.site_id or "STUDY", r.check)].append(r)
+    out: dict[str, str] = {}
+    for members in groups.values():
+        newest = max(members, key=lambda r: (_version(r.finding.agent_version), r.event.seq))
+        for r in members:
+            if _version(r.finding.agent_version) < _version(newest.finding.agent_version):
+                out[r.finding_id] = newest.finding_id
+    return out
+
+
 def cut_kind(cut_id: str, label: str | None) -> CutKind:
     name = cut_id.removeprefix("DC-")
     if name == "BASE":
@@ -240,8 +271,15 @@ class PortfolioEntry:
     live_study: bool
 
 
+ScopeFilter = Literal["operational", "evaluation", "all"]
+
+
 @dataclass(frozen=True, slots=True)
 class FindingFilters:
+    """Defaults: operational cuts only, superseded findings left out."""
+
+    scope: ScopeFilter = "operational"
+    include_superseded: bool = False
     cut: str | None = None
     agent: str | None = None
     kind: str | None = None
@@ -262,6 +300,7 @@ class Repository:
         policies_dir: Path,
         ground_truth_dir: Path,
         portfolio: Sequence[PortfolioEntry],
+        operational_cuts: Collection[str] = ("DC-BASE",),
     ) -> None:
         self._ledger = ledger
         self.person = person
@@ -272,7 +311,11 @@ class Repository:
         self._policies_dir = policies_dir
         self._ground_truth_dir = ground_truth_dir
         self._portfolio = portfolio
+        self._operational = frozenset(operational_cuts)
         self._snapshot: Snapshot | None = None
+
+    def scope(self, cut_id: str) -> CutScope:
+        return "operational" if cut_id in self._operational else "evaluation"
 
     # ---- reading
 
@@ -291,9 +334,12 @@ class Repository:
             raised_at=r.event.recorded_at,
             study_id=f.study_id,
             cut_id=r.cut_id,
+            scope=self.scope(r.cut_id),
             check=r.check,
             agent_id=f.agent_id,
             agent_version=f.agent_version,
+            superseded=r.finding_id in snap.superseded_by,
+            superseded_by=snap.superseded_by.get(r.finding_id),
             kind=f.kind,
             site_id=f.site_id,
             severity=f.severity,
@@ -343,6 +389,7 @@ class Repository:
                     kind=cut_kind(cut.cut_id, label) if show else None,
                     label=label,
                     opaque=opaque,
+                    scope=self.scope(cut.cut_id),
                     created=snap.cut_events[seq].occurred_at,
                     agent_runs_completed=completed[seq],
                 )
@@ -354,6 +401,10 @@ class Repository:
         out = []
         for r in snap.raised.values():
             f = r.finding
+            if filters.scope != "all" and self.scope(r.cut_id) != filters.scope:
+                continue
+            if not filters.include_superseded and r.finding_id in snap.superseded_by:
+                continue
             if filters.cut is not None and r.cut_id != filters.cut:
                 continue
             if filters.agent is not None and f.agent_id != filters.agent:
@@ -442,11 +493,13 @@ class Repository:
             suspended=_run_event(after[0] if after else None),
         )
 
-    def review_queue(self) -> ReviewQueue:
+    def review_queue(self, filters: FindingFilters | None = None) -> ReviewQueue:
+        """Open and escalated findings, newest first; by default operational cuts only and
+        no superseded findings, so evaluation cuts never reach it unless asked for."""
         snap = self.snapshot()
         items = [
             self._summary(r)
-            for r in sorted(snap.raised.values(), key=lambda r: r.event.seq, reverse=True)
+            for r in self._filtered(filters or FindingFilters())
             if snap.status(r.finding_id) in ("open", "escalated")
         ]
         return ReviewQueue(items=items)
@@ -577,6 +630,24 @@ class Repository:
                 out[f.site_id or "STUDY"].add(r.check)
         return {site: sorted(checks) for site, checks in out.items()}
 
+    def enrollment(
+        self, study_id: str, cut_id: str | None, reader: Callable[[str], StudyReader]
+    ) -> Enrollment:
+        if not visibility.can_see_study_data(self.role):
+            raise ForbiddenError(f"{self.role.value} may not see study enrollment")
+        cuts = [c for c in self.snapshot().cuts.values() if c.study_id == study_id]
+        if not cuts:
+            raise NotFoundError(f"study {study_id} not found")
+        chosen = cut_id or next(
+            (c.cut_id for c in cuts if self.scope(c.cut_id) == "operational"), None
+        )
+        if chosen is None or not any(c.cut_id == chosen for c in cuts):
+            raise NotFoundError("cut not found")
+        try:
+            return enrollment(reader(chosen))
+        except (MissingTableError, StudyAccessError, OSError) as exc:
+            raise NotFoundError("cut data not available") from exc
+
     def rbqm_sites(
         self,
         cut_id: str,
@@ -593,13 +664,7 @@ class Repository:
             raise NotFoundError("cut data not available") from exc
 
     def portfolio(self) -> Portfolio:
-        snap = self.snapshot()
-        open_count = sum(
-            1
-            for r in snap.raised.values()
-            if r.finding.study_id == self._study_id
-            and snap.status(r.finding_id) in ("open", "escalated")
-        )
+        open_count = sum(1 for item in self.review_queue().items if item.study_id == self._study_id)
         return Portfolio(
             assets=[
                 PortfolioAsset(

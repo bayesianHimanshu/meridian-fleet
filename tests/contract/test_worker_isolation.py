@@ -132,7 +132,7 @@ def test_the_agent_image_export_excludes_the_api_group() -> None:
         pytest.skip("uv is not on PATH")
     dockerfile = (SRC.parent / "docker" / "agent.Dockerfile").read_text(encoding="utf-8")
     assert "uv export --frozen --no-default-groups --no-emit-project" in dockerfile
-    out = subprocess.run(  # noqa: S603 (fixed argv)
+    out = subprocess.run(
         [
             uv,
             "export",

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from meridian.agents.catalog import build_registry
 from meridian.api.deps import ApiContext, caller
 from meridian.api.identity import ACTOR_HEADER, AUTH_HEADER, AUTH_MODE, ROLE_HEADER, People
-from meridian.api.models import AssetStatic
+from meridian.api.models import AssetStatic, AssetStatus
 from meridian.api.repository import (
     ConflictError,
     ForbiddenError,
@@ -46,7 +46,15 @@ def load_portfolio(path: Path) -> tuple[PortfolioEntry, ...]:
         PortfolioEntry(
             asset_id=a["asset_id"],
             static=AssetStatic(
-                name=a["name"], stage=a["stage"], indication=a["indication"], modality=a["modality"]
+                title=a["title"],
+                stage=a["stage"],
+                indication=a["indication"],
+                intervention=a.get("intervention"),
+                milestone=a["milestone"],
+                milestone_due=a["milestone_due"],
+                progress_percent=int(a["progress_percent"]),
+                probability_of_success=a.get("probability_of_success"),
+                status=AssetStatus(level=a["status_level"], text=a["status_text"]),
             ),
             live_study=bool(a.get("live_study", False)),
         )
@@ -69,6 +77,7 @@ def context_from_settings(
         ground_truth_dir=settings.ground_truth_dir,
         curated_root=settings.curated_root,
         portfolio=load_portfolio(portfolio_file),
+        operational_cuts=tuple(settings.cuts.operational),
     )
 
 

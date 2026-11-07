@@ -62,9 +62,14 @@ def can_see_cut_label(role: Role) -> bool:
     return role in CUT_LABEL_ROLES
 
 
-# Per-site RBQM metrics are blinded aggregates; the roles RBQM findings are shown to.
+# Per-site RBQM metrics and study enrollment are blinded aggregates of the study's data;
+# the roles RBQM findings are shown to.
 SITE_METRIC_ROLES = frozenset({Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR, Role.QA_AUDITOR})
 
 
 def can_see_site_metrics(role: Role) -> bool:
+    return role in SITE_METRIC_ROLES
+
+
+def can_see_study_data(role: Role) -> bool:
     return role in SITE_METRIC_ROLES

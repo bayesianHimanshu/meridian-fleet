@@ -35,6 +35,7 @@ class ApiContext:
     ground_truth_dir: Path
     curated_root: Path
     portfolio: tuple[PortfolioEntry, ...]
+    operational_cuts: tuple[str, ...] = ("DC-BASE",)
 
     def study_reader(self, cut_id: str) -> StudyReader:
         return ParquetStudyReader(self.curated_root / self.study_id, cut_id)
@@ -86,6 +87,7 @@ def repository(
             policies_dir=ctx.policies_dir,
             ground_truth_dir=ctx.ground_truth_dir,
             portfolio=ctx.portfolio,
+            operational_cuts=ctx.operational_cuts,
         )
     finally:
         ledger.close()

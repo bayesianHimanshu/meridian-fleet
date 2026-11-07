@@ -13,6 +13,8 @@ _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 FindingStatus = Literal["open", "accepted", "escalated", "dismissed"]
 CutKind = Literal["base", "null", "faulted", "holdout", "sweep"]
+# operational: the study's current data. evaluation: null, faulted, holdout and sweep cuts.
+CutScope = Literal["operational", "evaluation"]
 
 
 class Health(BaseModel):
@@ -31,6 +33,16 @@ class WhoAmI(BaseModel):
     auth: Literal["development"] = "development"
 
 
+class PersonView(BaseModel):
+    """A demo person from config/people.toml (development identity, not an account)."""
+
+    model_config = _FROZEN
+
+    actor: str
+    name: str
+    role: Role
+
+
 class StudySummary(BaseModel):
     model_config = _FROZEN
 
@@ -47,6 +59,7 @@ class CutSummary(BaseModel):
     kind: CutKind | None
     label: str | None
     opaque: bool
+    scope: CutScope
     created: datetime
     agent_runs_completed: int
 
@@ -68,9 +81,14 @@ class FindingSummary(BaseModel):
     raised_at: datetime
     study_id: str
     cut_id: str
+    scope: CutScope
     check: str
     agent_id: str
     agent_version: str
+    # A newer version of the same agent raised a finding with the same (cut, kind, site,
+    # check); superseded_by is the newest one's id.
+    superseded: bool
+    superseded_by: str | None
     kind: FindingKind
     site_id: str | None
     severity: Severity
@@ -259,15 +277,27 @@ class RbqmSites(BaseModel):
     sites: list[SiteMetrics]
 
 
+class AssetStatus(BaseModel):
+    model_config = _FROZEN
+
+    level: Literal["good", "warning", "critical", "info"]
+    text: str
+
+
 class AssetStatic(BaseModel):
-    """Served as written in config/portfolio.toml."""
+    """Served as written in config/portfolio.toml; nothing here is computed."""
 
     model_config = _FROZEN
 
-    name: str
-    stage: str
+    title: str
+    stage: Literal["preclinical", "phase_1", "phase_2", "phase_3"]
     indication: str
-    modality: str
+    intervention: str | None
+    milestone: str
+    milestone_due: str
+    progress_percent: int
+    probability_of_success: str | None
+    status: AssetStatus
 
 
 class AssetLive(BaseModel):
@@ -290,6 +320,25 @@ class Portfolio(BaseModel):
     model_config = _FROZEN
 
     assets: list[PortfolioAsset]
+
+
+class SiteEnrollment(BaseModel):
+    model_config = _FROZEN
+
+    site_id: str
+    cumulative: list[int]  # treated subjects up to and including each month
+
+
+class Enrollment(BaseModel):
+    """Cumulative treated subjects by month of first treatment (blinded DM RFSTDTC)."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    cut_id: str
+    months: list[str]  # YYYY-MM, every month from the first to the last start
+    total: list[int]
+    sites: list[SiteEnrollment]
 
 
 class ErrorBody(BaseModel):

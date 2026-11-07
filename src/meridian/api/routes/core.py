@@ -9,11 +9,13 @@ from meridian.api.models import (
     CutSummary,
     DecisionRequest,
     DecisionResponse,
+    Enrollment,
     FindingDetail,
     FindingPage,
     Fleet,
     Health,
     LedgerPage,
+    PersonView,
     Portfolio,
     RbqmSites,
     ReviewQueue,
@@ -36,6 +38,15 @@ def health() -> Health:
     return Health()
 
 
+@public.get("/people", tags=["meta"])
+def people(ctx: Context) -> list[PersonView]:
+    """The demo people of config/people.toml, for the development role switcher. Needs no
+    identity headers: this is development identity, not sign-in."""
+    return [  # in the file's order
+        PersonView(actor=p.actor, name=p.name, role=p.role) for p in ctx.people.people.values()
+    ]
+
+
 @router.get("/whoami", tags=["meta"])
 def whoami(person: Caller) -> WhoAmI:
     return WhoAmI(actor=person.actor, name=person.name, role=person.role)
@@ -51,9 +62,21 @@ def cuts(study: str, repo: Repo) -> list[CutSummary]:
     return repo.cuts(study)
 
 
+Scope = Literal["operational", "evaluation", "all"]
+
+
+@router.get("/studies/{study}/enrollment", tags=["studies"])
+def study_enrollment(study: str, repo: Repo, ctx: Context, cut: str | None = None) -> Enrollment:
+    """Cumulative treated subjects by month (blinded DM RFSTDTC), per site and in total.
+    Default cut: the study's operational cut."""
+    return repo.enrollment(study, cut, ctx.study_reader)
+
+
 @router.get("/findings", tags=["findings"])
 def findings(
     repo: Repo,
+    scope: Scope = "operational",
+    include_superseded: bool = False,
     cut: str | None = None,
     agent: str | None = None,
     kind: FindingKind | None = None,
@@ -63,8 +86,11 @@ def findings(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> FindingPage:
-    """Newest first (ledger seq descending)."""
+    """Newest first (ledger seq descending). By default only operational cuts and no
+    superseded findings; widen with scope=all and include_superseded=true."""
     filters = FindingFilters(
+        scope=scope,
+        include_superseded=include_superseded,
         cut=cut,
         agent=agent,
         kind=None if kind is None else kind.value,
@@ -88,9 +114,12 @@ def decide(finding_id: str, body: DecisionRequest, repo: Repo) -> DecisionRespon
 
 
 @router.get("/review-queue", tags=["findings"])
-def review_queue(repo: Repo) -> ReviewQueue:
-    """Open and escalated findings the caller may see, newest first."""
-    return repo.review_queue()
+def review_queue(
+    repo: Repo, scope: Scope = "operational", include_superseded: bool = False
+) -> ReviewQueue:
+    """Open and escalated findings the caller may see, newest first. By default only
+    operational cuts (never evaluation cuts) and no superseded findings."""
+    return repo.review_queue(FindingFilters(scope=scope, include_superseded=include_superseded))
 
 
 @router.get("/ledger", tags=["ledger"])
