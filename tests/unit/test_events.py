@@ -15,6 +15,7 @@ from meridian.domain.events import (
     Event,
     EventDraft,
     EventPayload,
+    FindingNarrative,
     FindingRaised,
     HumanDecision,
     PolicyDenied,
@@ -69,6 +70,47 @@ PAYLOADS: list[EventPayload] = [
         log_line_found=True,
         all_refused=True,
         passed=True,
+    ),
+    ContainmentCheckCompleted(
+        zone="rbqm",
+        sandbox="mer-cf-rn-1a2b3c4d",
+        image="meridian-agent:0.1.0",
+        image_digest="sha256:" + "1" * 64,
+        policy_sha256="2" * 64,
+        checks=(),
+        log_line_found=True,
+        all_refused=True,
+        passed=True,
+        policy_name="rbqm.narrator",
+        providers=("meridian-anthropic",),
+        credential_value_visible=False,
+    ),
+    FindingNarrative(
+        finding_id="RBQM-0027",
+        finding_seq=40,
+        agent_id="rbqm.narrator",
+        agent_version="1.0.0",
+        status="accepted",
+        headline="Site 1005 reports fewer adverse events than expected",
+        explanation="Site 1005 has 27 adverse events where 70.2 were expected.",
+        model="claude-haiku-5-5",
+        request_sha256="3" * 64,
+        response_sha256="4" * 64,
+        input_tokens=812,
+        output_tokens=61,
+        latency_ms=1450,
+        executor="openshell",
+        sandbox="mer-nr-1a2b3c4d",
+        policy_sha256="5" * 64,
+    ),
+    FindingNarrative(
+        finding_id="RBQM-0028",
+        finding_seq=41,
+        agent_id="rbqm.narrator",
+        agent_version="1.0.0",
+        status="refused",
+        model="claude-haiku-5-5",
+        rejection_reasons=("subject_id_pattern",),
     ),
     HumanDecision(
         decision=Decision(
@@ -150,3 +192,31 @@ def test_restricted_finding_requires_restricted_event() -> None:
             visibility=Visibility.BLINDED,
             payload=FindingRaised(finding=finding, dedup_key="k"),
         )
+
+
+def _narrative(**changes: object) -> dict[str, object]:
+    base: dict[str, object] = {
+        "finding_id": "RBQM-0001",
+        "finding_seq": 3,
+        "agent_id": "rbqm.narrator",
+        "agent_version": "1.0.0",
+        "model": "m",
+        "request_sha256": "a" * 64,
+    }
+    return base | changes
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"status": "accepted"},  # no text
+        {"status": "rejected", "headline": "h", "rejection_reasons": ("em_dash",)},
+        {"status": "rejected"},  # no reasons
+        {"status": "error"},  # no error text
+        {"status": "refused", "rejection_reasons": ("x",)},  # refused but a request hash
+        {"status": "accepted", "headline": "h", "explanation": "e", "request_sha256": None},
+    ],
+)
+def test_finding_narrative_rules(changes: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        FindingNarrative.model_validate(_narrative(**changes))
