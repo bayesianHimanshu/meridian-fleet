@@ -1,6 +1,6 @@
 """Findings raised by agents and decisions humans make about them."""
 
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, model_validator
 
@@ -10,8 +10,20 @@ from meridian.domain.ids import ActorId, AgentId, FindingId, SiteId, StudyId
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
 
+EvidenceRole = Literal["primary", "supporting"]
+EvidenceDirection = Literal["low", "high", "none"]
+
+
 class Evidence(BaseModel):
-    """One measurable fact supporting a finding."""
+    """One measurable fact supporting a finding.
+
+    Phase 2 step 4 adds context, all optional (null on events written before it): role
+    says whether the finding rests on this item (primary) or it only adds context
+    (supporting); direction is the value against its reference (low, high, or none for a
+    p value or a count); expected is that reference (the expected count, the median site,
+    the chance level of a terminal digit, the limit); display is the value as it should
+    be read, at the precision fixed for its statistic (meridian.agents.rbqm.describe).
+    """
 
     model_config = _FROZEN
 
@@ -20,6 +32,10 @@ class Evidence(BaseModel):
     statistic: Annotated[str, Field(min_length=1)]
     value: FiniteFloat
     threshold: FiniteFloat | None = None
+    role: EvidenceRole | None = None
+    direction: EvidenceDirection | None = None
+    expected: FiniteFloat | None = None
+    display: Annotated[str, Field(min_length=1)] | None = None
 
 
 class Finding(BaseModel):

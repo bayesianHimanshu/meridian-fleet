@@ -16,6 +16,9 @@ and the report shows the original ones next to the revised ones. See
 
 ## Phase 2 status
 
+Phase 2 is closed: see [docs/phase2-summary.md](docs/phase2-summary.md) for what
+containment proves, costs, known gaps and lessons.
+
 Step 1: agents run in NVIDIA OpenShell sandboxes, one per run, with no network, no ledger
 and no credentials. Sandboxed drafts are byte-identical to in-process ones. See
 [docs/openshell-notes.md](docs/openshell-notes.md) and
@@ -44,6 +47,17 @@ Results: [docs/narrator-eval.md](docs/narrator-eval.md).
 uv run meridian sandbox conformance --policy rbqm.narrator   # first, after any image build
 uv run meridian agents narrate [--cut DC-BASE] [--max-calls 20]
 uv run python scripts/narrator_eval.py      # counts, tokens, cost, accepted narratives
+```
+
+Step 4: evidence carries a role, direction, reference and display; detectors kri_monitor
+2.2.0, qtl_detector 2.1.0 and csm 2.1.0 flag exactly what their previous versions did;
+narrator 1.1.0 uses the displays, and its validator is measured on a labelled set.
+
+```sh
+uv run python scripts/detector_equivalence.py       # same findings on every cut
+uv run python scripts/build_narrator_labels.py      # data/narrator_eval/labelled.jsonl
+uv run python scripts/narrator_validator_eval.py    # validator 1.0.0 vs 1.1.0
+uv run python scripts/narrator_rerun_table.py       # live 1.1.0 vs 1.0.0
 ```
 
 ## Setup

@@ -1,11 +1,11 @@
-"""rbqm.narrator: input, de-identification, prompt and validation (pure functions)."""
+"""rbqm.narrator 1.0.0 (frozen): input, de-identification, prompt and validation."""
 
 import json
 from typing import Any
 
 import pytest
 
-from meridian.agents.rbqm import narrator as n
+from meridian.agents.rbqm import narrator_v1_0 as n
 from meridian.domain.enums import FindingKind, Role, Severity, Visibility
 from meridian.domain.findings import Evidence, Finding
 from meridian.ledger.hashing import canonical_json

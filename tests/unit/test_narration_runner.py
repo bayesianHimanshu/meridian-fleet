@@ -8,6 +8,7 @@ import pytest
 import structlog
 
 from meridian.agents.narration import InProcessNarrationExecutor, NarrationBatch, NarratorRunner
+from meridian.agents.rbqm.narrator import NARRATES
 from meridian.domain.dedup import make_dedup_key
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
 from meridian.domain.events import Event, EventDraft, FindingNarrative, FindingRaised
@@ -26,7 +27,7 @@ def _finding(site: str, agent_id: str = "rbqm.kri_monitor", summary: str = "") -
     return Finding(
         kind=FindingKind.KRI_BREACH,
         agent_id=agent_id,
-        agent_version="2.1.0",
+        agent_version=NARRATES.get(agent_id, "9.9.9"),
         study_id="MRD-201",
         site_id=site,
         severity=Severity.HIGH,
@@ -150,7 +151,7 @@ def test_a_rejection_records_reasons_and_no_text(ledger: SqliteLedger) -> None:
     assert narrative.status == "rejected"
     assert narrative.headline is None
     assert narrative.explanation is None
-    assert narrative.rejection_reasons == ("missing_site", "number_not_in_evidence:42")
+    assert narrative.rejection_reasons == ("missing_site", "number_not_displayed:42")
     assert narrative.response_sha256 is not None
 
 
@@ -257,3 +258,10 @@ def test_a_mismatched_request_hash_from_the_sandbox_is_an_error(ledger: SqliteLe
         log=structlog.get_logger(),
     )
     assert runner.run_pass().counts == {"error": 1}
+
+
+def test_older_detector_versions_are_not_narrated_by_1_1_0(ledger: SqliteLedger) -> None:
+    old = _finding("1001").model_copy(update={"agent_version": "2.1.0"})
+    _raise(ledger, old)
+    _raise(ledger, _finding("1002"))
+    assert [e.seq for e in _runner(ledger, FakeModelClient()).pending()] == [2]

@@ -1,0 +1,335 @@
+{
+ "clean": {
+  "rbqm.csm": [],
+  "rbqm.kri_monitor": [],
+  "rbqm.qtl_detector": []
+ },
+ "csm_clean_twelve": {
+  "rbqm.csm": [],
+  "rbqm.kri_monitor": [],
+  "rbqm.qtl_detector": []
+ },
+ "csm_two_sites": {
+  "rbqm.csm": [
+   {
+    "evidence": [
+     [
+      "sysbp:log_sd_z",
+      -6.247063873903607,
+      -3.5
+     ],
+     [
+      "sysbp:sd_ratio",
+      0.5253751149576851,
+      0.6
+     ],
+     [
+      "sysbp:terminal_zero_share",
+      0.4066666666666667,
+      null
+     ],
+     [
+      "sysbp:terminal_zero_z",
+      7.419398354242546,
+      3.5
+     ],
+     [
+      "diabp:log_sd_z",
+      -10.360896787991848,
+      -3.5
+     ],
+     [
+      "diabp:sd_ratio",
+      0.5149752462001651,
+      0.6
+     ],
+     [
+      "diabp:terminal_zero_share",
+      0.41333333333333333,
+      null
+     ],
+     [
+      "diabp:terminal_zero_z",
+      11.736139214892754,
+      3.5
+     ],
+     [
+      "pulse:log_sd_z",
+      -7.054432116346134,
+      -3.5
+     ],
+     [
+      "pulse:sd_ratio",
+      0.5634837583737563,
+      0.6
+     ],
+     [
+      "pulse:terminal_zero_share",
+      0.36666666666666664,
+      null
+     ],
+     [
+      "pulse:terminal_zero_z",
+      8.655964746616302,
+      3.5
+     ]
+    ],
+    "key": [
+     "site_data_anomaly",
+     "1003",
+     "variance"
+    ],
+    "severity": "high"
+   },
+   {
+    "evidence": [
+     [
+      "sysbp:log_sd_z",
+      -6.335952683911179,
+      -3.5
+     ],
+     [
+      "sysbp:sd_ratio",
+      0.5205862272441648,
+      0.6
+     ],
+     [
+      "sysbp:terminal_zero_share",
+      0.38666666666666666,
+      null
+     ],
+     [
+      "sysbp:terminal_zero_z",
+      6.913530284635098,
+      3.5
+     ],
+     [
+      "diabp:log_sd_z",
+      -8.666230157755352,
+      -3.5
+     ],
+     [
+      "diabp:sd_ratio",
+      0.5740178710392321,
+      0.6
+     ],
+     [
+      "diabp:terminal_zero_share",
+      0.4266666666666667,
+      null
+     ],
+     [
+      "diabp:terminal_zero_z",
+      12.27573182247403,
+      3.5
+     ],
+     [
+      "pulse:log_sd_z",
+      -8.017988619746198,
+      -3.5
+     ],
+     [
+      "pulse:sd_ratio",
+      0.5210409980916395,
+      0.6
+     ],
+     [
+      "pulse:terminal_zero_share",
+      0.38666666666666666,
+      null
+     ],
+     [
+      "pulse:terminal_zero_z",
+      9.330455506092898,
+      3.5
+     ]
+    ],
+    "key": [
+     "site_data_anomaly",
+     "1009",
+     "variance"
+    ],
+    "severity": "high"
+   }
+  ],
+  "rbqm.kri_monitor": [],
+  "rbqm.qtl_detector": []
+ },
+ "kri_all_four": {
+  "rbqm.csm": [],
+  "rbqm.kri_monitor": [
+   {
+    "evidence": [
+     [
+      "data_entry_lag:median_days",
+      14.0,
+      7.0
+     ],
+     [
+      "data_entry_lag:entries",
+      200.0,
+      null
+     ]
+    ],
+    "key": [
+     "kri_breach",
+     "1002",
+     "data_entry_lag"
+    ],
+    "severity": "high"
+   },
+   {
+    "evidence": [
+     [
+      "deviations:observed",
+      12.0,
+      null
+     ],
+     [
+      "deviations:expected",
+      3.0,
+      null
+     ],
+     [
+      "deviations:phi",
+      1.8319044478639999,
+      null
+     ],
+     [
+      "deviations:z",
+      3.83910927169311,
+      null
+     ],
+     [
+      "deviations:p",
+      6.174073461487823e-05,
+      null
+     ],
+     [
+      "deviations:p_adjusted",
+      0.0007408888153785389,
+      0.01
+     ],
+     [
+      "deviations:excluded_subjects",
+      0.0,
+      null
+     ]
+    ],
+    "key": [
+     "kri_breach",
+     "1004",
+     "deviations"
+    ],
+    "severity": "high"
+   },
+   {
+    "evidence": [
+     [
+      "query_aging:median_open_age_days",
+      40.0,
+      21.0
+     ],
+     [
+      "query_aging:open_queries",
+      28.0,
+      null
+     ]
+    ],
+    "key": [
+     "kri_breach",
+     "1005",
+     "query_aging"
+    ],
+    "severity": "high"
+   },
+   {
+    "evidence": [
+     [
+      "ae_rate:observed",
+      20.0,
+      null
+     ],
+     [
+      "ae_rate:expected",
+      85.54545454545455,
+      null
+     ],
+     [
+      "ae_rate:phi",
+      1.1374848548364833,
+      null
+     ],
+     [
+      "ae_rate:z",
+      -6.644637593346672,
+      null
+     ],
+     [
+      "ae_rate:p",
+      1.519820201653218e-11,
+      null
+     ],
+     [
+      "ae_rate:p_adjusted",
+      1.8237842419838615e-10,
+      0.01
+     ],
+     [
+      "ae_rate:excluded_subjects",
+      0.0,
+      null
+     ],
+     [
+      "ae_rate:per_100_subject_days",
+      0.7874015748031497,
+      3.367931281317108
+     ]
+    ],
+    "key": [
+     "under_reporting",
+     "1003",
+     "ae_rate"
+    ],
+    "severity": "high"
+   }
+  ],
+  "rbqm.qtl_detector": []
+ },
+ "qtl_drift": {
+  "rbqm.csm": [],
+  "rbqm.kri_monitor": [],
+  "rbqm.qtl_detector": [
+   {
+    "evidence": [
+     [
+      "premature_discontinuation:rate",
+      0.5291666666666667,
+      0.479
+     ],
+     [
+      "premature_discontinuation:discontinued",
+      127.0,
+      null
+     ],
+     [
+      "premature_discontinuation:treated",
+      240.0,
+      null
+     ],
+     [
+      "premature_discontinuation:approach_from",
+      0.45899999999999996,
+      null
+     ]
+    ],
+    "key": [
+     "qtl_breach",
+     "STUDY",
+     "premature_discontinuation"
+    ],
+    "severity": "high"
+   }
+  ]
+ }
+}

@@ -1,12 +1,12 @@
 """The narrator pass: explain pending findings, within a call budget, and record each outcome.
 
-One pass reads every FindingRaised from the three detection agents that has no final
-FindingNarrative from this narrator version yet (accepted, rejected or refused; an error
-is retried on the next pass), oldest first. Each input passes the de-identification check
-first: a refusal is recorded at once and costs no call. The first max_calls of the rest
-are sent in one batch by the executor; the others wait for the next pass. Every response
-is validated here, on the host, and recorded as a FindingNarrative with the finding's
-visibility. The finding itself is never changed.
+One pass reads every FindingRaised from the detector versions this narrator version
+narrates (narrator.NARRATES) that has no final FindingNarrative from it yet (accepted,
+rejected or refused; an error is retried on the next pass), oldest first. Each input
+passes the de-identification check first: a refusal is recorded at once and costs no
+call. The first max_calls of the rest are sent in one batch by the executor; the others
+wait for the next pass. Every response is validated here, on the host, and recorded as a
+FindingNarrative with the finding's visibility. The finding itself is never changed.
 """
 
 from collections.abc import Collection, Sequence
@@ -128,7 +128,7 @@ class NarratorRunner:
             if not isinstance(entry, Event) or not isinstance(entry.payload, FindingRaised):
                 continue
             finding = entry.payload.finding
-            if finding.agent_id not in narrator.SUBSCRIBES_TO_AGENTS:
+            if narrator.NARRATES.get(finding.agent_id) != finding.agent_version:
                 continue
             if finding.finding_id is None or finding.finding_id in done:
                 continue

@@ -1,4 +1,4 @@
-"""rbqm.csm v2: central statistical monitoring of vital signs, between sites.
+"""rbqm.csm v2.1: central statistical monitoring of vital signs, between sites.
 
 Each tested site is one observation. For each parameter, a site's log SD is compared with
 the other tested sites through a robust z (median and MAD), so one or two bad sites
@@ -6,6 +6,9 @@ cannot hide each other the way a pooled reference does. Terminal-digit preferenc
 supporting evidence: it is attached to a finding the variance test raised and never
 raises a finding by itself, because digit preference alone is common in manual blood
 pressure measurement.
+
+2.1.0 (phase 2 step 4): the same findings, with evidence described: terminal-digit items
+are marked supporting, with the 10% chance level as their reference.
 """
 
 from collections.abc import Sequence
@@ -13,6 +16,7 @@ from dataclasses import dataclass
 
 from meridian.agents.base import AgentContext, FindingDraft, make_dedup_key
 from meridian.agents.rbqm.common import RbqmAgentBase, cut_id_of
+from meridian.agents.rbqm.describe import describe
 from meridian.domain.enums import FindingKind, Severity
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
@@ -39,6 +43,7 @@ class _Flag:
 
 class Csm(RbqmAgentBase):
     agent_id = "rbqm.csm"
+    version = "2.1.0"
     config_model = CsmConfig
 
     def run(self, trigger: Event, ctx: AgentContext[CsmConfig]) -> Sequence[FindingDraft]:
@@ -132,7 +137,7 @@ class Csm(RbqmAgentBase):
                         f"below {cfg.sd_ratio_max:g} of the median site). Terminal digits are "
                         "attached as supporting evidence only."
                     ),
-                    evidence=tuple(evidence),
+                    evidence=describe(evidence),
                     score=max(-(f.stat.sd_z or 0.0) for f in site_flags),
                 )
             )
