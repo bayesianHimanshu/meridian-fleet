@@ -1,46 +1,31 @@
 from pathlib import Path
 
+import polars as pl
 import pytest
 import structlog
 
 from meridian.agents.base import parse_dedup_key
-from meridian.agents.rbqm.common import loo_poisson
 from meridian.agents.rbqm.csm import Csm, CsmConfig
 from meridian.agents.rbqm.kri_monitor import KriMonitor, KriMonitorConfig
-from meridian.agents.rbqm.qtl_detector import QtlDetector, QtlDetectorConfig, QtlStatus, qtl_status
+from meridian.agents.rbqm.qtl_detector import (
+    QtlDetector,
+    QtlDetectorConfig,
+    QtlStatus,
+    qtl_status,
+)
 from meridian.data.derived import premature_discontinuation
 from meridian.domain.enums import FindingKind, Severity
+from meridian.stats.site_metrics import sites_with_min_treated
 from tests.agent_support import clean, plant, run_agent
+from tests.rbqm_support import make_tables
 
 TARGET = "1003"
 
 
 def _keys(drafts: list) -> list[tuple[str, str, str]]:  # type: ignore[type-arg]
     return [
-        (d.kind.value, d.site_id or "STUDY", parse_dedup_key(d.dedup_key).metric) for d in drafts
+        (d.kind.value, d.site_id or "STUDY", parse_dedup_key(d.dedup_key).check) for d in drafts
     ]
-
-
-# Leave-one-out
-
-
-def test_leave_one_out_excludes_the_site_under_test() -> None:
-    counts = {"A": 100, "B": 10, "C": 10}
-    days = {"A": 10, "B": 10, "C": 10}
-    results = {r.site: r for r in loo_poisson(counts, days, ["A", "B"], lower_tail=False)}
-    assert results["A"].rate_others == pytest.approx(1.0)  # (10 + 10) / (10 + 10)
-    assert results["A"].expected == pytest.approx(10.0)
-    assert results["B"].rate_others == pytest.approx(110 / 20)
-    assert results["A"].p < 1e-30
-    assert "C" not in results
-
-
-def test_leave_one_out_lower_tail() -> None:
-    (low,) = loo_poisson(
-        {"A": 1, "B": 50, "C": 50}, {"A": 10, "B": 10, "C": 10}, ["A"], lower_tail=True
-    )
-    assert low.expected == pytest.approx(50.0)
-    assert low.p < 1e-15
 
 
 # kri_monitor
@@ -106,7 +91,7 @@ def test_kri_monitor_is_deterministic_and_ordered(tmp_path: Path) -> None:
 
 def test_kri_monitor_skips_small_sites_for_rate_tests(tmp_path: Path) -> None:
     blinded, ops, unblinded = clean(small_site=3)
-    small = "1006"
+    small = "1012"
     blinded, ops = plant(blinded, ops, "ae_under_reporting", small, {"drop_share": 1.0})
     with structlog.testing.capture_logs() as logs:
         drafts = run_agent(KriMonitor(), KriMonitorConfig(), tmp_path, "F", blinded, ops, unblinded)
@@ -116,83 +101,125 @@ def test_kri_monitor_skips_small_sites_for_rate_tests(tmp_path: Path) -> None:
     assert skipped[0]["sites"] == [small]
 
 
+def test_agents_are_version_2() -> None:
+    for agent in (KriMonitor(), QtlDetector(), Csm()):
+        assert agent.version == "2.0.0"
+
+
+def test_kri_rate_evidence_carries_phi_and_z(tmp_path: Path) -> None:
+    blinded, ops, unblinded = clean()
+    blinded, ops = plant(blinded, ops, "ae_under_reporting", TARGET, {"drop_share": 0.7})
+    (draft,) = run_agent(KriMonitor(), KriMonitorConfig(), tmp_path, "F", blinded, ops, unblinded)
+    statistics = {e.statistic: e.value for e in draft.evidence}
+    assert {"ae_rate:phi", "ae_rate:z", "ae_rate:expected", "ae_rate:observed"} <= set(statistics)
+    assert statistics["ae_rate:phi"] >= 1.0
+    assert statistics["ae_rate:z"] < 0
+    assert parse_dedup_key(draft.dedup_key).agent_version == "2.0.0"
+
+
 # qtl_detector
 
 
 def test_qtl_status_bands() -> None:
-    assert qtl_status(0.5, 0.6, 0.9) is QtlStatus.WITHIN
-    assert qtl_status(0.54, 0.6, 0.9) is QtlStatus.APPROACHING
-    assert qtl_status(0.6, 0.6, 0.9) is QtlStatus.BREACHED
+    assert qtl_status(0.57, 0.617, 0.02) is QtlStatus.WITHIN
+    assert qtl_status(0.597, 0.617, 0.02) is QtlStatus.APPROACHING
+    assert qtl_status(0.616, 0.617, 0.02) is QtlStatus.APPROACHING
+    assert qtl_status(0.617, 0.617, 0.02) is QtlStatus.BREACHED
+    assert qtl_status(0.6, 0.617, 0.0) is QtlStatus.WITHIN
 
 
-def _rate(tables: tuple[dict, dict, dict]) -> float:  # type: ignore[type-arg]
-    d, n = premature_discontinuation(tables[0]["dm"], tables[0]["ds"])
+def _rate(blinded: dict) -> float:  # type: ignore[type-arg]
+    d, n = premature_discontinuation(blinded["dm"], blinded["ds"])
     return d / n
 
 
-def test_qtl_detector_silent_within(tmp_path: Path) -> None:
+def test_qtl_base_just_below_limit_is_within_not_approaching(tmp_path: Path) -> None:
     tables = clean()
-    config = QtlDetectorConfig(discontinuation_limit=round(_rate(tables) + 0.2, 3))
+    rate = _rate(tables[0])
+    # The step 3 failure mode: limit = base + 0.05 made the base "approaching" at 90%.
+    config = QtlDetectorConfig(discontinuation_limit=rate + 0.05, approach_band=0.02)
     assert run_agent(QtlDetector(), config, tmp_path, "C", *tables) == []
 
 
-def test_qtl_detector_approaching_is_medium(tmp_path: Path) -> None:
+def test_qtl_approaching_inside_the_band_is_medium(tmp_path: Path) -> None:
     tables = clean()
-    config = QtlDetectorConfig(discontinuation_limit=_rate(tables) / 0.95)
+    config = QtlDetectorConfig(discontinuation_limit=_rate(tables[0]) + 0.01, approach_band=0.02)
     (draft,) = run_agent(QtlDetector(), config, tmp_path, "C", *tables)
     assert draft.severity is Severity.MEDIUM
     assert draft.kind is FindingKind.QTL_BREACH
     assert draft.site_id is None
-    assert draft.score == pytest.approx(0.95)
 
 
 def test_qtl_detector_flags_planted_drift_as_high(tmp_path: Path) -> None:
     blinded, ops, unblinded = clean()
-    base = _rate((blinded, ops, unblinded))
-    limit = round(base + 0.05, 3)
+    base = _rate(blinded)
     blinded, ops = plant(
         blinded, ops, "discontinuation_drift", "STUDY", {"target_rate": base + 0.1}
     )
-    (draft,) = run_agent(
-        QtlDetector(),
-        QtlDetectorConfig(discontinuation_limit=limit),
-        tmp_path,
-        "F",
-        blinded,
-        ops,
-        unblinded,
-    )
+    config = QtlDetectorConfig(discontinuation_limit=round(base + 0.05, 3))
+    (draft,) = run_agent(QtlDetector(), config, tmp_path, "F", blinded, ops, unblinded)
     assert draft.severity is Severity.HIGH
     assert parse_dedup_key(draft.dedup_key).site == "STUDY"
 
 
-# csm
+# csm v2: twelve sites so the between-site robust z has something to work with
+
+FABRICATE = {"subject_share": 0.8, "sd_scale": 0.25, "terminal_zero_share": 0.4}
 
 
-def test_csm_silent_on_clean_fixture(tmp_path: Path) -> None:
-    assert run_agent(Csm(), CsmConfig(), tmp_path, "C", *clean()) == []
+def twelve() -> tuple[dict, dict, dict]:  # type: ignore[type-arg]
+    return make_tables(n_sites=12, per_site=15, seed=7)
 
 
-def test_csm_flags_fabricated_vitals_with_both_tests(tmp_path: Path) -> None:
-    blinded, ops, unblinded = clean()
-    blinded, ops = plant(
-        blinded,
-        ops,
-        "fabricated_vitals",
-        TARGET,
-        {"subject_share": 0.8, "sd_scale": 0.25, "terminal_zero_share": 0.4},
-    )
+def test_csm_silent_on_clean_twelve_sites(tmp_path: Path) -> None:
+    assert run_agent(Csm(), CsmConfig(), tmp_path, "C", *twelve()) == []
+
+
+def test_csm_flags_one_fabricated_site_among_twelve(tmp_path: Path) -> None:
+    blinded, ops, unblinded = twelve()
+    blinded, ops = plant(blinded, ops, "fabricated_vitals", "1005", FABRICATE)
     drafts = run_agent(Csm(), CsmConfig(), tmp_path, "F", blinded, ops, unblinded)
-    assert _keys(drafts) == [("site_data_anomaly", TARGET, "-")]
+    assert _keys(drafts) == [("site_data_anomaly", "1005", "variance")]
     (draft,) = drafts
-    assert draft.severity is Severity.HIGH
-    statistics = {e.statistic for e in draft.evidence}
-    assert {"sysbp:sd_ratio", "sysbp:brown_forsythe_p", "sysbp:terminal_digit_chi2_p"} <= statistics
+    assert draft.severity is Severity.HIGH  # all three parameters flag
+    stats = {e.statistic for e in draft.evidence}
+    assert {"sysbp:log_sd_z", "sysbp:sd_ratio", "sysbp:terminal_zero_share"} <= stats
+    assert draft.score > CsmConfig().z_threshold
+
+
+def test_csm_flags_two_fabricated_sites_without_masking(tmp_path: Path) -> None:
+    blinded, ops, unblinded = twelve()
+    for site in ("1003", "1009"):
+        blinded, ops = plant(blinded, ops, "fabricated_vitals", site, FABRICATE)
+    drafts = run_agent(Csm(), CsmConfig(), tmp_path, "F", blinded, ops, unblinded)
+    assert [d.site_id for d in drafts] == ["1003", "1009"]
+
+
+def test_csm_digit_preference_alone_raises_nothing(tmp_path: Path) -> None:
+    blinded, ops, unblinded = twelve()
+    site_subjects = blinded["dm"].filter(pl.col("SITEID") == "1004")["USUBJID"].to_list()
+    rounded = pl.col("VSSTRESN").truediv(10).round().mul(10)
+    vs = (
+        blinded["vs"]
+        .with_row_index("_r")
+        .with_columns(
+            pl.when(pl.col("USUBJID").is_in(site_subjects) & (pl.col("_r") % 3 != 0))
+            .then(rounded)
+            .otherwise(pl.col("VSSTRESN"))
+            .alias("VSSTRESN")
+        )
+        .drop("_r")
+    )
+    zero = vs.filter(pl.col("USUBJID").is_in(site_subjects))["VSSTRESN"] % 10 == 0
+    assert float(zero.mean() or 0) > 0.6  # strong preference for 0, spread unchanged
+    blinded = {**blinded, "vs": vs}
+    assert run_agent(Csm(), CsmConfig(), tmp_path, "D", blinded, ops, unblinded) == []
 
 
 def test_csm_skips_small_sites(tmp_path: Path) -> None:
-    blinded, ops, unblinded = clean(small_site=3)
-    small = "1006"
+    blinded, ops, unblinded = make_tables(n_sites=12, per_site=15, seed=7, small_site=3)
+    small = "1012"
+    assert small not in sites_with_min_treated(blinded["dm"], 5)[0]
     blinded, ops = plant(
         blinded,
         ops,
@@ -204,21 +231,10 @@ def test_csm_skips_small_sites(tmp_path: Path) -> None:
 
 
 def test_csm_is_deterministic(tmp_path: Path) -> None:
-    blinded, ops, unblinded = clean()
-    for site in ("1004", "1002"):
-        blinded, ops = plant(
-            blinded,
-            ops,
-            "fabricated_vitals",
-            site,
-            {"subject_share": 0.8, "sd_scale": 0.25, "terminal_zero_share": 0.4},
-        )
+    blinded, ops, unblinded = twelve()
+    for site in ("1006", "1002"):
+        blinded, ops = plant(blinded, ops, "fabricated_vitals", site, FABRICATE)
     a = run_agent(Csm(), CsmConfig(), tmp_path / "a", "F", blinded, ops, unblinded)
     b = run_agent(Csm(), CsmConfig(), tmp_path / "b", "F", blinded, ops, unblinded)
     assert a == b
-    sites = [d.site_id or "" for d in a]
-    assert sites == sorted(sites)
-    # Both fabricated sites are flagged. With two of them pooled into "others", the
-    # reference itself shifts: the variance test is masked and clean sites can trip
-    # the digit test (swamping). Calibration in step 4 has to live with this.
-    assert {"1002", "1004"} <= set(sites)
+    assert [d.site_id for d in a] == ["1002", "1006"]

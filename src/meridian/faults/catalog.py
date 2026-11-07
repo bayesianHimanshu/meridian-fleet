@@ -149,7 +149,7 @@ def fabricated_vitals(
     in_scope = pl.col("VSTESTCD").is_in(VITAL_TESTS) & pl.col("VSSTRESN").is_not_null()
     means = dict(
         vs.filter(in_scope & pl.col("USUBJID").is_in(site_ids))
-        .group_by("VSTESTCD")
+        .group_by("VSTESTCD", maintain_order=True)
         .agg(pl.col("VSSTRESN").mean())
         .iter_rows()
     )

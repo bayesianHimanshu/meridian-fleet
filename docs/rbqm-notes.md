@@ -89,3 +89,55 @@ site on clean data: digit habits genuinely differ between sites. Pooling also cu
 ways: when two sites are fabricated, the pooled reference shifts, which can hide the
 variance signal (masking) and make clean sites look odd (swamping). The step 3 calibration
 report shows the untuned result; tuning is step 4.
+
+## Step 4: what went wrong in v1, and how v2 fixes it
+
+### Comparing one site with everyone else pooled
+
+v1 tested each site against all other sites lumped together. That assumes the other
+sites are interchangeable, so any difference is suspicious. Real sites are not like that:
+they use different equipment, staff habits, patient mixes and reporting cultures. With
+1,700 readings per site, even honest differences of habit are highly "significant", and
+every site got flagged. Pooling also lets a bad site contaminate the reference everyone
+else is compared with.
+
+### Overdispersion and the quasi-Poisson phi
+
+A Poisson model says the variance of a count equals its mean. Real site AE counts vary far
+more than that: in the pilot, AEs per 100 subject-days range from about 0.7 to 8.7 between
+sites. That extra spread is overdispersion. The quasi-Poisson fix keeps the same expected
+count but widens the error bar by a dispersion factor phi: z = (O - E) / sqrt(phi * E). We
+estimate phi from how far typical sites sit from a common rate, using the median of the
+squared residuals (scaled so that phi is about 1 for pure chance), so one or two odd sites
+barely move it. We take the residuals against the median site rate, not against each
+site's leave-one-out rate: a single outlier enters every other site's leave-one-out rate
+and would shift all their residuals at once.
+
+The price is honest: with phi about 8 for AEs in the pilot, removing 70% of one site's
+AEs is no longer distinguishable from ordinary site-to-site variation. v2 stops crying
+wolf on AEs and, with these data, also stops catching AE under-reporting.
+
+### Robust z with median and MAD
+
+v2's CSM treats each site as one observation (its log SD) and asks how far it sits from
+the middle of the sites, in units of the median absolute deviation (MAD). Mean and SD
+would be dragged by the bad sites themselves: two fabricated sites lower the mean and
+inflate the SD, so each looks less unusual (masking). The median and MAD ignore a
+minority of bad sites, so two fabricated sites among twelve are both still flagged.
+
+### Digit preference is supporting evidence only
+
+Clinicians reading a manual blood pressure often round to 0 or to even numbers. The pilot
+shows it plainly: some sites end over 90% of diastolic readings in 0. That is a
+measurement habit, not fraud, so a digit test on its own mostly finds habits. In v2 a high
+share of zeros only strengthens a finding the variance test already raised (it can lift
+the severity), and never raises one by itself.
+
+### Why we froze thresholds before the holdout
+
+Every threshold tuned on a set of cuts will look good on those cuts. The only honest
+estimate of how the agents do on new data comes from data that played no part in the
+choices. So we tuned on DC-BASE, DC-RBQM-CORE and the null cuts, committed the config,
+and only then generated the holdout (same faults, other sites) and the magnitude sweep.
+If those numbers are worse, that is the real performance, and changing thresholds after
+seeing them would quietly turn the holdout into more training data.

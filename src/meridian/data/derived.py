@@ -29,7 +29,9 @@ def subject_days(dm: pl.DataFrame, sv: pl.DataFrame) -> pl.DataFrame:
 
     Columns: USUBJID, SITEID, subject_days (null when either date is missing).
     """
-    last_visit = sv.group_by("USUBJID").agg(pl.col("SVSTDTC_DATE").max().alias("_last"))
+    last_visit = sv.group_by("USUBJID", maintain_order=True).agg(
+        pl.col("SVSTDTC_DATE").max().alias("_last")
+    )
     return (
         treated_subjects(dm)
         .join(last_visit, on="USUBJID", how="left")

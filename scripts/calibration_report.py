@@ -14,16 +14,16 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from meridian.agents.base import parse_dedup_key
-from meridian.agents.rbqm.common import exposure
 from meridian.data.derived import treated_subjects
 from meridian.data.study_store import StudyReader
+from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType, Role
 from meridian.domain.events import Event, FindingRaised
 from meridian.domain.findings import Finding
 from meridian.faults.inject import GroundTruth
 from meridian.platform.config import Settings
 from meridian.platform.container import Container
+from meridian.stats.site_metrics import exposure
 
 VITALS = ("SYSBP", "DIABP", "PULSE")
 
@@ -45,22 +45,27 @@ def site_table(study: StudyReader) -> list[str]:
         study.table("ae")
         .filter(pl.col("USUBJID").is_in(included))
         .join(site_of, on="USUBJID")
-        .group_by("SITEID")
+        .group_by("SITEID", maintain_order=True)
         .len()
     )
     lag = (
         study.table("data_entry")
         .filter(pl.col("USUBJID").is_in(ids))
-        .group_by("SITEID")
+        .group_by("SITEID", maintain_order=True)
         .agg(pl.col("entry_lag_days").median().alias("lag"))
     )
     age = (
         study.table("queries")
         .filter(pl.col("USUBJID").is_in(ids) & (pl.col("status") == "open"))
-        .group_by("SITEID")
+        .group_by("SITEID", maintain_order=True)
         .agg(pl.col("age_days").median().alias("age"))
     )
-    dev = study.table("deviations").filter(pl.col("USUBJID").is_in(ids)).group_by("SITEID").len()
+    dev = (
+        study.table("deviations")
+        .filter(pl.col("USUBJID").is_in(ids))
+        .group_by("SITEID", maintain_order=True)
+        .len()
+    )
     vs = (
         study.table("vs")
         .filter(pl.col("VSTESTCD").is_in(VITALS) & pl.col("VSSTRESN").is_not_null())
@@ -107,7 +112,7 @@ def findings_by_cut(container: Container) -> dict[str, list[tuple[Finding, str]]
         assert isinstance(entry, Event)
         assert isinstance(entry.payload, FindingRaised)
         parts = parse_dedup_key(entry.payload.dedup_key)
-        out[parts.cut_id].append((entry.payload.finding, parts.metric))
+        out[parts.cut_id].append((entry.payload.finding, parts.check))
     return out
 
 
@@ -185,7 +190,7 @@ def main() -> None:
             f"kri_monitor alpha {kri.alpha}, lag_days {kri.lag_days}, query_age_days "
             f"{kri.query_age_days}, min_subjects {kri.min_subjects}, min_open_queries "
             f"{kri.min_open_queries}; qtl_detector limit {qtl.discontinuation_limit}, approaching "
-            f"at {qtl.approaching_fraction:.0%}; csm alpha {csm.alpha}, sd_ratio_max "
+            f"from limit - {qtl.approach_band}; csm z_threshold {csm.z_threshold}, sd_ratio_max "
             f"{csm.sd_ratio_max}, min_readings {csm.min_readings}.",
             "",
             "## Summary",

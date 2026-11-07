@@ -60,4 +60,5 @@ def run_agent(
 
 
 def clean(per_site: int = 20, small_site: int | None = None) -> tuple[Tables, Tables, Tables]:
-    return make_tables(per_site=per_site, seed=7, small_site=small_site)
+    """Twelve homogeneous sites: enough for a stable between-site dispersion estimate."""
+    return make_tables(n_sites=12, per_site=per_site, seed=7, small_site=small_site)

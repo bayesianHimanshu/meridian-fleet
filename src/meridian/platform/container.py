@@ -14,6 +14,7 @@ from meridian.agents.registry import AgentRegistry, RegistrationError
 from meridian.agents.runner import AgentRunner
 from meridian.data.ingest import IngestService
 from meridian.data.study_store import ParquetStudyReader, StudyReader
+from meridian.evals.scorecard import ScorecardStore
 from meridian.faults.inject import FaultInjector
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
@@ -84,6 +85,13 @@ class Container:
             study_id=self.settings.study_id,
             log=log,
         )
+
+    def registered_versions(self) -> dict[str, str]:
+        """agent_id to version of every enabled agent: the default eval version filter."""
+        return {r.agent.agent_id: r.agent.version for r in self.agent_registry().enabled()}
+
+    def scorecard_store(self) -> ScorecardStore:
+        return ScorecardStore(self.settings.evals_dir)
 
     def close(self) -> None:
         self.ledger.close()

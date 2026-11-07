@@ -234,3 +234,4 @@ __marimo__/
 data/raw/
 data/curated/
 data/ground_truth/
+data/evals/

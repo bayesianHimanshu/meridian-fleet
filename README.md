@@ -62,12 +62,36 @@ DataCut through the blinded `StudyReader` and can never import `meridian.faults`
 [docs/rbqm-notes.md](docs/rbqm-notes.md) for what each check measures, and
 [docs/calibration-step3.md](docs/calibration-step3.md) for the untuned starting point.
 
+## Evaluation (phase 1, step 4)
+
+```sh
+uv run meridian eval run --cut DC-RBQM-CORE [--agent-version 2.0.0]   # needs ground truth
+uv run meridian eval null --cut DC-BASE                               # every finding is a FP
+uv run meridian eval suite      # null cuts, holdout, sweep, agents, scorecards, report
+uv run meridian eval report     # rewrite docs/eval-phase1.md from the latest scorecards
+uv run python scripts/tune_phase1.py   # the tuning loop (dev and null cuts only)
+```
+
+Scorecards are written once to `data/evals/<run_id>.json` (gitignored). The phase 1
+result is in [docs/eval-phase1.md](docs/eval-phase1.md) and the tuning record in
+[docs/tuning-phase1.md](docs/tuning-phase1.md). `meridian.evals` never imports agents.
+
 ## Configuration
 
 Settings come from `config/default.toml` and can be overridden by environment variables
 prefixed `MERIDIAN_`, for example `MERIDIAN_LEDGER_PATH=/tmp/ledger.sqlite3`. Point at a
 different TOML file with `MERIDIAN_CONFIG_FILE`. Precedence, highest first: constructor
 arguments, environment, TOML file, field defaults.
+
+## Conventions
+
+* Append-only: ledger events, cuts, ground truth and scorecards are written once.
+* Time comes from the injected Clock; randomness from seeded numpy Generators spawned
+  from a SeedSequence in a fixed order.
+* Every polars `group_by` whose output feeds a computation or a file either passes
+  `maintain_order=True` or is followed by `.sort(...)` in the same chain. polars returns
+  groups in arbitrary order, and in step 3 that order reached `np.polyfit` and made a
+  cut non-reproducible. `tests/contract/test_group_by_order.py` enforces the rule.
 
 ## Layout
 
@@ -77,7 +101,9 @@ src/meridian/
   ledger/    hashing (canonical JSON, SHA-256 chain), SQLite store, verifier
   data/      fetch, XPT reader, pure CDISC transform, ops synthesis, cut writer, readers
   faults/    fault catalog, scenarios, injector and FullCutReader (never imported by agents)
-  agents/    agent protocol, registry, runner, and the rbqm agents
+  agents/    agent protocol, registry, runner, and the rbqm agents (v2)
+  stats/     robust z, quasi-Poisson and per-site metrics shared by agents and evals
+  evals/     matching, metrics, scorecards and the phase 1 report (never imports agents)
 scripts/     calibration_report.py (reads only; nothing in src imports it)
   platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
   cli.py     typer app exposed as the `meridian` console script

@@ -37,6 +37,8 @@ class ActorWoke(BaseModel):
     type: Literal[EventType.ACTOR_WOKE] = EventType.ACTOR_WOKE
     agent_id: AgentId
     trigger_seq: PositiveInt
+    # Null on events written before agent versions were part of identity.
+    agent_version: str | None = None
 
 
 class ActorSuspended(BaseModel):
@@ -45,6 +47,8 @@ class ActorSuspended(BaseModel):
     type: Literal[EventType.ACTOR_SUSPENDED] = EventType.ACTOR_SUSPENDED
     agent_id: AgentId
     trigger_seq: PositiveInt
+    # Null on events written before agent versions were part of identity.
+    agent_version: str | None = None
 
 
 class FindingRaised(BaseModel):

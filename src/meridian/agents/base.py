@@ -3,20 +3,31 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Annotated, NamedTuple, Protocol
+from typing import Annotated, Protocol
 
 import structlog
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
 
 from meridian.data.study_store import StudyReader
+from meridian.domain.dedup import STUDY_SCOPE, DedupKeyParts, make_dedup_key, parse_dedup_key
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
+from meridian.platform.agent_settings import AgentConfig
 from meridian.platform.clock import Clock
 
-STUDY_SCOPE = "STUDY"
-NO_METRIC = "-"
-_SEP = "|"
+__all__ = [
+    "STUDY_SCOPE",
+    "Agent",
+    "AgentConfig",
+    "AgentContext",
+    "DedupKeyParts",
+    "FindingDraft",
+    "Zone",
+    "make_dedup_key",
+    "parse_dedup_key",
+    "zone_of",
+]
 
 
 class Zone(StrEnum):
@@ -27,12 +38,6 @@ class Zone(StrEnum):
     SAFETY = "safety"
     QUALITY = "quality"
     UNBLINDED = "unblinded"
-
-
-class AgentConfig(BaseModel):
-    """Base for each agent's own configuration model."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,46 +86,6 @@ class Agent[C: AgentConfig](Protocol):
     def config_model(self) -> type[C]: ...
 
     def run(self, trigger: Event, ctx: AgentContext[C]) -> Sequence[FindingDraft]: ...
-
-
-class DedupKeyParts(NamedTuple):
-    agent_id: str
-    kind: str
-    study_id: str
-    site: str
-    cut_id: str
-    metric: str
-
-
-def make_dedup_key(
-    *,
-    agent_id: str,
-    kind: FindingKind,
-    study_id: str,
-    site_id: str | None,
-    cut_id: str,
-    metric: str | None,
-) -> str:
-    """'<agent_id>|<kind>|<study_id>|<site_id or STUDY>|<cut_id>|<kri or ->'."""
-    parts = (
-        agent_id,
-        kind.value,
-        study_id,
-        site_id or STUDY_SCOPE,
-        cut_id,
-        metric or NO_METRIC,
-    )
-    for part in parts:
-        if not part or _SEP in part:
-            raise ValueError(f"dedup key part {part!r} is empty or contains {_SEP!r}")
-    return _SEP.join(parts)
-
-
-def parse_dedup_key(key: str) -> DedupKeyParts:
-    parts = key.split(_SEP)
-    if len(parts) != len(DedupKeyParts._fields):
-        raise ValueError(f"not a dedup key: {key!r}")
-    return DedupKeyParts(*parts)
 
 
 def zone_of(agent_id: str) -> str:
