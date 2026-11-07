@@ -1,35 +1,54 @@
-# The Meridian Therapeutics portfolio shown by GET /api/v1/portfolio. Fictional assets;
-# every field here is static (served as written). Only MRD-201 has live data in this
-# project: its open finding count comes from the ledger.
+# The Meridian Therapeutics portfolio shown by GET /api/v1/portfolio, from the Command
+# Center mock (design/command-center-mock.html). Every field here is static: served as
+# written, never computed. Only MRD-201 has live data in this project (the CDISC SDTM
+# pilot), so its indication and intervention are the pilot's, not the mock's; its open
+# finding count comes from the ledger.
 
 [[assets]]
 asset_id = "MRD-101"
-name = "MRD-101"
+title = "Oral ALK5 inhibitor"
 stage = "preclinical"
-indication = "Solid tumours (fictional)"
-modality = "Small molecule"
-live_study = false
+indication = "Fibrosis"
+milestone = "IND submission"
+milestone_due = "Q2 2027"
+progress_percent = 72
+status_level = "warning"
+status_text = "Dog study in-life"
 
 [[assets]]
 asset_id = "MRD-110"
-name = "MRD-110"
+title = "First-in-human SAD/MAD"
 stage = "phase_1"
-indication = "Healthy volunteers, first in human (fictional)"
-modality = "Small molecule"
-live_study = false
+indication = "Healthy volunteers"
+milestone = "MAD cohort 3 dosing"
+milestone_due = "Jan 2027"
+progress_percent = 55
+probability_of_success = "52%"
+status_level = "good"
+status_text = "On track"
 
 [[assets]]
 asset_id = "MRD-201"
-name = "MRD-201"
+title = "Randomized, double-blind"
 stage = "phase_2"
-indication = "Mild to moderate Alzheimer's disease (data from the CDISC SDTM pilot)"
-modality = "Transdermal patch"
+indication = "Mild to moderate Alzheimer's disease"
+intervention = "Xanomeline transdermal"
+milestone = "Last participant in"
+milestone_due = "Mar 2027"
+progress_percent = 68
+probability_of_success = "29%"
+status_level = "warning"
+status_text = "Enrollment 8% behind"
 live_study = true
 
 [[assets]]
 asset_id = "MRD-301"
-name = "MRD-301"
+title = "Pivotal, placebo-controlled"
 stage = "phase_3"
-indication = "Type 2 diabetes (fictional)"
-modality = "Oral tablet"
-live_study = false
+indication = "Ulcerative colitis"
+milestone = "Interim analysis"
+milestone_due = "Aug 2027"
+progress_percent = 41
+probability_of_success = "58%"
+status_level = "good"
+status_text = "On track"
