@@ -251,6 +251,55 @@
         "title": "AssetStatus",
         "type": "object"
       },
+      "ColumnRule": {
+        "additionalProperties": false,
+        "description": "How one heatmap column is banded, read from the agent's config.",
+        "properties": {
+          "agent": {
+            "title": "Agent",
+            "type": "string"
+          },
+          "critical_beyond": {
+            "title": "Critical Beyond",
+            "type": "number"
+          },
+          "direction": {
+            "enum": [
+              "low",
+              "high",
+              "both"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "z",
+              "days"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "warning_from": {
+            "title": "Warning From",
+            "type": "number"
+          }
+        },
+        "required": [
+          "agent",
+          "unit",
+          "direction",
+          "warning_from",
+          "critical_beyond",
+          "rule"
+        ],
+        "title": "ColumnRule",
+        "type": "object"
+      },
       "ContainmentCheck": {
         "additionalProperties": false,
         "description": "One command of a conformance run and what happened to it.",
@@ -2328,6 +2377,13 @@
       "RbqmSites": {
         "additionalProperties": false,
         "properties": {
+          "columns": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ColumnRule"
+            },
+            "title": "Columns",
+            "type": "object"
+          },
           "cut_id": {
             "title": "Cut Id",
             "type": "string"
@@ -2352,13 +2408,6 @@
           "study_id": {
             "title": "Study Id",
             "type": "string"
-          },
-          "thresholds": {
-            "additionalProperties": {
-              "type": "number"
-            },
-            "title": "Thresholds",
-            "type": "object"
           }
         },
         "required": [
@@ -2367,7 +2416,7 @@
           "parameters",
           "sites",
           "qtl",
-          "thresholds"
+          "columns"
         ],
         "title": "RbqmSites",
         "type": "object"
@@ -2655,6 +2704,20 @@
             ],
             "title": "Ae Rate Z"
           },
+          "bands": {
+            "additionalProperties": {
+              "enum": [
+                "normal",
+                "warning",
+                "critical",
+                "untested_direction",
+                "na"
+              ],
+              "type": "string"
+            },
+            "title": "Bands",
+            "type": "object"
+          },
           "csm_log_sd_z": {
             "additionalProperties": {
               "anyOf": [
@@ -2667,6 +2730,20 @@
               ]
             },
             "title": "Csm Log Sd Z",
+            "type": "object"
+          },
+          "csm_sd_ratio": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Csm Sd Ratio",
             "type": "object"
           },
           "deviation_z": {
@@ -2716,6 +2793,17 @@
             ],
             "title": "Median Open Query Age Days"
           },
+          "open_queries": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Open Queries"
+          },
           "site_id": {
             "title": "Site Id",
             "type": "string"
@@ -2737,7 +2825,10 @@
           "deviation_z",
           "median_entry_lag_days",
           "median_open_query_age_days",
+          "open_queries",
           "csm_log_sd_z",
+          "csm_sd_ratio",
+          "bands",
           "flagged_checks",
           "flagged_by"
         ],
