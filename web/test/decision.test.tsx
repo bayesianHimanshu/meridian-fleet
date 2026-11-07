@@ -2,9 +2,9 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
-import type { Schemas } from "../src/api/client";
+import { ApiError, api, setIdentity, unwrap, type Schemas } from "../src/api/client";
 import { renderApp } from "./render";
-import { BASE, seen, server } from "./server";
+import { BASE, detail, seen, server } from "./server";
 
 const posted = () => seen.filter((s) => s.method === "POST");
 
@@ -58,7 +58,6 @@ describe("decision form", () => {
   });
 
   it.each([
-    [409, { detail: "finding RBQM-0003 is already accepted" }, "finding RBQM-0003 is already accepted"],
     [403, { detail: "qa_auditor may review findings but may never make a decision" }, "qa_auditor may review findings but may never make a decision"],
     [422, { detail: "a dismissal needs a non-empty reason" }, "a dismissal needs a non-empty reason"],
     [422, { detail: [{ loc: ["body", "reason"], msg: "String should have at most 2000 characters", type: "string_too_long" }] }, "reason: String should have at most 2000 characters"],
@@ -69,6 +68,48 @@ describe("decision form", () => {
     await user.click(await screen.findByRole("radio", { name: "Escalate" }));
     await user.click(screen.getByRole("button", { name: /Record decision/ }));
     expect((await screen.findByRole("alert")).textContent).toBe(text);
+  });
+
+  it("a 409 from the API reaches the caller as the API's own message", async () => {
+    respond(409, { detail: "finding RBQM-0003 is already accepted" });
+    setIdentity({ actor: "asha.rao", role: "clinical_ops_lead" });
+    const call = unwrap(
+      api.POST("/api/v1/findings/{finding_id}/decisions", {
+        params: { path: { finding_id: "RBQM-0003" } },
+        body: { action: "escalated", reason: null },
+      }),
+    );
+    await expect(call).rejects.toEqual(new ApiError(409, "finding RBQM-0003 is already accepted"));
+    await expect(call).rejects.toMatchObject({ status: 409 });
+    expect(posted()).toMatchObject([{ actor: "asha.rao", role: "clinical_ops_lead" }]);
+  });
+
+  it("replaces the form with one line once the finding is closed", async () => {
+    server.use(
+      http.get(`${BASE}/findings/:id`, () => {
+        const closed = detail("RBQM-0003", { status: "dismissed", decision_count: 1 });
+        closed.decisions = [
+          {
+            seq: 788,
+            hash: "4".repeat(64),
+            prev_hash: "3".repeat(64),
+            recorded_at: "2026-11-07T18:20:39Z",
+            actor: "asha.rao",
+            role: "clinical_ops_lead",
+            action: "dismissed",
+            reason: "Known natural breach",
+          },
+        ];
+        return HttpResponse.json(closed);
+      }),
+    );
+    renderApp("/findings/RBQM-0003", "karan.mehta");
+    const line = await screen.findByTestId("closed-line");
+    expect(line.textContent).toBe(
+      "Dismissed by Asha Rao (Clinical operations lead) on 2026-11-07 18:20 UTC: Known natural breach. Ledger seq 788.",
+    );
+    expect(screen.queryByRole("button", { name: /Record decision/ })).toBeNull();
+    expect(screen.queryByRole("radio")).toBeNull();
   });
 
   it("needs a reason to dismiss and sends nothing without one", async () => {

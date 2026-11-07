@@ -41,6 +41,8 @@ export function finding(
     agent_version: "2.2.0",
     superseded: false,
     superseded_by: null,
+    retired: false,
+    retired_by_version: null,
     kind: "kri_breach",
     site_id: "1016",
     severity: "high",
@@ -52,6 +54,7 @@ export function finding(
     status: "open",
     decision_count: 0,
     latest_narrative: null,
+    primary_evidence: ["18 observed (5.1 expected)", "Bonferroni-adjusted p = 1.6e-06 (threshold 0.01)"],
     ...over,
   };
 }
