@@ -32,6 +32,20 @@ uv run meridian ledger show --since 2 --role unblinded_statistician
 uv run meridian ledger verify               # exit 0 when the chain is intact, 1 when broken
 ```
 
+## Data (phase 1, step 2)
+
+```sh
+uv run meridian data fetch                  # download the CDISC pilot SDTM files, hash-checked
+uv run meridian data ingest --cut DC-BASE   # curate MRD-201, synthesize ops data, record a DataCut
+uv run meridian data show --cut DC-BASE     # tables and a per-site summary (blinded and ops only)
+uv run pytest -m slow                       # end to end against the real files (needs network)
+```
+
+A cut lives in `data/curated/MRD-201/<cut>/` with `blinded/`, `ops/`, `unblinded/` and a
+`manifest.json`. Agents read cuts only through `ParquetStudyReader`, which cannot see
+`unblinded/`. See [docs/data-notes.md](docs/data-notes.md) for what the data contains and
+why the blinding split is what it is.
+
 ## Configuration
 
 Settings come from `config/default.toml` and can be overridden by environment variables
@@ -45,12 +59,15 @@ arguments, environment, TOML file, field defaults.
 src/meridian/
   domain/    pure Pydantic v2 types; imports nothing from meridian outside domain
   ledger/    hashing (canonical JSON, SHA-256 chain), SQLite store, verifier
+  data/      fetch, XPT reader, pure CDISC transform, ops synthesis, cut writer, readers
   platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
   cli.py     typer app exposed as the `meridian` console script
 tests/
   unit/      validators, round trips, hashing, ledger behaviour, CLI
   property/  hypothesis: any draft sequence verifies; any flipped payload byte is caught
-  contract/  repo rules: no U+2014 anywhere, domain isolation, no wall clock outside SystemClock
+  contract/  repo rules (no U+2014, domain isolation, clock) and data rules (blinding, reader
+             confinement, atomic and repeatable cuts, one DataCut per cut)
+  slow/      real pilot data end to end (marked slow, needs network)
 ```
 
 ## Ledger design

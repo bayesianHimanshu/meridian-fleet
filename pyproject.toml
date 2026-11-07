@@ -9,6 +9,11 @@ dependencies = [
     "pydantic-settings",
     "typer",
     "structlog",
+    "polars>=2.1.0",
+    "numpy>=2.5.4",
+    "scipy>=1.18.1",
+    "pyreadstat>=1.3.7",
+    "httpx>=0.28.1",
 ]
 
 [project.scripts]
@@ -57,4 +62,5 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q --strict-markers"
+addopts = "-q --strict-markers -m 'not slow'"
+markers = ["slow: needs network and real CDISC pilot data; run with -m slow"]

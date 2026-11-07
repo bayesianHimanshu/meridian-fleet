@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from types import TracebackType
 from typing import Self
 
+from meridian.data.ingest import IngestService
+from meridian.data.study_store import ParquetStudyReader, StudyReader
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
 from meridian.platform.config import Settings
@@ -24,6 +26,20 @@ class Container:
             finding_id_prefixes=settings.finding_id_prefixes,
         )
         return cls(settings=settings, clock=resolved_clock, ledger=ledger)
+
+    def study_reader(self, cut_id: str) -> StudyReader:
+        """Blinded and ops access to one cut. The only study reader the container offers."""
+        return ParquetStudyReader(self.settings.curated_root / self.settings.study_id, cut_id)
+
+    def ingest_service(self) -> IngestService:
+        return IngestService(
+            clock=self.clock,
+            ledger=self.ledger,
+            curated_root=self.settings.curated_root,
+            sites_file=self.settings.sites_file,
+            study_id=self.settings.study_id,
+            ops_params=self.settings.ops_synth,
+        )
 
     def close(self) -> None:
         self.ledger.close()
