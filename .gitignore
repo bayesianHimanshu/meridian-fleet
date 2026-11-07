@@ -235,3 +235,4 @@ data/raw/
 data/curated/
 data/ground_truth/
 data/evals/
+data/safety_db/
