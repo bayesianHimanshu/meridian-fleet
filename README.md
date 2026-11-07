@@ -46,6 +46,22 @@ A cut lives in `data/curated/MRD-201/<cut>/` with `blinded/`, `ops/`, `unblinded
 `unblinded/`. See [docs/data-notes.md](docs/data-notes.md) for what the data contains and
 why the blinding split is what it is.
 
+## Faults, agents and findings (phase 1, step 3)
+
+```sh
+uv run meridian faults inject --scenario config/scenarios/rbqm_core.toml   # DC-RBQM-CORE + ground truth
+uv run meridian agents list                         # known agents and whether they are enabled
+uv run meridian agents run                          # one pass over every pending DataCut
+uv run meridian findings show --cut DC-RBQM-CORE    # one line per finding
+uv run python scripts/calibration_report.py         # writes docs/calibration-step3.md
+```
+
+The fault injector writes a faulted copy of a cut that carries no trace of the faults;
+what was planted lives only in `data/ground_truth/` (gitignored). Agents run on every
+DataCut through the blinded `StudyReader` and can never import `meridian.faults`. See
+[docs/rbqm-notes.md](docs/rbqm-notes.md) for what each check measures, and
+[docs/calibration-step3.md](docs/calibration-step3.md) for the untuned starting point.
+
 ## Configuration
 
 Settings come from `config/default.toml` and can be overridden by environment variables
@@ -60,6 +76,9 @@ src/meridian/
   domain/    pure Pydantic v2 types; imports nothing from meridian outside domain
   ledger/    hashing (canonical JSON, SHA-256 chain), SQLite store, verifier
   data/      fetch, XPT reader, pure CDISC transform, ops synthesis, cut writer, readers
+  faults/    fault catalog, scenarios, injector and FullCutReader (never imported by agents)
+  agents/    agent protocol, registry, runner, and the rbqm agents
+scripts/     calibration_report.py (reads only; nothing in src imports it)
   platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
   cli.py     typer app exposed as the `meridian` console script
 tests/
