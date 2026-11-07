@@ -48,6 +48,10 @@ deviation_categories = [
 screen_failure_rate_mean = 0.3
 screen_failure_concentration = 20.0
 
+# Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
+# They were tuned only on DC-BASE, DC-RBQM-CORE and DC-NULL-S1 to S5; the defaults were
+# kept (see docs/tuning-phase1.md). Do not change them in response to holdout or sweep results.
+#
 # Agents. enabled lists the agent ids the runner wakes; [agents.<name>] is each agent's
 # own configuration and is all the agent ever sees.
 [agents]
