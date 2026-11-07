@@ -107,6 +107,18 @@ class NarratorSettings(BaseModel):
     max_calls_per_pass: int = Field(20, ge=1)
 
 
+class CutsSettings(BaseModel):
+    """Which cuts are the study's operational data ([cuts] in TOML).
+
+    Every other cut (null, faulted, holdout, sweep) is an evaluation cut. Kept here, not
+    inferred from cut ids.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    operational: tuple[str, ...] = ("DC-BASE",)
+
+
 class ApiSettings(BaseModel):
     """The Fleet API ([api] in TOML). It always binds to 127.0.0.1."""
 
@@ -141,6 +153,7 @@ class Settings(BaseSettings):
     llm: LlmSettings = Field(default_factory=LlmSettings)
     narrator: NarratorSettings = Field(default_factory=NarratorSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
+    cuts: CutsSettings = Field(default_factory=CutsSettings)
 
     @classmethod
     def settings_customise_sources(

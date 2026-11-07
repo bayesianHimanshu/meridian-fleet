@@ -77,6 +77,11 @@ timeout_seconds = 30.0
 [narrator]
 max_calls_per_pass = 20
 
+# Cut scope. Operational cuts are the study's current data and the only ones the review
+# queue shows by default; every other cut (null, faulted, holdout, sweep) is evaluation.
+[cuts]
+operational = ["DC-BASE"]
+
 # The Fleet API (phase 3): `meridian api serve`. Binds to 127.0.0.1 only; identity is
 # development-only (config/people.toml), not authentication.
 [api]
