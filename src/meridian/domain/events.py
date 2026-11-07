@@ -128,6 +128,13 @@ class ContainmentCheckCompleted(BaseModel):
     # Every expected refusal was refused. passed adds the control and the log line.
     all_refused: bool
     passed: bool
+    # Phase 2 step 3, null or empty on older events. policy_name is set when an agent has
+    # its own policy (rbqm.narrator); providers were attached at create; and
+    # credential_value_visible says whether ANTHROPIC_API_KEY inside the sandbox started
+    # with "sk-ant-" (it must not). Only true or false is ever recorded, never the value.
+    policy_name: str | None = None
+    providers: tuple[str, ...] = ()
+    credential_value_visible: bool | None = None
 
 
 class HumanDecision(BaseModel):

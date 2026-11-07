@@ -719,18 +719,24 @@ def sandbox_reap() -> None:
 @sandbox_app.command("conformance")
 def sandbox_conformance(
     zones: Annotated[
-        list[str], typer.Option("--zone", help="Zone to check; repeatable, or 'all'.")
-    ],
+        list[str] | None, typer.Option("--zone", help="Zone to check; repeatable, or 'all'.")
+    ] = None,
+    policy_names: Annotated[
+        list[str] | None,
+        typer.Option("--policy", help="An agent policy to check (rbqm.narrator); repeatable."),
+    ] = None,
 ) -> None:
-    """Check a zone's committed policy in a real sandbox and record the result."""
+    """Check committed policies in real sandboxes and record the results."""
     from meridian.sandbox.conformance import ledger_drafts, run_conformance
     from meridian.sandbox.openshell import SubprocessOpenShellClient
 
-    selected = sorted(policies.POLICIES) if zones == ["all"] else zones
-    unknown = sorted(set(selected) - set(policies.POLICIES))
-    if unknown:
+    selected = sorted(policies.POLICIES) if zones == ["all"] else list(zones or [])
+    selected += list(policy_names or [])
+    unknown = sorted(set(selected) - set(policies.ALL_POLICIES))
+    if unknown or not selected:
         typer.echo(
-            f"error: unknown zone(s) {unknown}; known: {sorted(policies.POLICIES)}", err=True
+            f"error: unknown or no policy {unknown}; known: {sorted(policies.ALL_POLICIES)}",
+            err=True,
         )
         raise typer.Exit(code=2)
     failed = []
@@ -763,8 +769,15 @@ def sandbox_conformance(
                         f"  {check.name:<24} expect {check.expect:<8} got {check.outcome:<12} "
                         f"exit {check.exit_code}  {check.message}"
                     )
+                if result.providers:
+                    typer.echo(
+                        f"  providers {', '.join(result.providers)}; ANTHROPIC_API_KEY in the "
+                        f"sandbox starts with sk-ant-: {result.credential_value_visible}"
+                    )
                 for record in result.log_records:
                     typer.echo(f"  log: {record.raw}")
+                for record in result.allowed_records:
+                    typer.echo(f"  log (allowed): {record.raw}")
                 if result.malformed_lines:
                     typer.echo(f"  malformed NET:OPEN lines: {len(result.malformed_lines)}")
                 for failure in result.failures():

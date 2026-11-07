@@ -10,3 +10,5 @@
 [1794050714.254] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/bin/bash(0) -> 192.0.2.1:443 [reason:transparent_tcp_policy_denied]
 [1794050714.255] [sandbox] [OCSF ] [ocsf] EVENT [INFO] ssh relay closed (channel_id=d6c7207f-8ed7-454d-bccc-ea93f1414497, target=unix:/run/openshell/ssh.sock)
 [1794048890.895] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/local/bin/python3.14(0) -> 151.101.0.223:443 [reason:transparent_tcp_policy_denied]
+[1794067456.128] [sandbox] [OCSF ] [ocsf] NET:OPEN [INFO] ALLOWED /usr/local/bin/python3.14(0) -> api.anthropic.com:443 [policy:_provider_meridian_anthropic engine:opa]
+[1794067439.225] [sandbox] [OCSF ] [ocsf] NET:OPEN [MED] DENIED /usr/local/bin/python3.14(0) -> example.com:443 [reason:transparent_tcp_policy_denied]

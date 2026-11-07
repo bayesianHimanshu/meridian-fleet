@@ -50,7 +50,12 @@ class FakeOpenShellClient:
     policies: list[Path] = field(default_factory=list)
 
     def create(
-        self, name: str, image: str, policy: Path, uploads: Sequence[tuple[Path, str]]
+        self,
+        name: str,
+        image: str,
+        policy: Path,
+        uploads: Sequence[tuple[Path, str]],
+        providers: Sequence[str] = (),
     ) -> None:
         self.created.append(name)
         self.live.add(name)
@@ -215,7 +220,12 @@ def test_create_failure_still_deletes(cut_dir: Path) -> None:
     @dataclass
     class FailingCreate(FakeOpenShellClient):
         def create(
-            self, name: str, image: str, policy: Path, uploads: Sequence[tuple[Path, str]]
+            self,
+            name: str,
+            image: str,
+            policy: Path,
+            uploads: Sequence[tuple[Path, str]],
+            providers: Sequence[str] = (),
         ) -> None:
             super().create(name, image, policy, uploads)
             raise OpenShellError("sandbox upload failed")

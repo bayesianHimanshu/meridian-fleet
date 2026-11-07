@@ -1,7 +1,8 @@
 """A thin wrapper around the openshell CLI (checked against openshell 0.1.7).
 
-Only the commands this project is allowed to run: create, exec, get (policy), list and
-delete, on sandboxes this code names. Tests inject a fake with the same protocol.
+Only the commands this project is allowed to run: create (attaching existing providers),
+exec, get (policy), list, delete and logs, on sandboxes this code names. Tests inject
+a fake with the same protocol.
 """
 
 import subprocess
@@ -32,7 +33,12 @@ class ExecOutput:
 
 class OpenShellClient(Protocol):
     def create(
-        self, name: str, image: str, policy: Path, uploads: Sequence[tuple[Path, str]]
+        self,
+        name: str,
+        image: str,
+        policy: Path,
+        uploads: Sequence[tuple[Path, str]],
+        providers: Sequence[str] = (),
     ) -> None: ...
 
     def exec(self, name: str, argv: Sequence[str], timeout_seconds: int) -> ExecOutput: ...
@@ -74,8 +80,14 @@ class SubprocessOpenShellClient:
         return out.stdout
 
     def create(
-        self, name: str, image: str, policy: Path, uploads: Sequence[tuple[Path, str]]
+        self,
+        name: str,
+        image: str,
+        policy: Path,
+        uploads: Sequence[tuple[Path, str]],
+        providers: Sequence[str] = (),
     ) -> None:
+        """--no-auto-providers: only the named, existing providers are ever attached."""
         args = [
             "sandbox",
             "create",
@@ -89,6 +101,8 @@ class SubprocessOpenShellClient:
             "--no-auto-providers",
             "--no-tty",
         ]
+        for provider in providers:
+            args += ["--provider", provider]
         for local, remote in uploads:
             args += ["--upload", f"{local}:{remote}"]
         if uploads:
