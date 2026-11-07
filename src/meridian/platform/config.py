@@ -17,10 +17,8 @@ from pydantic_settings import (
     TomlConfigSettingsSource,
 )
 
-from meridian.agents.rbqm.csm import CsmConfig
-from meridian.agents.rbqm.kri_monitor import KriMonitorConfig
-from meridian.agents.rbqm.qtl_detector import QtlDetectorConfig
 from meridian.data.ops_synth import OpsSynthParams
+from meridian.platform.agent_settings import CsmConfig, KriMonitorConfig, QtlDetectorConfig
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
 DEFAULT_CONFIG_FILE = Path("config/default.toml")

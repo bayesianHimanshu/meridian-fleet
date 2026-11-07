@@ -1,61 +1,49 @@
-"""rbqm.kri_monitor: key risk indicators per site."""
+"""rbqm.kri_monitor v2: key risk indicators per site.
 
-import math
+ae_rate and deviations use a quasi-Poisson test: leave-one-out expected counts, a robust
+dispersion phi estimated across the tested sites, and z = (O - E) / sqrt(phi * E). Real
+sites differ more than a Poisson model allows; phi absorbs that. data_entry_lag and
+query_aging compare site medians with absolute operational thresholds.
+"""
+
 from collections.abc import Sequence
+from functools import partial
 
 import polars as pl
-from pydantic import Field
 
-from meridian.agents.base import (
-    AgentConfig,
-    AgentContext,
-    FindingDraft,
-    make_dedup_key,
-    parse_dedup_key,
-)
-from meridian.agents.rbqm.common import (
-    RbqmAgentBase,
-    cut_id_of,
-    exposure,
-    loo_poisson,
-    neg_log10,
-    sites_with_min_treated,
-    treated_ids,
-)
+from meridian.agents.base import AgentContext, FindingDraft, make_dedup_key, parse_dedup_key
+from meridian.agents.rbqm.common import RbqmAgentBase, cut_id_of
+from meridian.data.derived import treated_subjects
 from meridian.domain.enums import FindingKind, Severity
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
+from meridian.platform.agent_settings import KriMonitorConfig
+from meridian.stats.robust import neg_log10, quasi_poisson
+from meridian.stats.site_metrics import counts_by_site, exposure, sites_with_min_treated
 
-# Check names, used as the metric part of the dedup key and as evidence prefixes.
+__all__ = ["CHECKS", "STATISTICS", "KriMonitor", "KriMonitorConfig"]
+
+# Check names: the last part of the dedup key and the prefix of every evidence statistic.
 CHECKS: tuple[str, ...] = ("ae_rate", "deviations", "data_entry_lag", "query_aging")
-# Evidence statistics per check. p values called *_adjusted are Bonferroni-adjusted.
+_RATE_STATS = ("observed", "expected", "phi", "z", "p", "p_adjusted", "excluded_subjects")
 STATISTICS: dict[str, tuple[str, ...]] = {
-    "ae_rate": (
-        "ae_rate:observed",
-        "ae_rate:expected",
-        "ae_rate:per_100_subject_days",
-        "ae_rate:poisson_p",
-        "ae_rate:poisson_p_adjusted",
-        "ae_rate:excluded_subjects",
-    ),
-    "deviations": (
-        "deviations:observed",
-        "deviations:expected",
-        "deviations:poisson_p",
-        "deviations:poisson_p_adjusted",
-        "deviations:excluded_subjects",
-    ),
+    "ae_rate": (*(f"ae_rate:{s}" for s in _RATE_STATS), "ae_rate:per_100_subject_days"),
+    "deviations": tuple(f"deviations:{s}" for s in _RATE_STATS),
     "data_entry_lag": ("data_entry_lag:median_days", "data_entry_lag:entries"),
     "query_aging": ("query_aging:median_open_age_days", "query_aging:open_queries"),
 }
 
 
-class KriMonitorConfig(AgentConfig):
-    alpha: float = Field(0.01, gt=0, lt=1)
-    lag_days: float = Field(7.0, gt=0)
-    query_age_days: float = Field(21.0, gt=0)
-    min_subjects: int = Field(5, ge=1)
-    min_open_queries: int = Field(5, ge=1)
+def _evidence(
+    source: str, selector: str, check: str, stat: str, value: float, threshold: float | None = None
+) -> Evidence:
+    return Evidence(
+        source=source,
+        selector=selector,
+        statistic=f"{check}:{stat}",
+        value=value,
+        threshold=threshold,
+    )
 
 
 def _median_severity(median: float, threshold: float) -> Severity:
@@ -64,7 +52,6 @@ def _median_severity(median: float, threshold: float) -> Severity:
 
 class KriMonitor(RbqmAgentBase):
     agent_id = "rbqm.kri_monitor"
-    version = "1.0.0"
     config_model = KriMonitorConfig
 
     def run(self, trigger: Event, ctx: AgentContext[KriMonitorConfig]) -> Sequence[FindingDraft]:
@@ -72,10 +59,8 @@ class KriMonitor(RbqmAgentBase):
         study = ctx.study
         cut_id = cut_id_of(trigger, study)
         dm, sv = study.table("dm"), study.table("sv")
-        treated = treated_ids(dm)
+        treated = treated_subjects(dm)["USUBJID"].to_list()
         exp = exposure(dm, sv)
-        included = exp.per_subject["USUBJID"].to_list()
-        days = dict(zip(exp.frame["SITEID"], exp.frame["subject_days"], strict=True))
         tested, skipped = sites_with_min_treated(dm, cfg.min_subjects)
         if skipped:
             ctx.log.debug("kri_monitor.sites_skipped", sites=skipped, min_subjects=cfg.min_subjects)
@@ -92,85 +77,46 @@ class KriMonitor(RbqmAgentBase):
             )
 
         drafts: list[FindingDraft] = []
-
-        # ae_rate and deviations: leave-one-out Poisson, Bonferroni over sites tested.
-        site_of = exp.per_subject.select("USUBJID", "SITEID")
-        ae_counts = dict(
-            study.table("ae")
-            .filter(pl.col("USUBJID").is_in(included))
-            .join(site_of, on="USUBJID")
-            .group_by("SITEID", maintain_order=True)
-            .len()
-            .iter_rows()
+        included = exp.per_subject.select("USUBJID", "SITEID")
+        rate_checks = (
+            ("ae_rate", study.table("ae"), True, FindingKind.UNDER_REPORTING, "blinded/ae"),
+            (
+                "deviations",
+                study.table("deviations"),
+                False,
+                FindingKind.KRI_BREACH,
+                "ops/deviations",
+            ),
         )
-        dev_counts = dict(
-            study.table("deviations")
-            .filter(pl.col("USUBJID").is_in(included))
-            .group_by("SITEID", maintain_order=True)
-            .len()
-            .iter_rows()
-        )
-        for check, counts, lower, kind in (
-            ("ae_rate", ae_counts, True, FindingKind.UNDER_REPORTING),
-            ("deviations", dev_counts, False, FindingKind.KRI_BREACH),
-        ):
-            n_tested = len(tested)
-            for res in loo_poisson(counts, days, tested, lower_tail=lower):
+        for check, rows, lower, kind, source in rate_checks:
+            counts = counts_by_site(rows, included)
+            result = quasi_poisson(counts, exp.days(), tested, lower_tail=lower)
+            n_tested = len(result.sites)
+            for res in result.sites:
                 adjusted = min(1.0, res.p * n_tested)
                 if adjusted >= cfg.alpha:
                     continue
                 site_exp = exp.row(res.site)
-                selector = f"SITEID={res.site}"
-                source = "blinded/ae" if check == "ae_rate" else "ops/deviations"
+                sel = f"SITEID={res.site}"
+
+                ev = partial(_evidence, source, sel, check)
                 evidence = [
-                    Evidence(
-                        source=source,
-                        selector=selector,
-                        statistic=f"{check}:observed",
-                        value=res.observed,
-                        threshold=None,
-                    ),
-                    Evidence(
-                        source=source,
-                        selector=selector,
-                        statistic=f"{check}:expected",
-                        value=res.expected,
-                        threshold=None,
-                    ),
+                    ev("observed", res.observed),
+                    ev("expected", res.expected),
+                    ev("phi", result.phi),
+                    ev("z", res.z),
+                    ev("p", res.p),
+                    ev("p_adjusted", adjusted, cfg.alpha),
+                    ev("excluded_subjects", site_exp["excluded"]),
                 ]
                 if check == "ae_rate":
                     evidence.append(
-                        Evidence(
-                            source=source,
-                            selector=selector,
-                            statistic="ae_rate:per_100_subject_days",
-                            value=100 * res.observed / site_exp["subject_days"],
-                            threshold=100 * res.rate_others,
+                        ev(
+                            "per_100_subject_days",
+                            100 * res.observed / site_exp["subject_days"],
+                            100 * res.rate_others,
                         )
                     )
-                evidence += [
-                    Evidence(
-                        source=source,
-                        selector=selector,
-                        statistic=f"{check}:poisson_p",
-                        value=res.p,
-                        threshold=None,
-                    ),
-                    Evidence(
-                        source=source,
-                        selector=selector,
-                        statistic=f"{check}:poisson_p_adjusted",
-                        value=adjusted,
-                        threshold=cfg.alpha,
-                    ),
-                    Evidence(
-                        source="blinded/dm+blinded/sv",
-                        selector=selector,
-                        statistic=f"{check}:excluded_subjects",
-                        value=site_exp["excluded"],
-                        threshold=None,
-                    ),
-                ]
                 direction = "fewer" if lower else "more"
                 noun = "adverse events" if check == "ae_rate" else "protocol deviations"
                 drafts.append(
@@ -183,15 +129,15 @@ class KriMonitor(RbqmAgentBase):
                         summary=(
                             f"Site {res.site} has {res.observed} {noun} over "
                             f"{site_exp['subject_days']} subject-days; the rest of the study "
-                            f"implies {res.expected:.1f}. Poisson p = {res.p:.2e}, "
-                            f"{adjusted:.2e} after Bonferroni over {n_tested} sites."
+                            f"implies {res.expected:.1f}. With dispersion phi = {result.phi:.2f}, "
+                            f"z = {res.z:.2f}, p = {res.p:.2e}, {adjusted:.2e} after Bonferroni "
+                            f"over {n_tested} sites."
                         ),
                         evidence=tuple(evidence),
                         score=neg_log10(adjusted),
                     )
                 )
 
-        # data_entry_lag: site median over treated subjects' visits.
         lag = (
             study.table("data_entry")
             .filter(pl.col("USUBJID").is_in(treated))
@@ -233,7 +179,6 @@ class KriMonitor(RbqmAgentBase):
                 )
             )
 
-        # query_aging: site median age of open queries, if there are enough of them.
         aging = (
             study.table("queries")
             .filter(pl.col("USUBJID").is_in(treated) & (pl.col("status") == "open"))
@@ -277,9 +222,5 @@ class KriMonitor(RbqmAgentBase):
 
         order = {check: i for i, check in enumerate(CHECKS)}
         return sorted(
-            drafts,
-            key=lambda d: (order[parse_dedup_key(d.dedup_key).check], d.site_id or ""),
+            drafts, key=lambda d: (order[parse_dedup_key(d.dedup_key).check], d.site_id or "")
         )
-
-
-assert math.isfinite(neg_log10(0.0))

@@ -13,6 +13,7 @@ from meridian.domain.dedup import STUDY_SCOPE, DedupKeyParts, make_dedup_key, pa
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
+from meridian.platform.agent_settings import AgentConfig
 from meridian.platform.clock import Clock
 
 __all__ = [
@@ -37,12 +38,6 @@ class Zone(StrEnum):
     SAFETY = "safety"
     QUALITY = "quality"
     UNBLINDED = "unblinded"
-
-
-class AgentConfig(BaseModel):
-    """Base for each agent's own configuration model."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
 
 
 @dataclass(frozen=True, slots=True)

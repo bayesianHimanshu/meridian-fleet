@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from meridian.agents.rbqm.common import exposure
 from meridian.data.derived import treated_subjects
 from meridian.data.study_store import StudyReader
 from meridian.domain.dedup import parse_dedup_key
@@ -24,6 +23,7 @@ from meridian.domain.findings import Finding
 from meridian.faults.inject import GroundTruth
 from meridian.platform.config import Settings
 from meridian.platform.container import Container
+from meridian.stats.site_metrics import exposure
 
 VITALS = ("SYSBP", "DIABP", "PULSE")
 
@@ -190,7 +190,7 @@ def main() -> None:
             f"kri_monitor alpha {kri.alpha}, lag_days {kri.lag_days}, query_age_days "
             f"{kri.query_age_days}, min_subjects {kri.min_subjects}, min_open_queries "
             f"{kri.min_open_queries}; qtl_detector limit {qtl.discontinuation_limit}, approaching "
-            f"at {qtl.approaching_fraction:.0%}; csm alpha {csm.alpha}, sd_ratio_max "
+            f"from limit - {qtl.approach_band}; csm z_threshold {csm.z_threshold}, sd_ratio_max "
             f"{csm.sd_ratio_max}, min_readings {csm.min_readings}.",
             "",
             "## Summary",

@@ -63,11 +63,13 @@ min_open_queries = 5
 # Computed once from DC-BASE: premature discontinuation 144/254 = 0.5669 (base rate)
 # plus margin 0.05 = 0.6169, rounded to 3 decimals. Do not recompute from later cuts.
 discontinuation_limit = 0.617
-approaching_fraction = 0.9
+# Approaching from limit - approach_band, breached from the limit.
+approach_band = 0.02
 
 [agents.csm]
-alpha = 0.01
-sd_ratio_max = 0.5
+# Between-site robust z of log SD; flag when z < -z_threshold and SD ratio < sd_ratio_max.
+z_threshold = 3.5
+sd_ratio_max = 0.6
 min_subjects = 5
 min_readings = 50
 parameters = ["SYSBP", "DIABP", "PULSE"]
