@@ -17,7 +17,7 @@ TARGET = "1003"
 
 def _keys(drafts: list) -> list[tuple[str, str, str]]:  # type: ignore[type-arg]
     return [
-        (d.kind.value, d.site_id or "STUDY", parse_dedup_key(d.dedup_key).metric) for d in drafts
+        (d.kind.value, d.site_id or "STUDY", parse_dedup_key(d.dedup_key).check) for d in drafts
     ]
 
 

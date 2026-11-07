@@ -69,11 +69,12 @@ class QtlDetector(RbqmAgentBase):
             FindingDraft(
                 dedup_key=make_dedup_key(
                     agent_id=self.agent_id,
+                    agent_version=self.version,
                     kind=FindingKind.QTL_BREACH,
                     study_id=study.study_id,
                     site_id=None,
                     cut_id=cut_id,
-                    metric=QTL_NAME,
+                    check=QTL_NAME,
                 ),
                 kind=FindingKind.QTL_BREACH,
                 site_id=None,

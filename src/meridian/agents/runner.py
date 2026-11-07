@@ -9,6 +9,7 @@ from meridian.agents.base import AgentContext, FindingDraft
 from meridian.agents.registry import AgentRegistry, RegisteredAgent
 from meridian.data.datacut import Ledger, data_cut_events
 from meridian.data.study_store import StudyReader
+from meridian.domain.dedup import dedup_prefix
 from meridian.domain.enums import EventType, Visibility
 from meridian.domain.events import (
     ActorSuspended,
@@ -52,11 +53,17 @@ class AgentRunner:
         self._study_id = study_id
         self._log = log
 
-    def _completed_pairs(self) -> set[tuple[str, int]]:
-        done: set[tuple[str, int]] = set()
+    def _completed(self) -> set[tuple[str, str | None, int]]:
+        """(agent_id, agent_version, trigger_seq) of every finished run.
+
+        Legacy ActorSuspended events have agent_version None, so they never mark a
+        versioned agent's run as done: a new version re-runs every cut.
+        """
+        done: set[tuple[str, str | None, int]] = set()
         for entry in self._ledger.read(event_types=[EventType.ACTOR_SUSPENDED]):
             if isinstance(entry, Event) and isinstance(entry.payload, ActorSuspended):
-                done.add((entry.payload.agent_id, entry.payload.trigger_seq))
+                p = entry.payload
+                done.add((p.agent_id, p.agent_version, p.trigger_seq))
         return done
 
     def _append(self, actor: str, visibility: Visibility, payload: EventPayload) -> Event:
@@ -73,13 +80,13 @@ class AgentRunner:
     def run_pending(self) -> RunReport:
         report = RunReport()
         triggers = data_cut_events(self._ledger, self._study_id)
-        done = self._completed_pairs()
+        done = self._completed()
         for registered in self._registry.enabled():
             agent = registered.agent
             if EventType.DATA_CUT not in agent.subscribes_to:
                 continue
             for trigger in triggers:
-                if (agent.agent_id, trigger.seq) in done:
+                if (agent.agent_id, agent.version, trigger.seq) in done:
                     continue
                 self._run_one(registered, trigger, report)
         return report
@@ -88,11 +95,18 @@ class AgentRunner:
         agent = registered.agent
         assert isinstance(trigger.payload, DataCut)
         cut_id = trigger.payload.cut_id
-        log = self._log.bind(agent_id=agent.agent_id, trigger_seq=trigger.seq, cut_id=cut_id)
+        log = self._log.bind(
+            agent_id=agent.agent_id,
+            agent_version=agent.version,
+            trigger_seq=trigger.seq,
+            cut_id=cut_id,
+        )
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
-            ActorWoke(agent_id=agent.agent_id, trigger_seq=trigger.seq),
+            ActorWoke(
+                agent_id=agent.agent_id, agent_version=agent.version, trigger_seq=trigger.seq
+            ),
         )
         try:
             ctx = AgentContext(
@@ -102,9 +116,12 @@ class AgentRunner:
                 log=log,
             )
             drafts = list(agent.run(trigger, ctx))
+            prefix = dedup_prefix(agent.agent_id, agent.version)
             for draft in drafts:
-                if not draft.dedup_key.startswith(f"{agent.agent_id}|"):
-                    raise ValueError(f"dedup key {draft.dedup_key!r} does not start with agent id")
+                if not draft.dedup_key.startswith(prefix):
+                    raise ValueError(
+                        f"dedup key {draft.dedup_key!r} does not start with {prefix!r}"
+                    )
         except Exception as exc:  # an agent failure must never stop the pass
             log.error("agent.run_failed", error=f"{type(exc).__name__}: {exc}")
             report.failed.append((agent.agent_id, trigger.seq, f"{type(exc).__name__}: {exc}"))
@@ -115,7 +132,9 @@ class AgentRunner:
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
-            ActorSuspended(agent_id=agent.agent_id, trigger_seq=trigger.seq),
+            ActorSuspended(
+                agent_id=agent.agent_id, agent_version=agent.version, trigger_seq=trigger.seq
+            ),
         )
         report.completed.append((agent.agent_id, trigger.seq))
         log.info("agent.completed", drafts=len(drafts))

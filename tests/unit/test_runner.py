@@ -17,7 +17,7 @@ from meridian.agents.runner import AgentRunner
 from meridian.data.datacut import record_data_cut
 from meridian.data.study_store import StudyReader
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import ActorSuspended, ActorWoke, Event, FindingRaised
+from meridian.domain.events import ActorSuspended, ActorWoke, Event, EventDraft, FindingRaised
 from meridian.domain.findings import Evidence
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
@@ -54,7 +54,6 @@ class FakeAgent:
     visibility = Visibility.BLINDED
     visible_to = frozenset({Role.CLINICAL_OPS_LEAD})
     config_model = AgentConfig
-    version = "0.0.1"
 
     def __init__(
         self,
@@ -62,8 +61,10 @@ class FakeAgent:
         sites: Sequence[str] = ("1001",),
         fail_times: int = 0,
         duplicate: bool = False,
+        version: str = "0.0.1",
     ) -> None:
         self.agent_id = agent_id
+        self.version = version
         self.sites = list(sites)
         self.fail_times = fail_times
         self.duplicate = duplicate
@@ -77,11 +78,12 @@ class FakeAgent:
             FindingDraft(
                 dedup_key=make_dedup_key(
                     agent_id=self.agent_id,
+                    agent_version=self.version,
                     kind=FindingKind.KRI_BREACH,
                     study_id=STUDY,
                     site_id=site,
                     cut_id=ctx.study.cut_id,
-                    metric="fake",
+                    check="fake",
                 ),
                 kind=FindingKind.KRI_BREACH,
                 site_id=site,
@@ -253,6 +255,45 @@ def test_draft_with_foreign_dedup_key_fails_the_run(ledger: SqliteLedger) -> Non
     report = _runner(ledger, impostor).run_pending()
     assert report.failed
     assert ledger.read(event_types=[EventType.FINDING_RAISED]) == []
+
+
+def test_new_version_runs_on_cuts_the_old_version_completed(ledger: SqliteLedger) -> None:
+    cut = _cut(ledger, "DC-A")
+    _runner(ledger, FakeAgent(version="1.0.0")).run_pending()
+    report = _runner(ledger, FakeAgent(version="2.0.0")).run_pending()
+    assert report.completed == [("rbqm.fake", cut.seq)]
+    assert report.findings_skipped == []
+    findings = ledger.read(event_types=[EventType.FINDING_RAISED])
+    versions = sorted(
+        e.payload.finding.agent_version
+        for e in findings
+        if isinstance(e, Event) and isinstance(e.payload, FindingRaised)
+    )
+    assert versions == ["1.0.0", "2.0.0"]
+    suspended = [
+        e.payload.agent_version
+        for e in ledger.read(event_types=[EventType.ACTOR_SUSPENDED])
+        if isinstance(e, Event) and isinstance(e.payload, ActorSuspended)
+    ]
+    assert suspended == ["1.0.0", "2.0.0"]
+    # And v2 is now complete too.
+    assert _runner(ledger, FakeAgent(version="2.0.0")).run_pending().completed == []
+
+
+def test_legacy_suspended_without_version_does_not_complete_a_versioned_agent(
+    ledger: SqliteLedger,
+) -> None:
+    cut = _cut(ledger, "DC-A")
+    ledger.append(
+        EventDraft(
+            occurred_at=T0,
+            actor="rbqm.fake",
+            study_id=STUDY,
+            visibility=Visibility.BLINDED,
+            payload=ActorSuspended(agent_id="rbqm.fake", trigger_seq=cut.seq),
+        )
+    )
+    assert _runner(ledger, FakeAgent()).run_pending().completed == [("rbqm.fake", cut.seq)]
 
 
 def test_stub_reader_satisfies_protocol() -> None:

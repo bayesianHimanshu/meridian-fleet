@@ -177,11 +177,12 @@ class Csm(RbqmAgentBase):
                 FindingDraft(
                     dedup_key=make_dedup_key(
                         agent_id=self.agent_id,
+                        agent_version=self.version,
                         kind=FindingKind.SITE_DATA_ANOMALY,
                         study_id=study.study_id,
                         site_id=site,
                         cut_id=cut_id,
-                        metric=None,
+                        check=None,
                     ),
                     kind=FindingKind.SITE_DATA_ANOMALY,
                     site_id=site,

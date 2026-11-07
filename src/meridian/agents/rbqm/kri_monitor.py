@@ -6,7 +6,13 @@ from collections.abc import Sequence
 import polars as pl
 from pydantic import Field
 
-from meridian.agents.base import AgentConfig, AgentContext, FindingDraft, make_dedup_key
+from meridian.agents.base import (
+    AgentConfig,
+    AgentContext,
+    FindingDraft,
+    make_dedup_key,
+    parse_dedup_key,
+)
 from meridian.agents.rbqm.common import (
     RbqmAgentBase,
     cut_id_of,
@@ -77,11 +83,12 @@ class KriMonitor(RbqmAgentBase):
         def key(kind: FindingKind, site: str, check: str) -> str:
             return make_dedup_key(
                 agent_id=self.agent_id,
+                agent_version=self.version,
                 kind=kind,
                 study_id=study.study_id,
                 site_id=site,
                 cut_id=cut_id,
-                metric=check,
+                check=check,
             )
 
         drafts: list[FindingDraft] = []
@@ -271,7 +278,7 @@ class KriMonitor(RbqmAgentBase):
         order = {check: i for i, check in enumerate(CHECKS)}
         return sorted(
             drafts,
-            key=lambda d: (order[d.dedup_key.rsplit("|", 1)[1]], d.site_id or ""),
+            key=lambda d: (order[parse_dedup_key(d.dedup_key).check], d.site_id or ""),
         )
 
 

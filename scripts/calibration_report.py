@@ -14,10 +14,10 @@ from pathlib import Path
 import numpy as np
 import polars as pl
 
-from meridian.agents.base import parse_dedup_key
 from meridian.agents.rbqm.common import exposure
 from meridian.data.derived import treated_subjects
 from meridian.data.study_store import StudyReader
+from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType, Role
 from meridian.domain.events import Event, FindingRaised
 from meridian.domain.findings import Finding
@@ -112,7 +112,7 @@ def findings_by_cut(container: Container) -> dict[str, list[tuple[Finding, str]]
         assert isinstance(entry, Event)
         assert isinstance(entry.payload, FindingRaised)
         parts = parse_dedup_key(entry.payload.dedup_key)
-        out[parts.cut_id].append((entry.payload.finding, parts.metric))
+        out[parts.cut_id].append((entry.payload.finding, parts.check))
     return out
 
 

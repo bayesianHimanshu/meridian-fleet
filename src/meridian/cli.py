@@ -10,13 +10,13 @@ import polars as pl
 import structlog
 import typer
 
-from meridian.agents.base import parse_dedup_key
 from meridian.agents.registry import RegistrationError
 from meridian.data.cut_writer import CutExistsError
 from meridian.data.fetch import FetchError, fetch
 from meridian.data.ingest import IngestError
 from meridian.data.sites import SiteMappingError, load_site_map
 from meridian.data.study_store import StudyAccessError, StudyReader
+from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
 from meridian.domain.events import DataCut, Event, EventDraft, FindingRaised, RedactedEvent
 from meridian.domain.findings import Evidence, Finding
