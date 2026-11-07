@@ -300,3 +300,27 @@ def test_reason_codes_strip_details() -> None:
         "number_not_displayed",
         "em_dash",
     ]
+
+
+def test_a_decimal_point_does_not_end_a_clause() -> None:
+    """Regression (found by the labelled set, RBQM-0041): "1.57e-06 is below" stays in the
+    clause that names the p value."""
+    text = "Site 1005 recorded 27 adverse events. The adjusted p = 4.3e-08 is below 0.01."
+    assert _v(AE, "Site 1005: fewer adverse events", text) == []
+    deviations = n.narrator_input(
+        _finding(
+            FindingKind.KRI_BREACH,
+            "1016",
+            "Site 1016: more protocol deviations than expected",
+            "x",
+            [
+                _ev("deviations:observed", 18),
+                _ev("deviations:expected", 5.0945),
+                _ev("deviations:p_adjusted", 1.571e-06, 0.01),
+            ],
+        )
+    )
+    text = (
+        "Site 1016 recorded 18 deviations. The adjusted p of 1.6e-06 is below the 0.01 threshold."
+    )
+    assert _v(deviations, "Site 1016: more protocol deviations than expected", text) == []

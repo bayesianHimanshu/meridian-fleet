@@ -231,7 +231,8 @@ _SUPPORTING_WORDS: dict[str, re.Pattern[str]] = {
 }
 _HIGH = re.compile(r"\b(more|higher|larger|greater|above|exceed\w*|longer)\b", re.I)
 _LOW = re.compile(r"\b(fewer|less|lower|smaller|below|shorter|little)\b", re.I)
-_CLAUSE = re.compile(r"[.;,]|\band\b|\bwhile\b|\bwhere\b|\bbut\b|\bwith\b", re.I)
+# A clause ends at punctuation followed by a space (never inside 1.57e-06) or a joining word.
+_CLAUSE = re.compile(r"[.;,](?=\s|$)|\band\b|\bwhile\b|\bwhere\b|\bbut\b|\bwith\b", re.I)
 _P_MENTION = re.compile(r"\bp\b|p[- ]values?\b", re.I)
 
 
