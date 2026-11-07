@@ -22,6 +22,7 @@ from meridian.domain.findings import Evidence
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
 from meridian.platform.clock import FixedClock
+from meridian.sandbox.executor import InProcessExecutor
 from tests.support import T0, make_ledger
 
 STUDY = "MRD-201"
@@ -127,7 +128,9 @@ def _runner(ledger: SqliteLedger, *agents: FakeAgent) -> AgentRunner:
     return AgentRunner(
         ledger=ledger,
         registry=registry,
-        reader_factory=StubReader,
+        executor=InProcessExecutor(
+            registry=registry, reader_factory=StubReader, log=structlog.get_logger()
+        ),
         clock=FixedClock(T0),
         study_id=STUDY,
         log=structlog.get_logger(),

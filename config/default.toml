@@ -48,6 +48,15 @@ deviation_categories = [
 screen_failure_rate_mean = 0.3
 screen_failure_concentration = 20.0
 
+# Where agents run. inprocess: in the runner's process (phase 1). openshell: one
+# OpenShell sandbox per run, from the agent image, with policies/<zone>.yaml.
+[runtime]
+executor = "inprocess"
+image = ""  # empty: meridian-agent:<package version>
+exec_timeout_seconds = 120
+keep_failed = false
+policies_dir = "policies"
+
 # Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
 # They were tuned only on DC-BASE, DC-RBQM-CORE and DC-NULL-S1 to S5; the defaults were
 # kept (see docs/tuning-phase1.md). Do not change them in response to holdout or sweep results.

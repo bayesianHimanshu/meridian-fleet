@@ -37,6 +37,10 @@ from meridian.ledger.verify import verify
 from meridian.platform.clock import Clock
 from meridian.platform.config import Settings
 from meridian.platform.container import Container
+from meridian.sandbox import image, policies
+from meridian.sandbox.executor import ExecutionError
+from meridian.sandbox.image import ImageError
+from meridian.sandbox.openshell import OpenShellError
 
 app = typer.Typer(no_args_is_help=True, help="Meridian Agent Fleet.")
 ledger_app = typer.Typer(no_args_is_help=True, help="Inspect and manage the event ledger.")
@@ -51,6 +55,12 @@ app.add_typer(faults_app, name="faults")
 app.add_typer(agents_app, name="agents")
 app.add_typer(findings_app, name="findings")
 app.add_typer(eval_app, name="eval")
+image_app = typer.Typer(no_args_is_help=True, help="Build and inspect the agent image.")
+policy_app = typer.Typer(no_args_is_help=True, help="Render the OpenShell zone policies.")
+sandbox_app = typer.Typer(no_args_is_help=True, help="Run agents in OpenShell sandboxes.")
+app.add_typer(image_app, name="image")
+app.add_typer(policy_app, name="policy")
+app.add_typer(sandbox_app, name="sandbox")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -204,6 +214,9 @@ DATA_ERRORS = (
     ScenarioError,
     RegistrationError,
     ScorecardExistsError,
+    ImageError,
+    ExecutionError,
+    OpenShellError,
 )
 
 
@@ -382,10 +395,23 @@ def agents_list() -> None:
             )
 
 
+ExecutorOption = Annotated[
+    str | None,
+    typer.Option("--executor", help="inprocess or openshell (default: [runtime] executor)."),
+]
+
+
 @agents_app.command("run")
-def agents_run() -> None:
+def agents_run(executor: ExecutorOption = None) -> None:
     """One runner pass over every pending (agent, DataCut) pair."""
-    with _container() as c:
+    settings = Settings()
+    if executor is not None:
+        if executor not in ("inprocess", "openshell"):
+            typer.echo(f"error: unknown executor {executor!r}", err=True)
+            raise typer.Exit(code=2)
+        runtime = settings.runtime.model_copy(update={"executor": executor})
+        settings = settings.model_copy(update={"runtime": runtime})
+    with Container.build(settings) as c:
         log = _configure_logging(c.clock)
         try:
             report = c.agent_runner(log).run_pending()
@@ -572,3 +598,63 @@ def eval_report() -> None:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
         typer.echo(f"wrote {path}")
+
+
+@image_app.command("build")
+def image_build(
+    tag: Annotated[str | None, typer.Option("--tag", help="Default: [runtime] image.")] = None,
+) -> None:
+    """docker build the agent image from docker/agent.Dockerfile and print its digest."""
+    with _container() as c:
+        ref = tag or c.image_ref()
+        try:
+            info = image.build(ref)
+        except ImageError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    typer.echo(f"image {info.ref}")
+    typer.echo(f"digest {info.digest}")
+    typer.echo(f"size {info.size_bytes} bytes ({info.size_bytes / 1e6:.1f} MB), user {info.user}")
+
+
+@policy_app.command("render")
+def policy_render() -> None:
+    """Write policies/<zone>.yaml for every zone."""
+    with _container() as c:
+        root = c.settings.runtime.policies_dir
+    for path in policies.render_all(root):
+        typer.echo(f"wrote {path} (sha256 {policies.sha256_text(path.read_text())})")
+
+
+@sandbox_app.command("verify")
+def sandbox_verify(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Repeatable. Default: DC-BASE, DC-RBQM-CORE.")
+    ] = None,
+) -> None:
+    """Run every enabled agent in process and in a sandbox; compare drafts byte for byte."""
+    from meridian.sandbox.verify import verify
+
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        try:
+            rows = verify(
+                ledger=c.ledger,
+                study_id=c.settings.study_id,
+                registry=c.agent_registry(),
+                inprocess=c.inprocess_executor(log),
+                sandboxed=c.openshell_executor(log),
+                cuts=cuts or ["DC-BASE", "DC-RBQM-CORE"],
+            )
+        except (*DATA_ERRORS, LookupError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    typer.echo("| Agent | Cut | Identical | Drafts | Sandbox ms | In-process ms |")
+    typer.echo("| --- | --- | --- | ---: | ---: | ---: |")
+    for r in rows:
+        typer.echo(
+            f"| {r.agent_id} | {r.cut_id} | {'yes' if r.identical else 'NO'} | {r.drafts} | "
+            f"{r.sandbox_ms} | {r.inprocess_ms} |"
+        )
+    if not all(r.identical for r in rows):
+        raise typer.Exit(code=1)

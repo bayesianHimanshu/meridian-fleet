@@ -8,6 +8,7 @@ double underscore in environment variables, for example MERIDIAN_OPS_SYNTH__ENTR
 
 import os
 from pathlib import Path
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import (
@@ -61,6 +62,20 @@ class AgentsSettings(BaseModel):
     csm: CsmConfig = Field(default_factory=CsmConfig)
 
 
+class RuntimeSettings(BaseModel):
+    """Where agents run ([runtime] in TOML)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    executor: Literal["inprocess", "openshell"] = "inprocess"
+    # The agent image; empty means meridian-agent:<package version>.
+    image: str = ""
+    exec_timeout_seconds: int = Field(120, ge=1)
+    # Keep a failed sandbox (and log its name) instead of deleting it.
+    keep_failed: bool = False
+    policies_dir: Path = Path("policies")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MERIDIAN_", env_nested_delimiter="__", extra="ignore", frozen=True
@@ -80,6 +95,7 @@ class Settings(BaseSettings):
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)
     agents: AgentsSettings
+    runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
 
     @classmethod
     def settings_customise_sources(
