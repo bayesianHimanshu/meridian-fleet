@@ -7,7 +7,15 @@ from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
 from meridian.domain.enums import EventType, Visibility
 from meridian.domain.findings import Decision, Finding
-from meridian.domain.ids import ActorId, AgentId, DedupKey, Sha256Hex, StudyId, UtcDatetime
+from meridian.domain.ids import (
+    ActorId,
+    AgentId,
+    DedupKey,
+    Sha256Digest,
+    Sha256Hex,
+    StudyId,
+    UtcDatetime,
+)
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
@@ -39,6 +47,9 @@ class ActorWoke(BaseModel):
     trigger_seq: PositiveInt
     # Null on events written before agent versions were part of identity.
     agent_version: str | None = None
+    # Where the run executes ("inprocess" or "openshell"). Known before the run starts.
+    # Null on events written before phase 2.
+    executor: str | None = None
 
 
 class ActorSuspended(BaseModel):
@@ -49,6 +60,12 @@ class ActorSuspended(BaseModel):
     trigger_seq: PositiveInt
     # Null on events written before agent versions were part of identity.
     agent_version: str | None = None
+    # Measured during the run, so recorded when it ends: the executor, the image the
+    # sandbox ran (content digest) and the sha256 of the policy the sandbox reported as
+    # effective. Null in process, and on events written before phase 2.
+    executor: str | None = None
+    image_digest: Sha256Digest | None = None
+    policy_sha256: Sha256Hex | None = None
 
 
 class FindingRaised(BaseModel):

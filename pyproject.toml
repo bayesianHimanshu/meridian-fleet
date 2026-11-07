@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 meridian = "meridian.cli:app"
+meridian-worker = "meridian.worker:entry"
 
 [dependency-groups]
 dev = [
@@ -63,5 +64,8 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q --strict-markers -m 'not slow'"
-markers = ["slow: needs network and real CDISC pilot data; run with -m slow"]
+addopts = "-q --strict-markers -m 'not slow and not openshell'"
+markers = [
+    "slow: needs network and real CDISC pilot data; run with -m slow",
+    "openshell: needs the openshell CLI, a gateway and the agent image; run with -m openshell",
+]

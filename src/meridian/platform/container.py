@@ -2,15 +2,12 @@
 
 from dataclasses import dataclass
 from types import TracebackType
-from typing import Any, Self
+from typing import Self
 
 import structlog
 
-from meridian.agents.base import Agent, AgentConfig
-from meridian.agents.rbqm.csm import Csm
-from meridian.agents.rbqm.kri_monitor import KriMonitor
-from meridian.agents.rbqm.qtl_detector import QtlDetector
-from meridian.agents.registry import AgentRegistry, RegistrationError
+from meridian.agents.catalog import build_registry
+from meridian.agents.registry import AgentRegistry
 from meridian.agents.runner import AgentRunner
 from meridian.data.ingest import IngestService
 from meridian.data.study_store import ParquetStudyReader, StudyReader
@@ -19,6 +16,15 @@ from meridian.faults.inject import FaultInjector
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
 from meridian.platform.config import Settings
+from meridian.sandbox import image
+from meridian.sandbox.executor import (
+    OPENSHELL,
+    Executor,
+    InProcessExecutor,
+    OpenShellExecutor,
+)
+from meridian.sandbox.image import default_image
+from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,25 +68,48 @@ class Container:
 
     def agent_registry(self) -> AgentRegistry:
         """Every known agent, with its config from settings; enabled per settings."""
-        cfg = self.settings.agents
-        known: list[tuple[Agent[Any], AgentConfig]] = [
-            (KriMonitor(), cfg.kri_monitor),
-            (QtlDetector(), cfg.qtl_detector),
-            (Csm(), cfg.csm),
-        ]
-        unknown = sorted(set(cfg.enabled) - {agent.agent_id for agent, _ in known})
-        if unknown:
-            raise RegistrationError(f"enabled agents not known: {unknown}")
-        registry = AgentRegistry()
-        for agent, config in known:
-            registry.register(agent, config, enabled=agent.agent_id in cfg.enabled)
-        return registry
+        return build_registry(self.settings.agents)
 
-    def agent_runner(self, log: structlog.typing.FilteringBoundLogger) -> AgentRunner:
+    def inprocess_executor(self, log: structlog.typing.FilteringBoundLogger) -> InProcessExecutor:
+        return InProcessExecutor(
+            registry=self.agent_registry(), reader_factory=self.study_reader, log=log
+        )
+
+    def image_ref(self) -> str:
+        return self.settings.runtime.image or default_image()
+
+    def openshell_executor(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        client: OpenShellClient | None = None,
+    ) -> OpenShellExecutor:
+        rt = self.settings.runtime
+        ref = self.image_ref()
+        return OpenShellExecutor(
+            client=client or SubprocessOpenShellClient(),
+            registry=self.agent_registry(),
+            study_root=self.settings.curated_root / self.settings.study_id,
+            image=ref,
+            image_digest=image.inspect(ref).digest,
+            policies_dir=rt.policies_dir,
+            exec_timeout_seconds=rt.exec_timeout_seconds,
+            keep_failed=rt.keep_failed,
+            log=log,
+        )
+
+    def executor(self, log: structlog.typing.FilteringBoundLogger) -> Executor:
+        """The executor [runtime] executor names."""
+        if self.settings.runtime.executor == OPENSHELL:
+            return self.openshell_executor(log)
+        return self.inprocess_executor(log)
+
+    def agent_runner(
+        self, log: structlog.typing.FilteringBoundLogger, executor: Executor | None = None
+    ) -> AgentRunner:
         return AgentRunner(
             ledger=self.ledger,
             registry=self.agent_registry(),
-            reader_factory=self.study_reader,
+            executor=executor or self.executor(log),
             clock=self.clock,
             study_id=self.settings.study_id,
             log=log,

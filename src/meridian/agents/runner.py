@@ -1,14 +1,13 @@
 """One runner pass: wake each enabled agent once per DataCut and record what it finds."""
 
-from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Protocol
 
 import structlog
 
-from meridian.agents.base import AgentContext, FindingDraft
+from meridian.agents.base import FindingDraft
 from meridian.agents.registry import AgentRegistry, RegisteredAgent
 from meridian.data.datacut import Ledger, data_cut_events
-from meridian.data.study_store import StudyReader
 from meridian.domain.dedup import dedup_prefix
 from meridian.domain.enums import EventType, Visibility
 from meridian.domain.events import (
@@ -24,7 +23,27 @@ from meridian.domain.findings import Finding
 from meridian.ledger.store import DuplicateDedupKeyError
 from meridian.platform.clock import Clock
 
-ReaderFactory = Callable[[str], StudyReader]
+
+class RunOutcome(Protocol):
+    """What an executor returns (meridian.sandbox.executor.ExecutionResult)."""
+
+    @property
+    def drafts(self) -> tuple[FindingDraft, ...]: ...
+
+    @property
+    def image_digest(self) -> str | None: ...
+
+    @property
+    def policy_sha256(self) -> str | None: ...
+
+
+class AgentExecutor(Protocol):
+    """Where a run happens (meridian.sandbox.executor.Executor)."""
+
+    @property
+    def name(self) -> str: ...
+
+    def run(self, agent_id: str, trigger: Event, cut_id: str) -> RunOutcome: ...
 
 
 @dataclass(slots=True)
@@ -41,14 +60,14 @@ class AgentRunner:
         *,
         ledger: Ledger,
         registry: AgentRegistry,
-        reader_factory: ReaderFactory,
+        executor: AgentExecutor,
         clock: Clock,
         study_id: str,
         log: structlog.typing.FilteringBoundLogger,
     ) -> None:
         self._ledger = ledger
         self._registry = registry
-        self._reader_factory = reader_factory
+        self._executor = executor
         self._clock = clock
         self._study_id = study_id
         self._log = log
@@ -105,17 +124,15 @@ class AgentRunner:
             agent.agent_id,
             Visibility.BLINDED,
             ActorWoke(
-                agent_id=agent.agent_id, agent_version=agent.version, trigger_seq=trigger.seq
+                agent_id=agent.agent_id,
+                agent_version=agent.version,
+                trigger_seq=trigger.seq,
+                executor=self._executor.name,
             ),
         )
         try:
-            ctx = AgentContext(
-                study=self._reader_factory(cut_id),
-                clock=self._clock,
-                config=registered.config,
-                log=log,
-            )
-            drafts = list(agent.run(trigger, ctx))
+            outcome = self._executor.run(agent.agent_id, trigger, cut_id)
+            drafts = list(outcome.drafts)
             prefix = dedup_prefix(agent.agent_id, agent.version)
             for draft in drafts:
                 if not draft.dedup_key.startswith(prefix):
@@ -133,7 +150,12 @@ class AgentRunner:
             agent.agent_id,
             Visibility.BLINDED,
             ActorSuspended(
-                agent_id=agent.agent_id, agent_version=agent.version, trigger_seq=trigger.seq
+                agent_id=agent.agent_id,
+                agent_version=agent.version,
+                trigger_seq=trigger.seq,
+                executor=self._executor.name,
+                image_digest=outcome.image_digest,
+                policy_sha256=outcome.policy_sha256,
             ),
         )
         report.completed.append((agent.agent_id, trigger.seq))

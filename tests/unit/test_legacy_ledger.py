@@ -90,3 +90,46 @@ def test_legacy_events_verify_and_new_events_append(tmp_path: Path) -> None:
         assert report.ok, report
         assert report.events_checked == 5
         assert ledger.read()[-1].prev_hash != GENESIS_HASH
+
+
+def test_phase1_actor_events_verify_and_executor_fields_round_trip(tmp_path: Path) -> None:
+    """Phase 1 events have agent_version but no executor fields; both kinds verify."""
+    path = tmp_path / "ledger.sqlite3"
+    clock = FixedClock(T0)
+    with make_ledger(path, clock) as ledger:
+        cut = ledger.append(data_cut_draft(1))
+    base = {"agent_id": "rbqm.csm", "agent_version": "2.0.0", "trigger_seq": cut.seq}
+    h = _insert_legacy(path, 2, cut.hash, {"type": "actor_woke", **base})
+    _insert_legacy(path, 3, h, {"type": "actor_suspended", **base})
+    digest = "sha256:" + "a" * 64
+    policy = "b" * 64
+    with make_ledger(path, clock) as ledger:
+        assert verify(ledger).ok
+        old = ledger.read(event_types=[EventType.ACTOR_SUSPENDED])[0]
+        assert isinstance(old, Event)
+        assert isinstance(old.payload, ActorSuspended)
+        assert (old.payload.executor, old.payload.image_digest, old.payload.policy_sha256) == (
+            None,
+            None,
+            None,
+        )
+        woke = ActorWoke(**base, executor="openshell")  # type: ignore[arg-type]
+        done = ActorSuspended(
+            **base,  # type: ignore[arg-type]
+            executor="openshell",
+            image_digest=digest,
+            policy_sha256=policy,
+        )
+        for payload in (woke, done):
+            ledger.append(
+                EventDraft(
+                    occurred_at=T0, actor="rbqm.csm", visibility=Visibility.BLINDED, payload=payload
+                )
+            )
+        assert verify(ledger).ok
+        events = ledger.read()
+        assert isinstance(events[-2], Event)
+        assert events[-2].payload == woke
+        assert isinstance(events[-1], Event)
+        assert events[-1].payload == done
+        assert ActorSuspended.model_validate_json(done.model_dump_json()) == done

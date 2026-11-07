@@ -126,3 +126,20 @@ def test_ground_truth_without_label_keeps_its_old_bytes(tmp_path: Path) -> None:
     path = tmp_path / "t.json"
     path.write_text(labelled.dumps())
     assert GroundTruth.load(path).label == "rbqm_holdout2"
+
+
+def test_core_sandbox_copies_core_with_a_new_seed_and_opaque_id(
+    tmp_path: Path, base: FullCut
+) -> None:
+    from meridian.faults.scenario import CORE_SANDBOX_SEED, ensure_core_sandbox
+
+    ensure_rbqm_core(tmp_path / "rbqm_core.toml", base)
+    path = tmp_path / "rbqm_core_sandbox.toml"
+    ensure_core_sandbox(path, base)
+    copy, core = load_scenario(path), load_scenario(tmp_path / "rbqm_core.toml")
+    assert copy.faults == core.faults
+    assert copy.seed == CORE_SANDBOX_SEED
+    assert OPAQUE.match(copy.out_cut)
+    assert copy.label == "rbqm_core_sandbox"
+    with pytest.raises(FileExistsError):
+        ensure_core_sandbox(path, base)

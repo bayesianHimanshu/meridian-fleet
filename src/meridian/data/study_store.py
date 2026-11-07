@@ -25,6 +25,10 @@ class StudyAccessError(PermissionError):
     """Raised when a table name would resolve outside the reader's allowed areas."""
 
 
+class MissingTableError(KeyError):
+    """No such table in the reader's areas. A KeyError, as before, so callers still work."""
+
+
 class StudyReader(Protocol):
     @property
     def cut_id(self) -> str: ...
@@ -45,11 +49,15 @@ class _AreaReader:
     def __init__(self, root: Path, cut_id: str) -> None:
         if not _CUT_ID.fullmatch(cut_id):
             raise StudyAccessError(f"invalid cut id {cut_id!r}")
-        self._cut_dir = (root / cut_id).resolve(strict=True)
-        if self._cut_dir.parent != root.resolve(strict=True):
+        cut_dir = (root / cut_id).resolve(strict=True)
+        if cut_dir.parent != root.resolve(strict=True):
             raise StudyAccessError(f"cut {cut_id!r} resolves outside {root}")
+        self._bind(cut_dir, cut_id, CutManifest.load(cut_dir).study_id)
+
+    def _bind(self, cut_dir: Path, cut_id: str, study_id: str) -> None:
+        self._cut_dir = cut_dir
         self._cut_id = cut_id
-        self._study_id = CutManifest.load(self._cut_dir).study_id
+        self._study_id = study_id
         # Built from the resolved cut dir plus literal names, never by resolving the
         # area itself, so a symlinked area that points elsewhere is refused below.
         self._allowed = tuple(self._cut_dir / area for area in self._areas)
@@ -78,7 +86,9 @@ class _AreaReader:
             )
         found = [p for area in self._allowed if (p := self._resolve(area, name)) is not None]
         if not found:
-            raise KeyError(f"no table {name!r} in {', '.join(self._areas)} of cut {self._cut_id}")
+            raise MissingTableError(
+                f"no table {name!r} in {', '.join(self._areas)} of cut {self._cut_id}"
+            )
         if len(found) > 1:
             raise StudyAccessError(f"table {name!r} is ambiguous across areas")
         return found[0]
@@ -107,6 +117,19 @@ class ParquetStudyReader(_AreaReader):
     """Blinded and ops tables only. There is no parameter that widens this."""
 
     _areas = (BLINDED_AREA, OPS_AREA)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> ParquetStudyReader:
+        """A reader over a bare cut directory holding only blinded/ and ops/.
+
+        Used inside a sandbox, where the manifest is not staged (it lists the unblinded
+        files), so the cut and study ids come from the trigger instead.
+        """
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
 
 
 class UnblindedReader(_AreaReader):

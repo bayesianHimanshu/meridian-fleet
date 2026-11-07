@@ -14,6 +14,22 @@ and the report shows the original ones next to the revised ones. See
 [docs/phase1-summary.md](docs/phase1-summary.md), and
 [docs/eval-phase1.md](docs/eval-phase1.md) for every number.
 
+## Phase 2 status
+
+Step 1: agents run in NVIDIA OpenShell sandboxes, one per run, with no network, no ledger
+and no credentials. Sandboxed drafts are byte-identical to in-process ones. See
+[docs/openshell-notes.md](docs/openshell-notes.md).
+
+```sh
+uv run meridian image build                  # docker build meridian-agent:<version>, print digest
+uv run meridian policy render                # policies/<zone>.yaml (committed)
+uv run meridian sandbox verify               # in process vs sandbox, byte for byte
+uv run meridian agents run --executor openshell
+uv run pytest -m openshell                   # needs openshell, a gateway and the image
+```
+
+`[runtime] executor` in config/default.toml picks the default executor (inprocess).
+
 ## Setup
 
 ```sh
@@ -127,8 +143,12 @@ src/meridian/
              check types, shared by agents and evals
   evals/     matching, metrics, condition truth, scorecards and the phase 1 report
              (never imports agents)
+  sandbox/   staging, zone policies, the agent image, executors (in process, OpenShell)
   platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
   cli.py     typer app exposed as the `meridian` console script
+  worker.py  `meridian-worker`: one agent run on a staged cut (what runs in a sandbox)
+docker/      agent.Dockerfile
+policies/    one OpenShell policy per zone, rendered by `meridian policy render`
 scripts/     calibration, tuning and AE experiment scripts (nothing in src imports them)
 tests/
   unit/      validators, round trips, hashing, ledger behaviour, CLI
