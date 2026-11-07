@@ -23,7 +23,7 @@ N_VISITS = 10
 
 
 def _pilot_frames(
-    n_sites: int, per_site: int, seed: int, small_site: int | None
+    n_sites: int, per_site: int, seed: int, small_site: int | None, sizes: list[int] | None = None
 ) -> tuple[dict[str, pl.DataFrame], dict[str, str]]:
     rng = np.random.default_rng(seed)
     dm_rows: list[dict[str, object]] = []
@@ -38,6 +38,8 @@ def _pilot_frames(
         pilot_site = str(701 + s)
         site_map[pilot_site] = str(1001 + s)
         n = small_site if (small_site is not None and s == n_sites - 1) else per_site
+        if sizes is not None:
+            n = sizes[s]
         for k in range(n + 1):  # the last one is a screen failure
             usubjid = f"01-{pilot_site}-{1000 + k:04d}"
             failed = k == n
@@ -145,9 +147,15 @@ def make_tables(
     seed: int = 7,
     small_site: int | None = None,
     ops_seed: int = 11,
+    sizes: list[int] | None = None,
 ) -> tuple[dict[str, pl.DataFrame], dict[str, pl.DataFrame], dict[str, pl.DataFrame]]:
-    """(blinded, ops, unblinded) tables of a clean synthetic study."""
-    frames, site_map = _pilot_frames(n_sites, per_site, seed, small_site)
+    """(blinded, ops, unblinded) tables of a clean synthetic study.
+
+    sizes, when given, sets treated subjects per site (and n_sites = len(sizes)).
+    """
+    if sizes is not None:
+        n_sites = len(sizes)
+    frames, site_map = _pilot_frames(n_sites, per_site, seed, small_site, sizes)
     curated = curate(frames, site_map, STUDY)
     blinded = dict(curated.blinded)
     ops = synthesize(blinded["dm"], blinded["sv"], ops_seed, OpsSynthParams()).tables

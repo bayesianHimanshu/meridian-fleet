@@ -211,6 +211,25 @@ def test_data_cut_payload_has_no_trace(injected: tuple[Path, InjectResult]) -> N
     assert result.event.actor == "system.faults"
 
 
+def test_holdout_and_sweep_cuts_have_no_trace(tmp_path: Path, ledger: SqliteLedger) -> None:
+    from meridian.faults.scenario import ensure_sweep, sweep_items
+
+    blinded, ops, unblinded = make_tables(sizes=[40, 30, 26, 25, 24, 21, 18, 16, 13, 9, 8, 7])
+    write_tables_cut(tmp_path / "data" / "curated", "DC-BASE", blinded, ops, unblinded)
+    scenarios = tmp_path / "scenarios"
+    injector = _injector(tmp_path, ledger)
+    injector.inject(scenarios / "rbqm_core.toml")
+    base = FullCutReader(tmp_path / "data" / "curated" / STUDY / "DC-BASE").read()
+    sweep = ensure_sweep(scenarios / "sweep", base, load_scenario(scenarios / "rbqm_core.toml"))
+    strongest = {item.fault_type: path for item, path in zip(sweep_items(), sweep, strict=True)}
+    for path in [scenarios / "rbqm_holdout.toml", *strongest.values()]:
+        result = injector.inject(path)
+        names, values = _tokens(path)
+        _assert_no_trace(result.cut_path, names, values)
+        payload = result.event.payload.model_dump_json().lower()
+        assert not any(name.lower() in payload for name in names), path.name
+
+
 def test_repo_faulted_cut_has_no_trace_if_present() -> None:
     cut = REPO_ROOT / "data" / "curated" / STUDY / RBQM_CORE_OUT_CUT
     scenario = REPO_ROOT / "config" / "scenarios" / "rbqm_core.toml"

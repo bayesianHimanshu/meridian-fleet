@@ -20,7 +20,7 @@ from meridian.data.files import sha256_file, write_bytes_atomic
 from meridian.domain.events import Event
 from meridian.faults.catalog import REGISTRY, FaultRecord, Tables
 from meridian.faults.reader import FullCut, FullCutReader
-from meridian.faults.scenario import Scenario, ensure_rbqm_core, load_scenario
+from meridian.faults.scenario import Scenario, ensure_holdout, ensure_rbqm_core, load_scenario
 from meridian.platform.clock import Clock
 
 FAULTS_ACTOR = "system.faults"
@@ -92,7 +92,9 @@ class FaultInjector:
         self._ground_truth_dir = ground_truth_dir
         self._writer = writer
         self._generators = (
-            {"rbqm_core": ensure_rbqm_core} if scenario_generators is None else scenario_generators
+            {"rbqm_core": ensure_rbqm_core, "rbqm_holdout": ensure_holdout}
+            if scenario_generators is None
+            else scenario_generators
         )
 
     def _study_dir(self) -> Path:

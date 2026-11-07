@@ -520,3 +520,39 @@ def eval_null(
 ) -> None:
     """Score a clean cut, where every finding is a false positive, and write a scorecard."""
     _score(cut, agent_version, null=True)
+
+
+@eval_app.command("suite")
+def eval_suite() -> None:
+    """After the freeze: null cuts, holdout, sweep, agents, scorecards and the report."""
+    from meridian.platform.eval_suite import run_suite
+
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        try:
+            result = run_suite(c, log)
+        except DATA_ERRORS as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"ingested: {', '.join(result.ingested) or 'nothing new'}")
+        typer.echo(f"injected: {', '.join(result.injected) or 'nothing new'}")
+        typer.echo(f"agent runs: {result.agent_runs}, failures: {result.agent_failures}")
+        for path in result.scorecards:
+            typer.echo(f"scorecard {path}")
+        typer.echo(f"report {result.report_path}")
+        if result.agent_failures:
+            raise typer.Exit(code=1)
+
+
+@eval_app.command("report")
+def eval_report() -> None:
+    """Write docs/eval-phase1.md from the latest scorecards."""
+    from meridian.platform.eval_suite import write_report
+
+    with _container() as c:
+        try:
+            path = write_report(c)
+        except DATA_ERRORS as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        typer.echo(f"wrote {path}")
