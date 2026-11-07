@@ -109,7 +109,6 @@ ipython_config.py
 #   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
 #   This is especially recommended for binary packages to ensure reproducibility, and is more
 #   commonly ignored for libraries.
-uv.lock
 
 # poetry
 #   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
@@ -234,3 +233,4 @@ __marimo__/
 # Downloaded and generated study data (reproducible with meridian data fetch/ingest)
 data/raw/
 data/curated/
+data/ground_truth/
