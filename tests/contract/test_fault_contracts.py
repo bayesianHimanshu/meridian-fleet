@@ -95,6 +95,19 @@ def test_agents_do_not_reach_them_transitively_either() -> None:
         assert reached == [], f"{module} reaches {reached}"
 
 
+def test_evals_do_not_import_agents_directly_or_transitively() -> None:
+    graph = _graph()
+    evals = sorted(m for m in graph if m == "meridian.evals" or m.startswith("meridian.evals."))
+    assert len(evals) >= 4
+    for module in evals:
+        reached = sorted(
+            m
+            for m in _closure(graph, module)
+            if m == "meridian.agents" or m.startswith("meridian.agents.")
+        )
+        assert reached == [], f"{module} reaches {reached}"
+
+
 def test_import_scan_sees_real_imports() -> None:
     assert "meridian.data.study_store" in _imports_of(SRC / "agents" / "base.py")
     assert "meridian.data.ingest" in _imports_of(SRC / "platform" / "container.py")

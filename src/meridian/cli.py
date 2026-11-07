@@ -20,8 +20,16 @@ from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
 from meridian.domain.events import DataCut, Event, EventDraft, FindingRaised, RedactedEvent
 from meridian.domain.findings import Evidence, Finding
+from meridian.evals.matching import VersionFilter
+from meridian.evals.scorecard import (
+    CutEvaluation,
+    ScorecardExistsError,
+    evaluate_cut,
+    git_commit,
+    new_scorecard,
+)
 from meridian.faults.catalog import FaultError
-from meridian.faults.inject import InjectionError
+from meridian.faults.inject import GroundTruth, InjectionError
 from meridian.faults.scenario import ScenarioError
 from meridian.ledger.store import LedgerError
 from meridian.ledger.verify import verify
@@ -33,6 +41,7 @@ app = typer.Typer(no_args_is_help=True, help="Meridian Agent Fleet.")
 ledger_app = typer.Typer(no_args_is_help=True, help="Inspect and manage the event ledger.")
 faults_app = typer.Typer(no_args_is_help=True, help="Plant known faults into a copy of a cut.")
 agents_app = typer.Typer(no_args_is_help=True, help="List and run oversight agents.")
+eval_app = typer.Typer(no_args_is_help=True, help="Score findings against ground truth.")
 findings_app = typer.Typer(no_args_is_help=True, help="Inspect findings in the ledger.")
 data_app = typer.Typer(no_args_is_help=True, help="Fetch, ingest and inspect study data.")
 app.add_typer(ledger_app, name="ledger")
@@ -40,6 +49,7 @@ app.add_typer(data_app, name="data")
 app.add_typer(faults_app, name="faults")
 app.add_typer(agents_app, name="agents")
 app.add_typer(findings_app, name="findings")
+app.add_typer(eval_app, name="eval")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -192,6 +202,7 @@ DATA_ERRORS = (
     InjectionError,
     ScenarioError,
     RegistrationError,
+    ScorecardExistsError,
 )
 
 
@@ -428,3 +439,84 @@ def findings_show(
             shown += 1
         if shown == 0:
             typer.echo("no findings")
+
+
+AgentVersionOption = Annotated[
+    str | None,
+    typer.Option(
+        "--agent-version", help="Score only findings of this version (default: registered ones)."
+    ),
+]
+
+
+def _version_filter(c: Container, version: str | None) -> VersionFilter:
+    return (
+        VersionFilter.only(version)
+        if version
+        else VersionFilter.registered(c.registered_versions())
+    )
+
+
+def _print_evaluation(e: CutEvaluation) -> None:
+    m = e.metrics.overall
+    recall = "n/a" if m.recall is None else f"{m.recall:.2f}"
+    ap = "n/a" if m.average_precision is None else f"{m.average_precision:.2f}"
+    typer.echo(
+        f"{e.cut_id}: {m.findings} findings, recall {recall}, false positives "
+        f"{m.false_positives}, average precision {ap}"
+    )
+    for match in e.matches:
+        hit = f"{match.finding_id} (score {match.score:.2f})" if match.detected else "MISSED"
+        dup = f", duplicates {', '.join(match.duplicates)}" if match.duplicates else ""
+        typer.echo(f"  {match.fault_id} {match.fault_type:<22} {match.target:<6} {hit}{dup}")
+    for agent_id, am in e.metrics.per_agent.items():
+        typer.echo(
+            f"  {agent_id:<20} findings {am.findings:>3}  false positives {am.false_positives}"
+        )
+
+
+def _score(cut: str, version: str | None, null: bool) -> None:
+    with _container() as c:
+        try:
+            faults = None
+            if not null:
+                truth_path = c.settings.ground_truth_dir / f"{cut}.json"
+                if not truth_path.exists():
+                    typer.echo(f"error: no ground truth at {truth_path}", err=True)
+                    raise typer.Exit(code=1)
+                faults = list(GroundTruth.load(truth_path).faults)
+            versions = _version_filter(c, version)
+            evaluation = evaluate_cut(
+                c.ledger, cut, faults, versions, sorted(c.registered_versions())
+            )
+            card = new_scorecard(
+                clock=c.clock,
+                evaluations=[evaluation],
+                versions=versions,
+                agents_config=c.settings.agents.model_dump(mode="json"),
+                git_sha=git_commit(),
+            )
+            path = c.scorecard_store().write(card)
+        except DATA_ERRORS as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        _print_evaluation(evaluation)
+        typer.echo(f"scorecard {path} ({versions.label()})")
+
+
+@eval_app.command("run")
+def eval_run(
+    cut: Annotated[str, typer.Option("--cut", help="Cut with a ground truth file.")],
+    agent_version: AgentVersionOption = None,
+) -> None:
+    """Score findings on a faulted cut against its ground truth and write a scorecard."""
+    _score(cut, agent_version, null=False)
+
+
+@eval_app.command("null")
+def eval_null(
+    cut: Annotated[str, typer.Option("--cut", help="A clean cut: every finding is a FP.")],
+    agent_version: AgentVersionOption = None,
+) -> None:
+    """Score a clean cut, where every finding is a false positive, and write a scorecard."""
+    _score(cut, agent_version, null=True)

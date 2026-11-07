@@ -76,6 +76,7 @@ class Settings(BaseSettings):
     curated_root: Path = Path("data/curated")
     sites_file: Path = Path("config/sites.toml")
     ground_truth_dir: Path = Path("data/ground_truth")
+    evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)
     agents: AgentsSettings
