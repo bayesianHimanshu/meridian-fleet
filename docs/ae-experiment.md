@@ -51,3 +51,33 @@ generated. Its results are reported once and nothing is retuned after seeing the
 Note, known before running: the null cuts share their AE, DM, SV and LB data with
 DC-BASE (only the operational tables differ), so a variant's AE false positives are the
 same on DC-BASE and on every null cut. The null columns are still reported.
+
+<!-- Results below are written by scripts/ae_experiment.py -->
+
+## Results on dev
+
+Agents run in memory by `scripts/ae_experiment.py`; nothing here is in the ledger.
+Detector false positives count ae_rate, deviations and variance findings; rule
+findings are scored against condition truth instead and are not counted.
+
+| Variant | phi DC-BASE | AE FP DC-BASE | AE FP S1..S5 | Detector FP DC-BASE | Detector FP S1..S5 | CORE | 0.2 | 0.4 | 0.7 | AE detected | Eligible |
+| --- | ---: | ---: | --- | ---: | --- | --- | --- | --- | --- | ---: | --- |
+| a subject_days | 8.28 | 0 | 0, 0, 0, 0, 0 | 1 | 1, 0, 0, 1, 0 | no | no | no | no | 0 of 4 | yes |
+| b per_subject | 13.01 | 0 | 0, 0, 0, 0, 0 | 1 | 1, 0, 0, 1, 0 | no | no | no | no | 0 of 4 | yes |
+| c early_window | 12.89 | 0 | 0, 0, 0, 0, 0 | 1 | 1, 0, 0, 1, 0 | no | no | no | no | 0 of 4 | yes |
+| d covariate_adjusted | 8.05 | 0 | 0, 0, 0, 0, 0 | 1 | 1, 0, 0, 1, 0 | no | no | no | no | 0 of 4 | yes |
+| e lab_concordance | 8.72 | 1 | 1, 1, 1, 1, 1 | 2 | 2, 1, 1, 2, 1 | no | no | no | no | 0 of 4 | no |
+
+z of the AE target site (1010 on every dev cut). A finding needs z below about -3.17 (Bonferroni over 13 tested sites at alpha 0.01):
+
+| Variant | CORE | 0.2 | 0.4 | 0.7 |
+| --- | ---: | ---: | ---: | ---: |
+| a | -1.89 | -0.39 | -0.97 | -1.89 |
+| b | -1.85 | -0.60 | -1.08 | -1.85 |
+| c | -1.82 | -1.02 | -1.49 | -1.85 |
+| d | -1.63 | -0.39 | -0.86 | -1.63 |
+| e | -1.93 | -0.26 | -0.87 | -1.93 |
+
+## Decision
+
+Chosen variant: **a (subject_days)**. By the rule: no eligible variant detects more AE faults on dev than a (0), so a is kept and AE under-reporting is a known limitation.
