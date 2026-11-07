@@ -7,7 +7,8 @@ parameters; flagged checks come from the caller's visible findings (Repository).
 
 from collections.abc import Mapping, Sequence
 
-from meridian.api.models import QtlView, RbqmSites, SiteMetrics
+from meridian.agents.rbqm.kri_monitor import HIGH_SEVERITY_FACTOR
+from meridian.api.models import QtlView, RbqmSites, SiteFlag, SiteMetrics
 from meridian.data.derived import treated_per_site
 from meridian.data.study_store import StudyReader
 from meridian.platform.config import AgentsSettings
@@ -23,7 +24,7 @@ from meridian.stats.site_metrics import (
 
 
 def site_metrics(
-    study: StudyReader, agents: AgentsSettings, flagged: Mapping[str, Sequence[str]]
+    study: StudyReader, agents: AgentsSettings, flagged: Mapping[str, Sequence[SiteFlag]]
 ) -> RbqmSites:
     kri, csm = agents.kri_monitor, agents.csm
     dm, sv = study.table("dm"), study.table("sv")
@@ -67,7 +68,8 @@ def site_metrics(
                 median_entry_lag_days=lag.get(site),
                 median_open_query_age_days=aging.get(site),
                 csm_log_sd_z={p: sd_z.get(p, {}).get(site) for p in csm.parameters},
-                flagged_checks=list(flagged.get(site, [])),
+                flagged_checks=sorted({f.check for f in flagged.get(site, [])}),
+                flagged_by=list(flagged.get(site, [])),
             )
         )
     qtl_cfg = agents.qtl_detector
@@ -92,8 +94,11 @@ def site_metrics(
         sites=sites,
         qtl=qtl,
         thresholds={
+            # Above the threshold the agent flags (medium); above factor x it, high.
             "data_entry_lag_days": kri.lag_days,
+            "data_entry_lag_high_days": HIGH_SEVERITY_FACTOR * kri.lag_days,
             "open_query_age_days": kri.query_age_days,
+            "open_query_age_high_days": HIGH_SEVERITY_FACTOR * kri.query_age_days,
             "csm_log_sd_z": -csm.z_threshold,
             "kri_alpha": kri.alpha,
         },

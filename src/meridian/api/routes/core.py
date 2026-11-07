@@ -29,7 +29,7 @@ from meridian.domain.enums import EventType, FindingKind, Severity
 public = APIRouter(prefix="/api/v1")
 router = APIRouter(prefix="/api/v1")
 
-Status = Literal["open", "accepted", "escalated", "dismissed"]
+Status = Literal["open", "accepted", "escalated", "dismissed", "retired"]
 
 
 @public.get("/health", tags=["meta"])
@@ -77,6 +77,7 @@ def findings(
     repo: Repo,
     scope: Scope = "operational",
     include_superseded: bool = False,
+    include_retired: bool = False,
     cut: str | None = None,
     agent: str | None = None,
     kind: FindingKind | None = None,
@@ -91,6 +92,7 @@ def findings(
     filters = FindingFilters(
         scope=scope,
         include_superseded=include_superseded,
+        include_retired=include_retired,
         cut=cut,
         agent=agent,
         kind=None if kind is None else kind.value,
@@ -115,11 +117,18 @@ def decide(finding_id: str, body: DecisionRequest, repo: Repo) -> DecisionRespon
 
 @router.get("/review-queue", tags=["findings"])
 def review_queue(
-    repo: Repo, scope: Scope = "operational", include_superseded: bool = False
+    repo: Repo,
+    scope: Scope = "operational",
+    include_superseded: bool = False,
+    include_retired: bool = False,
 ) -> ReviewQueue:
     """Open and escalated findings the caller may see, newest first. By default only
-    operational cuts (never evaluation cuts) and no superseded findings."""
-    return repo.review_queue(FindingFilters(scope=scope, include_superseded=include_superseded))
+    operational cuts (never evaluation cuts), and no superseded or retired findings."""
+    return repo.review_queue(
+        FindingFilters(
+            scope=scope, include_superseded=include_superseded, include_retired=include_retired
+        )
+    )
 
 
 @router.get("/ledger", tags=["ledger"])

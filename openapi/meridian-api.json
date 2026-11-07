@@ -750,7 +750,8 @@
               "open",
               "accepted",
               "escalated",
-              "dismissed"
+              "dismissed",
+              "retired"
             ],
             "title": "Status",
             "type": "string"
@@ -1594,10 +1595,32 @@
               }
             ]
           },
+          "primary_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Primary Evidence",
+            "type": "array"
+          },
           "raised_at": {
             "format": "date-time",
             "title": "Raised At",
             "type": "string"
+          },
+          "retired": {
+            "title": "Retired",
+            "type": "boolean"
+          },
+          "retired_by_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retired By Version"
           },
           "scope": {
             "enum": [
@@ -1634,7 +1657,8 @@
               "open",
               "accepted",
               "escalated",
-              "dismissed"
+              "dismissed",
+              "retired"
             ],
             "title": "Status",
             "type": "string"
@@ -1689,6 +1713,8 @@
           "agent_version",
           "superseded",
           "superseded_by",
+          "retired",
+          "retired_by_version",
           "kind",
           "site_id",
           "severity",
@@ -1699,7 +1725,8 @@
           "visible_to",
           "status",
           "decision_count",
-          "latest_narrative"
+          "latest_narrative",
+          "primary_evidence"
         ],
         "title": "FindingSummary",
         "type": "object"
@@ -2571,6 +2598,49 @@
         "title": "SiteEnrollment",
         "type": "object"
       },
+      "SiteFlag": {
+        "additionalProperties": false,
+        "description": "A current finding (newest version, not superseded, not retired) at this site.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "check",
+          "finding_id",
+          "agent_id",
+          "agent_version",
+          "status",
+          "parameters"
+        ],
+        "title": "SiteFlag",
+        "type": "object"
+      },
       "SiteMetrics": {
         "additionalProperties": false,
         "properties": {
@@ -2609,6 +2679,13 @@
               }
             ],
             "title": "Deviation Z"
+          },
+          "flagged_by": {
+            "items": {
+              "$ref": "#/components/schemas/SiteFlag"
+            },
+            "title": "Flagged By",
+            "type": "array"
           },
           "flagged_checks": {
             "items": {
@@ -2661,7 +2738,8 @@
           "median_entry_lag_days",
           "median_open_query_age_days",
           "csm_log_sd_z",
-          "flagged_checks"
+          "flagged_checks",
+          "flagged_by"
         ],
         "title": "SiteMetrics",
         "type": "object"
@@ -2846,6 +2924,16 @@
           },
           {
             "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Retired",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
             "name": "cut",
             "required": false,
             "schema": {
@@ -2935,7 +3023,8 @@
                     "open",
                     "accepted",
                     "escalated",
-                    "dismissed"
+                    "dismissed",
+                    "retired"
                   ],
                   "type": "string"
                 },
@@ -3680,7 +3769,7 @@
     },
     "/api/v1/review-queue": {
       "get": {
-        "description": "Open and escalated findings the caller may see, newest first. By default only\noperational cuts (never evaluation cuts) and no superseded findings.",
+        "description": "Open and escalated findings the caller may see, newest first. By default only\noperational cuts (never evaluation cuts), and no superseded or retired findings.",
         "operationId": "review_queue_api_v1_review_queue_get",
         "parameters": [
           {
@@ -3705,6 +3794,16 @@
             "schema": {
               "default": false,
               "title": "Include Superseded",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_retired",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Retired",
               "type": "boolean"
             }
           },

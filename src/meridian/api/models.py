@@ -11,7 +11,9 @@ from meridian.domain.findings import Evidence
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
 
-FindingStatus = Literal["open", "accepted", "escalated", "dismissed"]
+# retired: a newer version of the agent ran on the cut and raised nothing with the same
+# (kind, site, check), and no person closed the finding.
+FindingStatus = Literal["open", "accepted", "escalated", "dismissed", "retired"]
 CutKind = Literal["base", "null", "faulted", "holdout", "sweep"]
 # operational: the study's current data. evaluation: null, faulted, holdout and sweep cuts.
 CutScope = Literal["operational", "evaluation"]
@@ -89,6 +91,8 @@ class FindingSummary(BaseModel):
     # check); superseded_by is the newest one's id.
     superseded: bool
     superseded_by: str | None
+    retired: bool
+    retired_by_version: str | None  # the newer agent version whose run raised nothing
     kind: FindingKind
     site_id: str | None
     severity: Severity
@@ -100,6 +104,8 @@ class FindingSummary(BaseModel):
     status: FindingStatus
     decision_count: int
     latest_narrative: LatestNarrative | None
+    # Display strings of the primary evidence (described the same way for old findings).
+    primary_evidence: list[str]
 
 
 class FindingPage(BaseModel):
@@ -267,6 +273,20 @@ class Fleet(BaseModel):
     containment: list[ContainmentView]
 
 
+class SiteFlag(BaseModel):
+    """A current finding (newest version, not superseded, not retired) at this site."""
+
+    model_config = _FROZEN
+
+    check: str
+    finding_id: str
+    agent_id: str
+    agent_version: str
+    status: str
+    # For a vital-sign variance finding: the parameters it rests on (SYSBP, ...).
+    parameters: list[str]
+
+
 class SiteMetrics(BaseModel):
     model_config = _FROZEN
 
@@ -279,6 +299,7 @@ class SiteMetrics(BaseModel):
     median_open_query_age_days: float | None
     csm_log_sd_z: dict[str, float | None]
     flagged_checks: list[str]
+    flagged_by: list[SiteFlag]
 
 
 class QtlView(BaseModel):
