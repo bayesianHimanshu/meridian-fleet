@@ -80,3 +80,18 @@ use:
 5. **Rate limits and lockout,** and the 404 rule kept for every new endpoint.
 6. **Move off a local SQLite file** for multi-user use, keeping append-only semantics and
    the guarded append's atomicity.
+
+## Known gaps
+
+* **Sweep cut ids name their fault.** The phase 1 sweep cuts carry the fault and its
+  magnitude in their id (for example DC-SWEEP-DISCONTINUATION-DRIFT-PLUS0P1), and the API
+  serves cut ids everywhere. That goes against the rule that the API never exposes fault
+  labels; only opaque ids (DC- plus a hash) honour it. Not fixed in phase 3 step 2; see
+  the backlog item below.
+
+## Backlog
+
+* **Cut ids from a canonical scenario form.** Derive every evaluation cut id from a
+  canonical form of its scenario (parsed, sorted, normalised) rather than from the raw file
+  bytes or a readable name, and re-issue the sweep cuts under such ids, keeping the old
+  names only in ground truth.
