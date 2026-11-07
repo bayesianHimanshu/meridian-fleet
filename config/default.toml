@@ -9,6 +9,7 @@ study_id = "MRD-201"
 raw_dir = "data/raw/cdisc_pilot"
 curated_root = "data/curated"
 sites_file = "config/sites.toml"
+ground_truth_dir = "data/ground_truth"
 
 # Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
 [finding_id_prefixes]
@@ -45,3 +46,28 @@ deviation_categories = [
 ]
 screen_failure_rate_mean = 0.3
 screen_failure_concentration = 20.0
+
+# Agents. enabled lists the agent ids the runner wakes; [agents.<name>] is each agent's
+# own configuration and is all the agent ever sees.
+[agents]
+enabled = ["rbqm.kri_monitor", "rbqm.qtl_detector", "rbqm.csm"]
+
+[agents.kri_monitor]
+alpha = 0.01
+lag_days = 7.0
+query_age_days = 21.0
+min_subjects = 5
+min_open_queries = 5
+
+[agents.qtl_detector]
+# Computed once from DC-BASE: premature discontinuation 144/254 = 0.5669 (base rate)
+# plus margin 0.05 = 0.6169, rounded to 3 decimals. Do not recompute from later cuts.
+discontinuation_limit = 0.617
+approaching_fraction = 0.9
+
+[agents.csm]
+alpha = 0.01
+sd_ratio_max = 0.5
+min_subjects = 5
+min_readings = 50
+parameters = ["SYSBP", "DIABP", "PULSE"]

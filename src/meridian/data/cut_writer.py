@@ -66,6 +66,9 @@ class CutManifest(BaseModel):
     seed_record: dict[str, Any]
     files: tuple[ManifestFile, ...]
     sources: tuple[SourceFile, ...]
+    # Set only on a cut derived from another cut; its lineage is that cut and nothing else.
+    derived_from_cut: str | None = None
+    derived_from_manifest_sha256: str | None = None
 
     def file_hashes(self) -> dict[str, str]:
         return {f.path: f.sha256 for f in self.files}
@@ -80,6 +83,15 @@ class CutWriteResult:
     path: Path
     manifest: CutManifest
     created: bool
+
+
+def render_manifest(manifest: CutManifest) -> str:
+    """Stable JSON. Lineage fields are omitted when unset, so base cuts keep their shape."""
+    data = manifest.model_dump(mode="json", exclude_none=False)
+    for key in ("derived_from_cut", "derived_from_manifest_sha256"):
+        if data[key] is None:
+            del data[key]
+    return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
 
 def write_parquet_deterministic(frame: pl.DataFrame, path: Path) -> None:
@@ -114,6 +126,8 @@ def write_cut(
     seed_record: dict[str, Any],
     sources: Sequence[SourceFile],
     writer: ParquetWriter = write_parquet_deterministic,
+    derived_from_cut: str | None = None,
+    derived_from_manifest_sha256: str | None = None,
 ) -> CutWriteResult:
     # Blinding is checked before a single byte is written.
     for area, tables in ((BLINDED_AREA, blinded), (OPS_AREA, ops)):
@@ -152,8 +166,10 @@ def write_cut(
             seed_record=seed_record,
             files=tuple(files),
             sources=tuple(sorted(sources, key=lambda s: s.name)),
+            derived_from_cut=derived_from_cut,
+            derived_from_manifest_sha256=derived_from_manifest_sha256,
         )
-        text = json.dumps(manifest.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        text = render_manifest(manifest)
         (tmp / MANIFEST_NAME).write_text(text, encoding="utf-8")
 
         if target.exists():

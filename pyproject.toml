@@ -25,6 +25,7 @@ dev = [
     "hypothesis",
     "ruff",
     "mypy",
+    "scipy-stubs>=1.18.1.1",
 ]
 
 [build-system]
@@ -52,7 +53,7 @@ ignore = [
 strict = true
 python_version = "3.14"
 plugins = ["pydantic.mypy"]
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 
 [tool.pydantic-mypy]
 init_forbid_extra = true
