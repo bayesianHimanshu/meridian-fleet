@@ -40,9 +40,13 @@ class GroundTruth(BaseModel):
     base_cut: str
     base_manifest_sha256: str
     faults: tuple[FaultRecord, ...]
+    label: str | None = None  # readable name of an opaque cut; absent before step 5
 
     def dumps(self) -> str:
-        return json.dumps(self.model_dump(mode="json"), indent=2, sort_keys=True) + "\n"
+        data = self.model_dump(mode="json")
+        if data["label"] is None:
+            del data["label"]  # ground truth written before step 5 stays byte for byte
+        return json.dumps(data, indent=2, sort_keys=True) + "\n"
 
     @classmethod
     def load(cls, path: Path) -> GroundTruth:
@@ -126,6 +130,7 @@ class FaultInjector:
             base_cut=scenario.base_cut,
             base_manifest_sha256=base.manifest_sha256,
             faults=tuple(records),
+            label=scenario.label,
         )
         truth_text = truth.dumps()
         truth_path = self._ground_truth_dir / f"{scenario.out_cut}.json"

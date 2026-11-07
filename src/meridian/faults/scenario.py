@@ -1,9 +1,13 @@
 """Scenario files: which faults to plant, where, and with what target levels."""
 
+import hashlib
+import itertools
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -57,6 +61,9 @@ class Scenario(BaseModel):
     base_cut: str
     out_cut: str
     faults: tuple[FaultEntry, ...] = Field(min_length=1)
+    # Readable name of an opaque scenario. It reaches the ground truth and the report,
+    # never the cut id or the cut.
+    label: str | None = None
 
     def specs(self) -> list[FaultSpec]:
         return [
@@ -65,21 +72,35 @@ class Scenario(BaseModel):
         ]
 
 
+OPAQUE_PREFIX = "DC-"
+
+
+def opaque_cut_id(scenario_bytes: bytes) -> str:
+    """DC- plus the first 8 hex characters of sha256 of the scenario file bytes."""
+    return OPAQUE_PREFIX + hashlib.sha256(scenario_bytes).hexdigest()[:8]
+
+
 def load_scenario(path: Path) -> Scenario:
-    return Scenario.model_validate(tomllib.loads(path.read_text(encoding="utf-8")))
+    """A scenario file without out_cut gets the opaque cut id of its bytes."""
+    raw = path.read_bytes()
+    data = tomllib.loads(raw.decode("utf-8"))
+    if "out_cut" not in data:
+        data["out_cut"] = opaque_cut_id(raw)
+    return Scenario.model_validate(data)
 
 
 def _fmt(value: float) -> str:
     return repr(float(value))
 
 
-def render_scenario(scenario: Scenario, header: list[str]) -> str:
+def render_scenario(scenario: Scenario, header: list[str], *, opaque: bool = False) -> str:
+    """TOML text. opaque: no out_cut line (the cut id comes from the file bytes)."""
     lines = [*(f"# {h}" if h else "#" for h in header), ""]
-    lines += [
-        f"seed = {scenario.seed}",
-        f'base_cut = "{scenario.base_cut}"',
-        f'out_cut = "{scenario.out_cut}"',
-    ]
+    lines += [f"seed = {scenario.seed}", f'base_cut = "{scenario.base_cut}"']
+    if opaque:
+        lines.append(f'label = "{scenario.label}"')
+    else:
+        lines.append(f'out_cut = "{scenario.out_cut}"')
     for fault in scenario.faults:
         lines += ["", "[[faults]]", f'type = "{fault.type}"', f'target = "{fault.target}"']
         lines += ["[faults.params]"]
@@ -342,4 +363,164 @@ def ensure_sweep(directory: Path, base: FullCut, core: Scenario) -> list[Path]:
             with path.open("x", encoding="utf-8") as handle:
                 handle.write(generate_sweep_item(base, core, item))
         paths.append(path)
+    return paths
+
+
+# Holdout 2 and the AE holdouts (phase 1 step 5). Opaque cut ids from here on.
+
+HOLDOUT2_SEED = 20261110
+HOLDOUT2_FILE = "rbqm_holdout2.toml"
+HOLDOUT2_LABEL = "rbqm_holdout2"
+HOLDOUT2_DISCONTINUATION_UPLIFT = 0.07
+AE_HOLDOUT_SEED = 20261111
+AE_HOLDOUT_DIR = "ae_holdout"
+AE_HOLDOUT_COUNT = 3
+AE_HOLDOUT_DROP_SHARE = 0.7
+HOLDOUT_FILE = "rbqm_holdout.toml"
+SWEEP_DIR = "sweep"
+
+
+def _selection_rng(seed: int) -> np.random.Generator:
+    """The root stream of SeedSequence(seed). Injection uses its spawned children, so the
+    site draw and the fault draws never share a stream."""
+    return np.random.Generator(np.random.PCG64(np.random.SeedSequence(seed)))
+
+
+def fault_site_pairs(scenarios: Sequence[Scenario]) -> set[tuple[str, str]]:
+    return {(f.type, f.target) for s in scenarios for f in s.faults if f.target != STUDY_TARGET}
+
+
+def eligible_sites(base: FullCut) -> list[str]:
+    """Sites with at least MIN_TARGET_TREATED treated subjects, by site id."""
+    sizes = treated_per_site(base.blinded["dm"])
+    return sorted(sizes.filter(pl.col("treated") >= MIN_TARGET_TREATED)["SITEID"].to_list())
+
+
+def _earlier(directory: Path) -> list[Scenario]:
+    paths = [directory / CORE_FILE, directory / HOLDOUT_FILE]
+    paths += sorted((directory / SWEEP_DIR).glob("*.toml"))
+    return [load_scenario(p) for p in paths]
+
+
+def generate_holdout2(base: FullCut, core: Scenario, earlier: Sequence[Scenario]) -> str:
+    """The six fault types of rbqm_core with its parameters, at sites drawn by the rng.
+
+    Every assignment of the five site faults to distinct sites with at least 10 treated
+    subjects that repeats no fault-site pair of `earlier` is listed in sorted order, and
+    the rng picks one uniformly. discontinuation_drift targets base + 0.07.
+    """
+    sites = eligible_sites(base)
+    used = fault_site_pairs(earlier)
+    site_faults = [f for f in core.faults if f.target != STUDY_TARGET]
+    options = [
+        combo
+        for combo in itertools.permutations(sites, len(site_faults))
+        if all((f.type, site) not in used for f, site in zip(site_faults, combo, strict=True))
+    ]
+    if not options:
+        raise ScenarioError("no assignment of holdout 2 sites avoids every earlier pair")
+    pick = options[int(_selection_rng(HOLDOUT2_SEED).integers(len(options)))]
+    discontinued, n, rate = _base_rate(base)
+    faults = [
+        FaultEntry(type=f.type, target=site, params=f.params)
+        for f, site in zip(site_faults, pick, strict=True)
+    ]
+    faults.append(
+        FaultEntry(
+            type="discontinuation_drift",
+            target=STUDY_TARGET,
+            params={"target_rate": round(rate + HOLDOUT2_DISCONTINUATION_UPLIFT, 3)},
+        )
+    )
+    scenario = Scenario(
+        seed=HOLDOUT2_SEED,
+        base_cut=base.manifest.cut_id,
+        out_cut="(opaque)",
+        faults=tuple(faults),
+        label=HOLDOUT2_LABEL,
+    )
+    header = [
+        "RBQM holdout 2. Generated once from "
+        f"{base.manifest.cut_id} after the AE expectation variant was frozen;",
+        "always read from this file afterwards. Never used for tuning. The cut id is opaque:",
+        "DC- plus the first 8 hex characters of sha256 of this file's bytes.",
+        "",
+        "Same fault types and parameters as rbqm_core. Sites: every assignment of the five",
+        f"site faults to distinct sites with at least {MIN_TARGET_TREATED} treated subjects "
+        f"({', '.join(sites)})",
+        "that repeats no fault-site pair of rbqm_core, rbqm_holdout or the sweep, in sorted",
+        f"order; {len(options)} assignments, one picked by the root stream of "
+        f"SeedSequence({HOLDOUT2_SEED}).",
+        "",
+        f"target_rate: base rate {discontinued}/{n} = {rate:.4f}, plus "
+        f"{HOLDOUT2_DISCONTINUATION_UPLIFT:.2f}, rounded to 3 decimals.",
+    ]
+    return render_scenario(scenario, header, opaque=True)
+
+
+def generate_ae_holdouts(base: FullCut, earlier: Sequence[Scenario]) -> list[str]:
+    """Three cuts, one ae_under_reporting fault each (drop_share 0.7), at three different
+    sites with at least 10 treated subjects that were never an AE target before."""
+    before = sorted({t for kind, t in fault_site_pairs(earlier) if kind == "ae_under_reporting"})
+    candidates = [s for s in eligible_sites(base) if s not in before]
+    if len(candidates) < AE_HOLDOUT_COUNT:
+        raise ScenarioError(f"only {len(candidates)} sites were never an AE target")
+    picked = _selection_rng(AE_HOLDOUT_SEED).choice(
+        np.array(candidates, dtype=object), size=AE_HOLDOUT_COUNT, replace=False
+    )
+    texts: list[str] = []
+    for n, site in enumerate((str(x) for x in picked), start=1):
+        scenario = Scenario(
+            seed=AE_HOLDOUT_SEED + n,
+            base_cut=base.manifest.cut_id,
+            out_cut="(opaque)",
+            faults=(
+                FaultEntry(
+                    type="ae_under_reporting",
+                    target=site,
+                    params={"drop_share": AE_HOLDOUT_DROP_SHARE},
+                ),
+            ),
+            label=f"{AE_HOLDOUT_DIR}/{n}",
+        )
+        header = [
+            f"AE holdout {n} of {AE_HOLDOUT_COUNT}. Generated once from {base.manifest.cut_id} "
+            "after the AE expectation",
+            "variant was frozen; never used for tuning. The cut id is opaque (sha256 of this "
+            "file).",
+            "",
+            f"Site: sites with at least {MIN_TARGET_TREATED} treated subjects that were never "
+            f"an AE target ({', '.join(before)}",
+            f"were): {', '.join(candidates)}. Three drawn without replacement by the root "
+            f"stream of SeedSequence({AE_HOLDOUT_SEED});",
+            f"this file takes draw {n}. Injection seed {AE_HOLDOUT_SEED} + {n}.",
+        ]
+        texts.append(render_scenario(scenario, header, opaque=True))
+    return texts
+
+
+def _write_once(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def ensure_holdout2(directory: Path, base: FullCut) -> Path:
+    path = directory / HOLDOUT2_FILE
+    if not path.exists():
+        core = load_scenario(directory / CORE_FILE)
+        _write_once(path, generate_holdout2(base, core, _earlier(directory)))
+    return path
+
+
+def ensure_ae_holdouts(directory: Path, base: FullCut) -> list[Path]:
+    """Write the AE holdout files once (all three or none), after holdout 2."""
+    paths = [directory / AE_HOLDOUT_DIR / f"{n}.toml" for n in range(1, AE_HOLDOUT_COUNT + 1)]
+    if not any(p.exists() for p in paths):
+        earlier = [*_earlier(directory), load_scenario(directory / HOLDOUT2_FILE)]
+        for path, text in zip(paths, generate_ae_holdouts(base, earlier), strict=True):
+            _write_once(path, text)
+    missing = [p for p in paths if not p.exists()]
+    if missing:
+        raise ScenarioError(f"AE holdout files missing: {missing}")
     return paths
