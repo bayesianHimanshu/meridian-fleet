@@ -1,0 +1,125 @@
+/* Design tokens: the only place colours, type and spacing are defined.
+   A cool neutral base with one accent (interaction and the blinded view). Severity colours
+   (good, warning, critical) are separate from the accent and never used for anything else.
+   The restricted colour is used only for unblinded content. */
+
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/IBMPlexSans-Regular-Latin1.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/IBMPlexSans-Medium-Latin1.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans";
+  src: url("/fonts/IBMPlexSans-SemiBold-Latin1.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  src: url("/fonts/IBMPlexSansCondensed-Medium-Latin1.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Sans Condensed";
+  src: url("/fonts/IBMPlexSansCondensed-SemiBold-Latin1.woff2") format("woff2");
+  font-weight: 600;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/IBMPlexMono-Regular-Latin1.woff2") format("woff2");
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/fonts/IBMPlexMono-Medium-Latin1.woff2") format("woff2");
+  font-weight: 500;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Neutrals (cool) */
+  --bg: #f4f6f9;
+  --surface: #ffffff;
+  --surface-2: #eef1f5;
+  --line: #d9dee6;
+  --line-strong: #b9c1cd;
+  --fg: #141a24;
+  --muted: #5a6475;
+
+  /* The one accent */
+  --accent: #2547c0;
+  --accent-soft: #e4e9fa;
+  --on-accent: #ffffff;
+
+  /* Severity, separate from the accent */
+  --good: #1c7046;
+  --good-soft: #def1e6;
+  --warning: #93570a;
+  --warning-soft: #faedd6;
+  --critical: #b52d27;
+  --critical-soft: #fae1de;
+  --low: #8d97a8;
+
+  /* Restricted: unblinded content only */
+  --restricted: #9f1f4c;
+  --restricted-soft: #f9e3eb;
+
+  /* Type */
+  --font-ui: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-heading: "IBM Plex Sans Condensed", "IBM Plex Sans", "Arial Narrow", sans-serif;
+  --font-data: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-lg: 17px;
+  --text-xl: 22px;
+
+  /* Space and shape */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius: 6px;
+  --hairline: 1px solid var(--line);
+  --focus: 2px solid var(--accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #0e1219;
+    --surface: #151b25;
+    --surface-2: #1c2330;
+    --line: #2a3242;
+    --line-strong: #3d4759;
+    --fg: #e4e8ef;
+    --muted: #97a1b3;
+    --accent: #869dff;
+    --accent-soft: #1e2749;
+    --on-accent: #0e1219;
+    --good: #52c48d;
+    --good-soft: #13302a;
+    --warning: #e6a54e;
+    --warning-soft: #362813;
+    --critical: #ff7d73;
+    --critical-soft: #3b1a19;
+    --low: #6a7487;
+    --restricted: #f173a1;
+    --restricted-soft: #3a1829;
+  }
+}
