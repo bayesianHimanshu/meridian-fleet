@@ -48,6 +48,10 @@ class AgentExecutor(Protocol):
 
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> RunOutcome: ...
 
+    def drain(self) -> None:
+        """Block until background work (sandbox deletion) has finished."""
+        ...
+
 
 @dataclass(slots=True)
 class RunReport:
@@ -111,6 +115,7 @@ class AgentRunner:
                 if (agent.agent_id, agent.version, trigger.seq) in done:
                     continue
                 self._run_one(registered, trigger, report)
+        self._executor.drain()  # a pass ends only when every sandbox is torn down
         return report
 
     def _run_one(self, registered: RegisteredAgent, trigger: Event, report: RunReport) -> None:

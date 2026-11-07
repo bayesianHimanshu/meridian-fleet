@@ -24,6 +24,7 @@ from meridian.sandbox import policies
 from meridian.sandbox.executor import ExecutionError, OpenShellExecutor
 from meridian.sandbox.openshell import ExecOutput, ExecTimeoutError, OpenShellError
 from meridian.sandbox.staging import StagingError, assert_clean_stage, stage_cut
+from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 from tests.rbqm_support import NOW, STUDY
 from tests.support import make_ledger
 from tests.worker_support import cut_trigger, tiny_cut
@@ -97,10 +98,14 @@ def _expected(cut_dir: Path, agent: str = "rbqm.csm") -> str:
 
 
 def _executor(
-    client: FakeOpenShellClient, cut_dir: Path, *, keep_failed: bool = False
+    client: FakeOpenShellClient, cut_dir: Path, *, keep_failed: bool = False, workers: int = 0
 ) -> OpenShellExecutor:
+    tracker = SandboxTracker(cut_dir.parent.parent / "sandboxes.jsonl", FixedClock(NOW))
+    log = structlog.get_logger()
     return OpenShellExecutor(
         client=client,
+        tracker=tracker,
+        deleter=BackgroundDeleter(delete=client.delete, tracker=tracker, workers=workers, log=log),
         registry=build_registry(AGENTS),
         study_root=cut_dir.parent,
         image="meridian-agent:test",

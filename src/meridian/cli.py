@@ -658,3 +658,32 @@ def sandbox_verify(
         )
     if not all(r.identical for r in rows):
         raise typer.Exit(code=1)
+
+
+@sandbox_app.command("reap")
+def sandbox_reap() -> None:
+    """Delete every sandbox in var/sandboxes.jsonl that is not yet deleted, and only those."""
+    from meridian.sandbox.openshell import SubprocessOpenShellClient
+    from meridian.sandbox.tracking import TrackingError, reap
+
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        tracker = c.sandbox_tracker()
+        client = SubprocessOpenShellClient()
+        try:
+            report = reap(tracker=tracker, delete=client.delete, live=client.names, log=log)
+        except (TrackingError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    typer.echo(
+        f"reaped {len(report.deleted)}, already gone {len(report.already_gone)}, "
+        f"failed {len(report.failed)} (tracked in {tracker.path})"
+    )
+    for name in report.deleted:
+        typer.echo(f"  deleted      {name}")
+    for name in report.already_gone:
+        typer.echo(f"  already gone {name}")
+    for name in report.failed:
+        typer.echo(f"  FAILED       {name}")
+    if report.failed:
+        raise typer.Exit(code=1)

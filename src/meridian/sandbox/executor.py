@@ -33,6 +33,7 @@ from meridian.sandbox.staging import (
     assert_clean_stage,
     stage_cut,
 )
+from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
 INPROCESS = "inprocess"
 OPENSHELL = "openshell"
@@ -60,6 +61,8 @@ class Executor(Protocol):
     def name(self) -> str: ...
 
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult: ...
+
+    def drain(self) -> None: ...
 
 
 def _ms(start: float) -> int:
@@ -95,6 +98,9 @@ class InProcessExecutor:
             duration_ms=_ms(start),
             stderr_tail="",
         )
+
+    def drain(self) -> None:
+        """Nothing runs in the background in process."""
 
 
 # The installed gateway (0.1.7) refuses sandbox names longer than 19 characters.
@@ -143,10 +149,14 @@ class OpenShellExecutor:
         exec_timeout_seconds: int,
         keep_failed: bool,
         log: structlog.typing.FilteringBoundLogger,
+        tracker: SandboxTracker,
+        deleter: BackgroundDeleter,
         staging_dir: Path | None = None,
         name_factory: Callable[[str, int], str] = sandbox_name,
     ) -> None:
         self._client = client
+        self._tracker = tracker
+        self._deleter = deleter
         self._registry = registry
         self._study_root = study_root
         self._image = image
@@ -176,6 +186,8 @@ class OpenShellExecutor:
                 raise ExecutionError("staged files changed after the inputs manifest was written")
             inputs_sha = recomputed.sha256()
             ok = False
+            # Recorded before the call: a failed create or upload can leave it behind.
+            self._tracker.record(name, "created")
             try:
                 self._client.create(name, self._image, policy_file, [(stage, SANDBOX_ROOT)])
                 out = self._client.exec(name, self._argv(agent_id), self._timeout)
@@ -235,9 +247,13 @@ class OpenShellExecutor:
 
     def _finish(self, name: str, ok: bool, log: structlog.typing.FilteringBoundLogger) -> None:
         if not ok and self._keep_failed:
+            # Tracked as created and never delete_requested: meridian sandbox reap finds it.
             log.warning("sandbox.kept_for_debugging", sandbox=name)
             return
-        try:
-            self._client.delete(name)
-        except OpenShellError as exc:
-            log.error("sandbox.delete_failed", sandbox=name, error=str(exc))
+        self._deleter.submit(name)
+
+    def drain(self) -> None:
+        """Wait until every sandbox handed to the deleter is deleted or failed to delete."""
+        report = self._deleter.drain()
+        if report.failed:
+            self._log.error("sandbox.deletes_failed", sandboxes=report.failed)

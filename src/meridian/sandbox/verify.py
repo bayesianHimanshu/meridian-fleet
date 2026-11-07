@@ -65,4 +65,5 @@ def verify(
                     policy_sha256=there.policy_sha256,
                 )
             )
+    sandboxed.drain()
     return rows
