@@ -12,6 +12,8 @@ ActorId = Annotated[str, StringConstraints(min_length=1, max_length=128)]
 FindingId = Annotated[str, StringConstraints(pattern=r"^[A-Z]+-[0-9]{4}$")]
 DedupKey = Annotated[str, StringConstraints(min_length=1, max_length=512)]
 Sha256Hex = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
+# A content digest as docker reports it: "sha256:" plus 64 hex characters.
+Sha256Digest = Annotated[str, StringConstraints(pattern=r"^sha256:[0-9a-f]{64}$")]
 
 
 def _to_utc(value: datetime) -> datetime:
