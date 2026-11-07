@@ -60,6 +60,20 @@ uv run python scripts/narrator_validator_eval.py    # validator 1.0.0 vs 1.1.0
 uv run python scripts/narrator_rerun_table.py       # live 1.1.0 vs 1.0.0
 ```
 
+## Phase 3 status
+
+Step 1: the Fleet API, the read and decision layer for the Command Center. Development
+identity only (headers checked against config/people.toml; not authentication), on
+127.0.0.1. Contract: [openapi/meridian-api.json](openapi/meridian-api.json). Notes:
+[docs/api-notes.md](docs/api-notes.md).
+
+```sh
+uv run meridian api serve            # http://127.0.0.1:8765/api/v1 (docs at /api/docs)
+uv run meridian api openapi          # regenerate openapi/meridian-api.json
+curl -s http://127.0.0.1:8765/api/v1/review-queue \
+  -H 'X-Meridian-Actor: asha.rao' -H 'X-Meridian-Role: clinical_ops_lead'
+```
+
 ## Setup
 
 ```sh
