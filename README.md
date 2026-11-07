@@ -3,8 +3,16 @@
 A learning project: a fleet of clinical-trial oversight agents for Meridian Therapeutics,
 a fictional pharma company.
 
-Phase 1, step 1 is the foundation only: project scaffold, domain types, and an
-append-only, hash-chained event ledger. There are no agents and no data ingestion yet.
+## Phase 1 status
+
+Phase 1 is closed. Three RBQM agents (rbqm.kri_monitor 2.1.0, rbqm.qtl_detector 2.0.0,
+rbqm.csm 2.0.0) run on blinded cuts of the CDISC pilot study. The rule checks agree 100%
+with condition truth on all 30 cuts and the detectors raise at most one false positive
+on the clean cut, but detector recall is 0.67 against a target of 0.8: AE
+under-reporting is not detectable on this data. The criteria were revised after step 4,
+and the report shows the original ones next to the revised ones. See
+[docs/phase1-summary.md](docs/phase1-summary.md), and
+[docs/eval-phase1.md](docs/eval-phase1.md) for every number.
 
 ## Setup
 
@@ -18,7 +26,7 @@ uv sync
 ```sh
 uv run ruff format
 uv run ruff check
-uv run mypy src
+uv run mypy src tests scripts
 uv run pytest
 ```
 
@@ -76,6 +84,19 @@ Scorecards are written once to `data/evals/<run_id>.json` (gitignored). The phas
 result is in [docs/eval-phase1.md](docs/eval-phase1.md) and the tuning record in
 [docs/tuning-phase1.md](docs/tuning-phase1.md). `meridian.evals` never imports agents.
 
+## Rules, detectors and the AE experiment (phase 1, step 5)
+
+```sh
+uv run python scripts/ae_experiment.py   # the pre-registered AE variant experiment (dev cuts)
+uv run meridian eval suite               # also holdout 2 and the AE holdouts, after the freeze
+```
+
+Each check is a rule (a threshold on a measured value) or a detector (a statistical
+test), in `meridian.stats.checks`. Rule findings are scored against condition truth
+computed from the cut; detector findings against planted faults. Cuts made from step 5
+on have opaque ids: `DC-` plus 8 hex characters of the scenario file's sha256. The
+experiment and its decision are in [docs/ae-experiment.md](docs/ae-experiment.md).
+
 ## Configuration
 
 Settings come from `config/default.toml` and can be overridden by environment variables
@@ -102,11 +123,13 @@ src/meridian/
   data/      fetch, XPT reader, pure CDISC transform, ops synthesis, cut writer, readers
   faults/    fault catalog, scenarios, injector and FullCutReader (never imported by agents)
   agents/    agent protocol, registry, runner, and the rbqm agents (v2)
-  stats/     robust z, quasi-Poisson and per-site metrics shared by agents and evals
-  evals/     matching, metrics, scorecards and the phase 1 report (never imports agents)
-scripts/     calibration_report.py (reads only; nothing in src imports it)
+  stats/     robust z, quasi-Poisson, expected-AE variants, Poisson GLM, rule values and
+             check types, shared by agents and evals
+  evals/     matching, metrics, condition truth, scorecards and the phase 1 report
+             (never imports agents)
   platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
   cli.py     typer app exposed as the `meridian` console script
+scripts/     calibration, tuning and AE experiment scripts (nothing in src imports them)
 tests/
   unit/      validators, round trips, hashing, ledger behaviour, CLI
   property/  hypothesis: any draft sequence verifies; any flipped payload byte is caught
