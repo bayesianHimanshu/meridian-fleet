@@ -43,7 +43,8 @@ describe("decision form", () => {
     const user = userEvent.setup();
     respond(201, created);
     renderApp("/findings/RBQM-0003");
-    await user.type(await screen.findByLabelText(/Reason/), "Confirmed with the site");
+    await user.click(await screen.findByRole("radio", { name: "Accept" }));
+    await user.type(screen.getByLabelText(/Reason/), "Confirmed with the site");
     await user.click(screen.getByRole("button", { name: /Record decision/ }));
     expect(await screen.findByText(/Recorded: accepted at ledger seq/)).toBeTruthy();
     expect(posted()).toEqual([
@@ -112,6 +113,33 @@ describe("decision form", () => {
     expect(screen.queryByRole("radio")).toBeNull();
   });
 
+  it("selects nothing by default and keeps submit disabled until an action is chosen", async () => {
+    const user = userEvent.setup();
+    respond(201, created);
+    renderApp("/findings/RBQM-0003");
+    const radios = await screen.findAllByRole("radio");
+    expect(radios.map((r) => (r as HTMLInputElement).checked)).toEqual([false, false, false]);
+    const submit = screen.getByRole("button", { name: /Record decision/ });
+    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    await user.type(screen.getByLabelText(/Reason/), "x{Enter}");
+    expect(posted()).toEqual([]);
+    await user.click(screen.getByRole("radio", { name: "Escalate" }));
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("notes that a finding from evaluation data does not change the study", async () => {
+    server.use(
+      http.get(`${BASE}/findings/:id`, () =>
+        HttpResponse.json(detail("RBQM-0050", { scope: "evaluation", cut_id: "DC-RBQM-CORE" })),
+      ),
+    );
+    renderApp("/findings/RBQM-0050");
+    expect((await screen.findByTestId("evaluation-note")).textContent).toBe(
+      "This finding comes from evaluation data, not the study's current data. A decision here is recorded in the ledger but does not change anything for the study.",
+    );
+    expect(screen.getByRole("button", { name: /Record decision/ })).toBeTruthy(); // the form stays
+  });
+
   it("needs a reason to dismiss and sends nothing without one", async () => {
     const user = userEvent.setup();
     respond(201, created);
@@ -127,6 +155,7 @@ describe("decision form", () => {
     respond(201, created);
     renderApp("/findings/RBQM-0003");
     const radio = await screen.findByRole("radio", { name: "Accept" });
+    await user.click(radio);
     radio.focus();
     await user.keyboard("{Enter}");
     expect(posted()).toEqual([]);

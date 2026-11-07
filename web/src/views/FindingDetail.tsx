@@ -44,15 +44,15 @@ export function DecisionForm({
   const { person } = useIdentity();
   const queryClient = useQueryClient();
   const reasonRef = useRef<HTMLInputElement>(null);
-  const [action, setAction] = useState<Action>("accepted");
+  const [action, setAction] = useState<Action | null>(null); // nothing preselected
   const [reason, setReason] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const decide = useMutation({
-    mutationFn: () =>
+    mutationFn: (chosen: Action) =>
       unwrap(
         api.POST("/api/v1/findings/{finding_id}/decisions", {
           params: { path: { finding_id: findingId } },
-          body: { action, reason: reason.trim() === "" ? null : reason },
+          body: { action: chosen, reason: reason.trim() === "" ? null : reason },
         }),
       ),
     onSuccess: () => {
@@ -75,12 +75,16 @@ export function DecisionForm({
   const submit = (e: SyntheticEvent) => {
     e.preventDefault();
     setLocalError(null);
+    if (action === null) {
+      setLocalError("Choose accept, escalate or dismiss first.");
+      return;
+    }
     if (action === "dismissed" && reason.trim() === "") {
       setLocalError("Give a reason to dismiss a finding.");
       reasonRef.current?.focus();
       return;
     }
-    decide.mutate();
+    decide.mutate(action);
   };
   // Enter submits only from the reason field, never from a radio button.
   const guardEnter = (e: KeyboardEvent<HTMLFormElement>) => {
@@ -121,7 +125,7 @@ export function DecisionForm({
           }}
         />
       </label>
-      <button type="submit" className="btn primary" disabled={decide.isPending}>
+      <button type="submit" className="btn primary" disabled={action === null || decide.isPending}>
         Record decision as {person.name}
       </button>
       <div aria-live="polite">
@@ -260,30 +264,29 @@ export function FindingDetail() {
           <h2 id="evidence-title">Evidence</h2>
           <span className="src">Primary evidence is what the finding rests on</span>
         </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th scope="col">Role</th>
-                <th scope="col">Value</th>
-                <th scope="col">Statistic</th>
-                <th scope="col">Source</th>
+        <table className="evidence">
+          <thead>
+            <tr>
+              <th scope="col">Role</th>
+              <th scope="col">Value</th>
+              <th scope="col">Source</th>
+            </tr>
+          </thead>
+          <tbody>
+            {d.evidence.map((e, i) => (
+              <tr key={`${e.statistic}-${i}`}>
+                <td className="ev-role">
+                  <span className={`chip ${e.role === "primary" ? "outline" : ""}`}>{e.role ?? "not stated"}</span>
+                </td>
+                <td className="ev-value">
+                  {e.display ?? <span className="mono">{e.value}</span>}
+                  <span className="ev-key mono">{e.statistic}</span>
+                </td>
+                <td className="ev-source mono">{e.source}</td>
               </tr>
-            </thead>
-            <tbody>
-              {d.evidence.map((e, i) => (
-                <tr key={`${e.statistic}-${i}`}>
-                  <td>
-                    <span className={`chip ${e.role === "primary" ? "outline" : ""}`}>{e.role ?? "not stated"}</span>
-                  </td>
-                  <td>{e.display ?? <span className="mono">{e.value}</span>}</td>
-                  <td className="mono">{e.statistic}</td>
-                  <td className="mono muted">{e.source}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </section>
 
       <div className="grid-2">
@@ -291,6 +294,12 @@ export function FindingDetail() {
           <div className="panel-head">
             <h2 id="decide-title">Decide</h2>
           </div>
+          {f.scope === "evaluation" && !CLOSED.has(f.status) ? (
+            <p className="message" data-testid="evaluation-note">
+              This finding comes from evaluation data, not the study's current data. A decision here is
+              recorded in the ledger but does not change anything for the study.
+            </p>
+          ) : null}
           <DecisionForm findingId={f.finding_id} status={f.status} closing={d.decisions.at(-1)} />
         </section>
         <section className="panel" aria-labelledby="history-title">
