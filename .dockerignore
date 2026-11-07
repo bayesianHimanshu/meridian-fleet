@@ -1,0 +1,8 @@
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+!config/default.toml
+!config/sites.toml
+src/**/__pycache__
