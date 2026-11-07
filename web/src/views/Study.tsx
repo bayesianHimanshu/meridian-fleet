@@ -1,49 +1,138 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, isStatus } from "../components/common";
 import { useApi } from "../queries";
 
 const STUDY = "MRD-201";
 
-/** A cumulative line in inline SVG: months along x, treated subjects up y. */
+export const CHART_HEIGHT = 240;
+export const PAD = { left: 48, right: 16, top: 16, bottom: 30 };
+export const LABEL_PX = 12; // axis labels: 12 px mono
+const CHAR_PX = 0.6 * LABEL_PX; // IBM Plex Mono advance width is 0.6 em
+export const MIN_LABEL_SPACING = 80; // at most one x label per 80 px
+
+export type Anchor = "start" | "middle" | "end";
+
+export interface XTick {
+  index: number;
+  x: number;
+  anchor: Anchor;
+}
+
+/** x positions for n points across [0, plotWidth] (plot coordinates). */
+export function xAt(i: number, n: number, plotWidth: number): number {
+  return n <= 1 ? 0 : (i * plotWidth) / (n - 1);
+}
+
+/** Which months get a label: at least MIN_LABEL_SPACING apart, always the first and the
+ * last, the first anchored at its start and the last at its end so neither leaves the plot. */
+export function xTicks(n: number, plotWidth: number, minSpacing = MIN_LABEL_SPACING): XTick[] {
+  if (n === 0) return [];
+  if (n === 1) return [{ index: 0, x: 0, anchor: "start" }];
+  const perPoint = plotWidth / (n - 1);
+  const step = Math.max(1, Math.ceil(minSpacing / perPoint));
+  const lastX = xAt(n - 1, n, plotWidth);
+  const ticks: XTick[] = [];
+  for (let i = 0; i < n - 1; i += step) {
+    const x = xAt(i, n, plotWidth);
+    if (lastX - x < minSpacing) break;
+    ticks.push({ index: i, x, anchor: i === 0 ? "start" : "middle" });
+  }
+  ticks.push({ index: n - 1, x: lastX, anchor: "end" });
+  return ticks;
+}
+
+/** The horizontal extent of a label, for overlap checks. */
+export function labelBox(x: number, anchor: Anchor, text: string): [number, number] {
+  const w = text.length * CHAR_PX;
+  if (anchor === "start") return [x, x + w];
+  if (anchor === "end") return [x - w, x];
+  return [x - w / 2, x + w / 2];
+}
+
+/** Y ticks in nice steps (1, 2, 2.5 or 5 times a power of ten), at most about six, capped
+ * at or below the maximum: 254 gives 0, 50, ..., 250. */
+export function yTicks(max: number, target = 5): number[] {
+  if (max <= 0) return [0];
+  const raw = max / target;
+  const power = Math.pow(10, Math.floor(Math.log10(raw)));
+  // The smallest nice step that gives at most target + 1 ticks.
+  const step =
+    [1, 2, 2.5, 5, 10].map((m) => m * power).find((s) => Math.floor(max / s) + 1 <= target + 1) ??
+    10 * power;
+  const ticks: number[] = [];
+  for (let v = 0; v <= max + 1e-9; v += step) ticks.push(Math.round(v * 1000) / 1000);
+  return ticks;
+}
+
+function useWidth(fallback: number): [React.RefObject<HTMLDivElement | null>, number] {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(fallback);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) setWidth(Math.round(w));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+  return [ref, width];
+}
+
+/** A cumulative line in inline SVG, drawn in pixels at the measured width, so text keeps
+ * its size at any width. */
 export function EnrollmentChart({ data }: { data: Schemas["Enrollment"] }) {
-  const width = 720;
-  const height = 240;
-  const pad = { left: 44, right: 12, top: 12, bottom: 28 };
+  const [ref, width] = useWidth(720);
+  const height = CHART_HEIGHT;
+  const plotW = Math.max(1, width - PAD.left - PAD.right);
+  const plotH = height - PAD.top - PAD.bottom;
   const n = data.months.length;
-  const top = Math.max(...data.total, 1);
-  const step = Math.pow(10, Math.floor(Math.log10(top)));
-  const yMax = Math.ceil(top / step) * step;
-  const x = (i: number) => pad.left + (n <= 1 ? 0 : (i * (width - pad.left - pad.right)) / (n - 1));
-  const y = (v: number) => height - pad.bottom - (v * (height - pad.top - pad.bottom)) / yMax;
-  const points = data.total.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
-  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * yMax));
-  const labelEvery = Math.max(1, Math.ceil(n / 8));
   const last = data.total[n - 1] ?? 0;
+  const top = Math.max(...data.total, 1);
+  const y = (v: number) => PAD.top + plotH - (v * plotH) / top;
+  const x = (i: number) => PAD.left + xAt(i, n, plotW);
+  const points = data.total.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   return (
     <figure className="chart" style={{ margin: 0 }}>
-      <svg
-        viewBox={`0 0 ${width} ${height}`}
-        role="img"
-        aria-label={`Cumulative treated subjects, ${data.months[0] ?? ""} to ${data.months[n - 1] ?? ""}, reaching ${last}`}
-      >
-        {ticks.map((t) => (
-          <g key={t}>
-            <line className="grid" x1={pad.left} x2={width - pad.right} y1={y(t)} y2={y(t)} />
-            <text x={pad.left - 6} y={y(t) + 4} textAnchor="end">
-              {t}
+      <div ref={ref}>
+        <svg
+          width={width}
+          height={height}
+          role="img"
+          aria-label={`Cumulative treated subjects, ${data.months[0] ?? ""} to ${data.months[n - 1] ?? ""}, reaching ${last}`}
+        >
+          {yTicks(top).map((t) => (
+            <g key={t}>
+              <line className="grid" x1={PAD.left} x2={width - PAD.right} y1={y(t)} y2={y(t)} />
+              <text x={PAD.left - 8} y={y(t) + 4} textAnchor="end">
+                {t}
+              </text>
+            </g>
+          ))}
+          <line className="axis" x1={PAD.left} x2={width - PAD.right} y1={y(0)} y2={y(0)} />
+          {xTicks(n, plotW).map((t) => (
+            <text key={t.index} x={PAD.left + t.x} y={height - 10} textAnchor={t.anchor}>
+              {data.months[t.index]}
             </text>
-          </g>
-        ))}
-        <line className="axis" x1={pad.left} x2={width - pad.right} y1={y(0)} y2={y(0)} />
-        {data.months.map((m, i) =>
-          i % labelEvery === 0 || i === n - 1 ? (
-            <text key={m} x={x(i)} y={height - 8} textAnchor="middle">
-              {m}
-            </text>
-          ) : null,
-        )}
-        <polyline className="series" points={points} />
-      </svg>
+          ))}
+          <polyline className="series" points={points} />
+          {n > 0 ? (
+            <>
+              <circle className="end-point" cx={x(n - 1)} cy={y(last)} r={3} />
+              <text className="end-label" x={x(n - 1) - 6} y={y(last) - 6} textAnchor="end">
+                {last}
+              </text>
+            </>
+          ) : null}
+        </svg>
+      </div>
       <figcaption className="legend">Cumulative treated subjects by month of first treatment (blinded DM)</figcaption>
     </figure>
   );
