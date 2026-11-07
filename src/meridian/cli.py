@@ -265,7 +265,7 @@ def _site_summary(reader: StudyReader, pilot_by_meridian: dict[str, str]) -> pl.
     dm = reader.table("dm").select("USUBJID", "SITEID")
 
     def per_site(frame: pl.DataFrame, name: str) -> pl.DataFrame:
-        return frame.group_by("SITEID").agg(pl.len().alias(name))
+        return frame.group_by("SITEID", maintain_order=True).agg(pl.len().alias(name))
 
     ae = per_site(reader.table("ae").join(dm, on="USUBJID", how="left"), "ae_count")
     vs = per_site(reader.table("vs").join(dm, on="USUBJID", how="left"), "vs_readings")
@@ -273,7 +273,7 @@ def _site_summary(reader: StudyReader, pilot_by_meridian: dict[str, str]) -> pl.
     deviations = per_site(reader.table("deviations"), "deviations")
     screening = (
         reader.table("screening")
-        .group_by("SITEID")
+        .group_by("SITEID", maintain_order=True)
         .agg((pl.col("outcome") == "screen_failure").mean().alias("screen_failure_rate"))
     )
     summary = per_site(dm, "subjects")

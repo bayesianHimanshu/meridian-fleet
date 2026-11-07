@@ -69,6 +69,16 @@ prefixed `MERIDIAN_`, for example `MERIDIAN_LEDGER_PATH=/tmp/ledger.sqlite3`. Po
 different TOML file with `MERIDIAN_CONFIG_FILE`. Precedence, highest first: constructor
 arguments, environment, TOML file, field defaults.
 
+## Conventions
+
+* Append-only: ledger events, cuts, ground truth and scorecards are written once.
+* Time comes from the injected Clock; randomness from seeded numpy Generators spawned
+  from a SeedSequence in a fixed order.
+* Every polars `group_by` whose output feeds a computation or a file either passes
+  `maintain_order=True` or is followed by `.sort(...)` in the same chain. polars returns
+  groups in arbitrary order, and in step 3 that order reached `np.polyfit` and made a
+  cut non-reproducible. `tests/contract/test_group_by_order.py` enforces the rule.
+
 ## Layout
 
 ```

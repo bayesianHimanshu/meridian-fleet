@@ -56,7 +56,7 @@ def exposure(dm: pl.DataFrame, sv: pl.DataFrame) -> Exposure:
     frame = (
         treated_per_site(dm)
         .join(
-            days.group_by("SITEID").agg(
+            days.group_by("SITEID", maintain_order=True).agg(
                 pl.col("subject_days").is_not_null().sum().alias("included"),
                 pl.col("subject_days").is_null().sum().alias("excluded"),
                 pl.col("subject_days").sum().alias("subject_days"),
