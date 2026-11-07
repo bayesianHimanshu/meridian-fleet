@@ -1,0 +1,15 @@
+# Meridian Agent Fleet default configuration.
+# Every key can be overridden by an environment variable prefixed MERIDIAN_,
+# for example MERIDIAN_LEDGER_PATH=/tmp/ledger.sqlite3.
+
+ledger_path = "var/ledger.sqlite3"
+default_seed = 20261107
+
+# Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
+[finding_id_prefixes]
+rbqm = "RBQM"
+safety = "SAF"
+quality = "QA"
+preclinical = "PRE"
+tmf = "TMF"
+unblinded = "DSMB"
