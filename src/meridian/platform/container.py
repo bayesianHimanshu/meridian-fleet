@@ -14,6 +14,7 @@ from meridian.data.ingest import IngestService
 from meridian.data.study_store import ParquetStudyReader, StudyReader
 from meridian.evals.scorecard import ScorecardStore
 from meridian.faults.inject import FaultInjector
+from meridian.faults.safety import SafetyInjector
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
 from meridian.platform.config import Settings
@@ -50,6 +51,20 @@ class Container:
         """Blinded and ops access to one cut. The only study reader the container offers."""
         return ParquetStudyReader(self.settings.curated_root / self.settings.study_id, cut_id)
 
+    def safety_db_reader(self, cut_id: str) -> StudyReader:
+        """The blinded area of one cut's safety database snapshot (never its unblinded/)."""
+        return ParquetStudyReader(self.settings.safety_root / self.settings.study_id, cut_id)
+
+    def safety_injector(self) -> SafetyInjector:
+        return SafetyInjector(
+            clock=self.clock,
+            ledger=self.ledger,
+            curated_root=self.settings.curated_root,
+            safety_root=self.settings.safety_root,
+            study_id=self.settings.study_id,
+            ground_truth_dir=self.settings.ground_truth_dir,
+        )
+
     def ingest_service(self) -> IngestService:
         return IngestService(
             clock=self.clock,
@@ -75,7 +90,10 @@ class Container:
 
     def inprocess_executor(self, log: structlog.typing.FilteringBoundLogger) -> InProcessExecutor:
         return InProcessExecutor(
-            registry=self.agent_registry(), reader_factory=self.study_reader, log=log
+            registry=self.agent_registry(),
+            reader_factory=self.study_reader,
+            safety_reader_factory=self.safety_db_reader,
+            log=log,
         )
 
     def image_ref(self) -> str:
@@ -110,6 +128,7 @@ class Container:
             exec_timeout_seconds=rt.exec_timeout_seconds,
             keep_failed=rt.keep_failed,
             log=log,
+            safety_root=self.settings.safety_root / self.settings.study_id,
         )
 
     def narrator_runner(
