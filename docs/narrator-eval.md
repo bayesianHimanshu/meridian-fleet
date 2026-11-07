@@ -114,3 +114,18 @@ The 53 findings include near-duplicates from different detector versions on the 
 (for example RBQM-0036, 0043 and 0085, all "Site 1008: open queries are ageing" on
 DC-RBQM-CORE). That is how the findings were recorded, not a narrator issue; they were
 narrated consistently.
+
+# Step 4: validator evaluation (rbqm.narrator 1.1.0)
+
+## Targets, stated before the labelled set was built or any metric computed
+
+Committed before data/narrator_eval/labelled.jsonl existed:
+
+1. All 5 real_bad narratives rejected by validator 1.1.0.
+2. Recall on mutated narratives at least 0.9 (validator 1.1.0).
+3. At most 1 false rejection on real_good (validator 1.1.0).
+
+Results are reported below as they are, whether or not a target is met. Known in advance:
+the labelled narratives were written by narrator 1.0.0 without display strings, so the
+exact display match of validator 1.1.0 is measured against text that was never asked to
+use displays.
