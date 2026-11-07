@@ -32,7 +32,7 @@ export function UnblindedView() {
         {findings.isError ? <ErrorNote error={findings.error} /> : null}
         {findings.isSuccess ? (
           <p>
-            Restricted findings in the ledger now: <span className="num">{restricted.length}</span>.
+            Restricted findings in the ledger now: <span className="fig">{restricted.length}</span>.
           </p>
         ) : null}
       </div>

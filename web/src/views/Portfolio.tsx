@@ -54,10 +54,10 @@ export function PortfolioView() {
                       <span style={{ width: `${a.static.progress_percent}%` }} />
                     </div>
                     <p className="muted">
-                      <span className="num">{a.static.progress_percent}%</span> to milestone
+                      <span className="fig">{a.static.progress_percent}%</span> to milestone
                       {a.static.probability_of_success ? (
                         <>
-                          , probability of success <span className="num">{a.static.probability_of_success}</span>
+                          , probability of success <span className="fig">{a.static.probability_of_success}</span>
                         </>
                       ) : null}
                     </p>
@@ -67,7 +67,7 @@ export function PortfolioView() {
                     {a.live ? (
                       <p>
                         <span className="chip outline">live</span>{" "}
-                        <span className="num">{a.live.open_findings}</span> open findings to review
+                        <span className="fig">{a.live.open_findings}</span> open findings to review
                       </p>
                     ) : null}
                   </article>
