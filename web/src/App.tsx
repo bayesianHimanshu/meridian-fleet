@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router";
 import { api, unwrap, type Role } from "./api/client";
 import { ROLE_LABELS, useIdentity } from "./identity";
@@ -24,12 +25,30 @@ export function homeFor(role: Role): string {
   }
 }
 
-function TopBar() {
+function TopBar({
+  menuOpen,
+  onMenu,
+  menuButton,
+}: {
+  menuOpen: boolean;
+  onMenu: () => void;
+  menuButton: RefObject<HTMLButtonElement | null>;
+}) {
   const { people, person, choose } = useIdentity();
   const unblinded = person.role === "unblinded_statistician";
   return (
     <header className="topbar">
       <div className="topbar-row">
+        <button
+          ref={menuButton}
+          type="button"
+          className="btn menu-button"
+          aria-expanded={menuOpen}
+          aria-controls="nav-panel"
+          onClick={onMenu}
+        >
+          Menu
+        </button>
         <div className="brand">
           <span className="brand-mark" aria-hidden="true">
             M
@@ -73,7 +92,7 @@ interface NavItem {
   restricted?: boolean;
 }
 
-function Nav() {
+function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const { person } = useIdentity();
   const queue = useApi(["review-queue", "count"], () => unwrap(api.GET("/api/v1/review-queue")));
   const unblinded = person.role === "unblinded_statistician";
@@ -110,7 +129,12 @@ function Nav() {
           <div className="group label">{group}</div>
           {items.map((item) =>
             item.to ? (
-              <NavLink key={item.label} to={item.to} className={item.restricted ? "restricted" : undefined}>
+              <NavLink
+                key={item.label}
+                to={item.to}
+                className={item.restricted ? "restricted" : undefined}
+                onClick={onNavigate}
+              >
                 {item.label}
                 {item.to === "/review" && queue.data ? (
                   <span className="count" aria-label={`${queue.data.items.length} open`}>
@@ -131,14 +155,57 @@ function Nav() {
   );
 }
 
+/** The sidebar as a panel on narrow screens. Escape and the close button dismiss it, and
+ * focus returns to the Menu button. */
+function NavPanel({ onClose }: { onClose: () => void }) {
+  const closeButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeButton.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  return (
+    <div className="nav-overlay">
+      <div className="nav-backdrop" aria-hidden="true" onClick={onClose} />
+      <div id="nav-panel" className="nav-panel" role="dialog" aria-modal="true" aria-label="Menu">
+        <div className="nav-panel-head">
+          <span className="label">Menu</span>
+          <button ref={closeButton} type="button" className="btn" onClick={onClose}>
+            Close
+          </button>
+        </div>
+        <Nav onNavigate={onClose} />
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const { person } = useIdentity();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    menuButton.current?.focus();
+  }, []);
   return (
     <>
       <a className="skip-link" href="#main">
         Skip to content
       </a>
-      <TopBar />
+      <TopBar
+        menuOpen={menuOpen}
+        menuButton={menuButton}
+        onMenu={() => {
+          setMenuOpen((open) => !open);
+        }}
+      />
+      {menuOpen ? <NavPanel onClose={closeMenu} /> : null}
       <div className="shell">
         <Nav />
         <main id="main" tabIndex={-1}>

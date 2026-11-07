@@ -229,14 +229,13 @@ def test_rbqm_sites_carry_the_qtl(tmp_path: Path) -> None:
     assert qtl["treated"] > 0
     assert qtl["discontinued"] / qtl["treated"] == pytest.approx(qtl["rate"])
     assert qtl["status"] in ("within", "approaching", "breached")
-    thresholds = _get(fx.client(curated_root=tmp_path / "curated"), "/api/v1/rbqm/DC-SITES/sites")[
-        "thresholds"
+    columns = _get(fx.client(curated_root=tmp_path / "curated"), "/api/v1/rbqm/DC-SITES/sites")[
+        "columns"
     ]
-    assert thresholds == {
-        "data_entry_lag_days": 7.0,
-        "data_entry_lag_high_days": 10.5,
-        "open_query_age_days": 21.0,
-        "open_query_age_high_days": 31.5,
-        "csm_log_sd_z": -3.5,
-        "kri_alpha": 0.01,
-    }
+    assert columns["median_entry_lag_days"]["critical_beyond"] == 7.0
+    assert columns["median_open_query_age_days"]["critical_beyond"] == 21.0
+    assert columns["csm_log_sd_z:SYSBP"]["critical_beyond"] == -3.5
+    assert (columns["ae_rate_z"]["direction"], columns["deviation_z"]["direction"]) == (
+        "low",
+        "high",
+    )

@@ -1,9 +1,10 @@
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
 import { ErrorNote, Loading, Time } from "../components/common";
-import { useIdentity } from "../identity";
+import { ROLE_LABELS, useIdentity, type Person } from "../identity";
 
 type Entry = Schemas["LedgerPage"]["entries"][number];
 type EventType = Schemas["EventType"];
@@ -25,8 +26,19 @@ export function isRedacted(entry: Entry): entry is Schemas["RedactedEvent"] {
   return "marker" in entry;
 }
 
-/** One line on what the event says, in plain words. */
-export function describe(entry: Schemas["Event"]): string {
+function FindingLink({ id }: { id: string | null | undefined }) {
+  return id ? (
+    <Link to={`/findings/${id}`} className="mono">
+      {id}
+    </Link>
+  ) : (
+    <span>Finding</span>
+  );
+}
+
+/** One line on what the event says, in plain words. A person is named once, from
+ * config/people.toml; agents keep their ids. Finding ids link to the finding. */
+export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
   const p = entry.payload;
   switch (p.type) {
     case "data_cut":
@@ -36,11 +48,26 @@ export function describe(entry: Schemas["Event"]): string {
     case "actor_suspended":
       return `${p.agent_id} ${p.agent_version ?? ""} finished trigger ${p.trigger_seq}${p.executor ? ` (${p.executor})` : ""}`;
     case "finding_raised":
-      return `${p.finding.finding_id ?? "Finding"}: ${p.finding.title}`;
+      return (
+        <>
+          <FindingLink id={p.finding.finding_id} />: {p.finding.title}
+        </>
+      );
     case "finding_narrative":
-      return `Narrative for ${p.finding_id}: ${p.status}`;
-    case "human_decision":
-      return `${p.decision.finding_id} ${p.decision.action} by ${p.decision.actor}`;
+      return (
+        <>
+          Narrative for <FindingLink id={p.finding_id} />: {p.status}
+        </>
+      );
+    case "human_decision": {
+      const d = p.decision;
+      const name = people.find((x) => x.actor === d.actor)?.name ?? d.actor;
+      return (
+        <>
+          <FindingLink id={d.finding_id} /> {d.action} by {name} ({ROLE_LABELS[d.role]})
+        </>
+      );
+    }
     case "policy_denied":
       return `Refused: ${p.resource} (${p.check ?? p.reason})`;
     case "containment_check_completed":
@@ -81,7 +108,7 @@ function VerifyPanel() {
 }
 
 export function LedgerView() {
-  const { person } = useIdentity();
+  const { person, people } = useIdentity();
   const [type, setType] = useState<EventType | "">("");
   const pages = useInfiniteQuery({
     queryKey: [person.actor, "ledger", type],
@@ -168,9 +195,13 @@ export function LedgerView() {
                       <td className="mono"><Time iso={e.recorded_at} /></td>
                       <td>{e.payload.type.replaceAll("_", " ")}</td>
                       <td>
-                        {describe(e)}
-                        <br />
-                        <span className="muted">by {e.actor}</span>
+                        {describe(e, people)}
+                        {e.payload.type === "human_decision" ? null : (
+                          <>
+                            <br />
+                            <span className="muted">by {e.actor}</span>
+                          </>
+                        )}
                       </td>
                       <td>
                         <Hash value={e.hash} label="event hash" />

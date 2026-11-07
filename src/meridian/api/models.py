@@ -287,6 +287,25 @@ class SiteFlag(BaseModel):
     parameters: list[str]
 
 
+# untested_direction: a value on the side the agent does not test (no fill).
+Band = Literal["normal", "warning", "critical", "untested_direction", "na"]
+
+
+class ColumnRule(BaseModel):
+    """How one heatmap column is banded, read from the agent's config."""
+
+    model_config = _FROZEN
+
+    agent: str
+    unit: Literal["z", "days"]
+    direction: Literal["low", "high", "both"]
+    # z: absolute z where warning starts; days: the value above which it is warning.
+    warning_from: float
+    # Critical strictly beyond this: the agent's own threshold (signed for z).
+    critical_beyond: float
+    rule: str  # what the agent tests, in words
+
+
 class SiteMetrics(BaseModel):
     model_config = _FROZEN
 
@@ -297,7 +316,12 @@ class SiteMetrics(BaseModel):
     deviation_z: float | None
     median_entry_lag_days: float | None
     median_open_query_age_days: float | None
+    open_queries: int | None
     csm_log_sd_z: dict[str, float | None]
+    csm_sd_ratio: dict[str, float | None]
+    # Per column key (ae_rate_z, deviation_z, median_entry_lag_days,
+    # median_open_query_age_days, csm_log_sd_z:<PARAMETER>).
+    bands: dict[str, Band]
     flagged_checks: list[str]
     flagged_by: list[SiteFlag]
 
@@ -324,8 +348,8 @@ class RbqmSites(BaseModel):
     parameters: list[str]
     sites: list[SiteMetrics]
     qtl: QtlView
-    # The configured thresholds the agents judge these metrics against.
-    thresholds: dict[str, float]
+    # The rule behind each column's bands, from the agents' config.
+    columns: dict[str, ColumnRule]
 
 
 class AssetStatus(BaseModel):

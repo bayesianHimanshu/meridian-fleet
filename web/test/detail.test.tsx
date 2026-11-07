@@ -20,7 +20,10 @@ describe("finding detail", () => {
 
   it("shows evidence displays with their role", async () => {
     renderApp("/findings/RBQM-0003");
-    expect(await screen.findByText("18 observed (5.1 expected)")).toBeTruthy();
+    const value = await screen.findByText("18 observed (5.1 expected)");
+    // The statistic key is a muted line under the value, not its own column.
+    expect(value.closest("td")?.querySelector(".ev-key")?.textContent).toBe("deviations:observed");
+    expect(screen.queryByRole("columnheader", { name: "Statistic" })).toBeNull();
     expect(screen.getByText("primary")).toBeTruthy();
     expect(screen.getByText("supporting")).toBeTruthy();
   });

@@ -246,25 +246,52 @@ main {
     padding-right: var(--space-6);
   }
 }
-@media (max-width: 860px) {
+/* Narrow screens: no sidebar; a Menu button opens the same navigation as a panel. */
+.menu-button {
+  display: none;
+}
+@media (max-width: 899px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
   }
-  .nav {
-    flex-direction: row;
-    overflow-x: auto;
-    border-right: 0;
-    border-bottom: var(--hairline);
-    padding: var(--space-2) var(--space-4);
-    gap: var(--space-1);
-  }
-  .nav .group,
-  .nav .disabled {
+  .shell > .nav {
     display: none;
   }
-  .nav a {
-    white-space: nowrap;
+  .menu-button {
+    display: inline-block;
   }
+}
+.nav-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+.nav-backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--fg);
+  opacity: 0.35;
+}
+.nav-panel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(300px, 86vw);
+  background: var(--surface);
+  border-right: var(--hairline);
+  overflow-y: auto;
+  padding-bottom: var(--space-4);
+}
+.nav-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-3) var(--space-4);
+  border-bottom: var(--hairline);
+}
+.nav-panel .nav {
+  border-right: 0;
 }
 
 /* Page structure */
@@ -545,14 +572,57 @@ dl.facts dd {
   font-size: var(--text-xs);
 }
 
-/* Hash */
+/* Hash: the value may wrap; the copy button never leaves the card */
 .hash {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-1);
+  gap: 2px var(--space-1);
+  max-width: 100%;
   font-family: var(--font-data);
   font-size: var(--text-sm);
-  white-space: nowrap;
+}
+.hash > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.hash .btn {
+  flex: none;
+}
+
+/* Evidence: role and value first; the statistic key is for traceability */
+table.evidence .ev-key {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+table.evidence .ev-source {
+  color: var(--muted);
+  font-size: var(--text-sm);
+}
+@media (max-width: 600px) {
+  table.evidence thead {
+    display: none;
+  }
+  table.evidence,
+  table.evidence tbody,
+  table.evidence tr,
+  table.evidence td {
+    display: block;
+    width: 100%;
+  }
+  table.evidence tr {
+    padding: var(--space-2) 0;
+    border-bottom: var(--hairline);
+  }
+  table.evidence tr:last-child {
+    border-bottom: 0;
+  }
+  table.evidence td {
+    border: 0;
+    padding: 2px 0;
+  }
 }
 
 /* Decision form */
@@ -594,6 +664,9 @@ dl.facts dd {
   background: var(--warning-soft);
   color: var(--warning);
 }
+.heat .untested_direction {
+  color: var(--muted);
+}
 .heat .critical {
   background: var(--critical-soft);
   color: var(--critical);
@@ -601,6 +674,9 @@ dl.facts dd {
 }
 .heat .na {
   color: var(--muted);
+}
+.heat-wrap {
+  max-width: 1200px;
 }
 .heat td.flagged {
   outline: 2px solid var(--fg);
