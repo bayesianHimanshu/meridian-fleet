@@ -32,13 +32,17 @@ def _variant(tmp_path: Path, name: str, old: str, new: str) -> Path:
 def test_boundary_file_equals_its_rendering_and_every_zone_has_one() -> None:
     assert BOUNDARY.read_bytes() == policies.render_boundary("blinded").encode()
     assert set(policies.ZONE_BOUNDARY) == set(policies.POLICIES)
-    assert set(policies.ZONE_BOUNDARY.values()) <= set(policies.BOUNDARIES)
+    assert set(policies.POLICY_BOUNDARY) == set(policies.ALL_POLICIES)
+    assert set(policies.POLICY_BOUNDARY.values()) == set(policies.BOUNDARIES)
+    for name in policies.BOUNDARIES:
+        path = policies.boundary_path(name, ROOT)
+        assert path.read_bytes() == policies.render_boundary(name).encode()
 
 
 @needs_prover
 def test_every_zone_is_within_its_boundary() -> None:
     results = prove_all(ROOT)
-    assert set(results) == set(policies.ZONES)
+    assert set(results) == set(policies.ALL_POLICIES)
     for zone, result in results.items():
         assert result.passed, f"{zone}: {result.explain()}"
         assert {"filesystem", "process", "landlock"} <= set(result.domains)
@@ -105,3 +109,43 @@ def test_output_that_is_not_json_fails(tmp_path: Path) -> None:
     result = check(ROOT / "rbqm.yaml", BOUNDARY, binary=str(fake))
     assert result.result == "error"
     assert not result.passed
+
+
+NARRATOR_FILE = ROOT / "rbqm.narrator.yaml"
+NARRATOR_BOUNDARY = ROOT / "boundaries" / "narrator.yaml"
+
+
+def _narrator_variant(tmp_path: Path, name: str, old: str, new: str) -> Path:
+    text = NARRATOR_FILE.read_text()
+    assert old in text
+    path = tmp_path / f"{name}.yaml"
+    path.write_text(text.replace(old, new, 1))
+    return path
+
+
+@needs_prover
+def test_the_narrator_policy_exceeds_the_blinded_boundary() -> None:
+    """Egress is allowed only against the narrator boundary, never a zone's."""
+    result = check(NARRATOR_FILE, BOUNDARY)
+    assert result.result == "exceeds_boundary"
+
+
+@needs_prover
+def test_narrator_egress_to_another_host_exceeds_its_boundary(tmp_path: Path) -> None:
+    candidate = _narrator_variant(tmp_path, "host", "api.anthropic.com", "example.com")
+    result = check(candidate, NARRATOR_BOUNDARY)
+    assert result.result == "exceeds_boundary"
+    assert (result.counterexample or {}).get("host") == "example.com"
+
+
+@needs_prover
+def test_narrator_egress_for_another_binary_exceeds_its_boundary(tmp_path: Path) -> None:
+    candidate = _narrator_variant(
+        tmp_path, "binary", "path: /usr/local/bin/python3.14", "path: /usr/bin/bash"
+    )
+    assert check(candidate, NARRATOR_BOUNDARY).result != "within_boundary"
+
+
+@needs_prover
+def test_a_zone_policy_is_within_the_narrator_boundary_but_not_vice_versa() -> None:
+    assert check(ROOT / "rbqm.yaml", NARRATOR_BOUNDARY).passed

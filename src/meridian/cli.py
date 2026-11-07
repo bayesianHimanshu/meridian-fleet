@@ -619,9 +619,9 @@ def image_build(
 
 @policy_app.command("render")
 def policy_render() -> None:
-    """Write policies/<zone>.yaml for every zone and policies/boundaries/<name>.yaml."""
+    """Write every policy, policies/boundaries/<name>.yaml and profiles/<provider>.yaml."""
     root = Settings().runtime.policies_dir
-    for path in policies.render_all(root):
+    for path in [*policies.render_all(root), *policies.render_profiles()]:
         typer.echo(f"wrote {path} (sha256 {policies.sha256_text(path.read_text())})")
 
 
@@ -631,7 +631,7 @@ def policy_prove(
         str, typer.Option("--prover", help="openshell-prover binary.")
     ] = "openshell-prover",
 ) -> None:
-    """Check every zone policy against its boundary with openshell-prover."""
+    """Check every committed policy against its boundary with openshell-prover."""
     from meridian.sandbox.prover import ProverError, prove_all
 
     root = Settings().runtime.policies_dir
@@ -642,7 +642,7 @@ def policy_prove(
         raise typer.Exit(code=1) from exc
     for zone, result in results.items():
         verdict = "pass" if result.passed else "FAIL"
-        typer.echo(f"{verdict}  {zone:<12} vs {result.boundary}: {result.explain()}")
+        typer.echo(f"{verdict}  {zone:<13} vs {result.boundary}: {result.explain()}")
     if not all(r.passed for r in results.values()):
         raise typer.Exit(code=1)
 
