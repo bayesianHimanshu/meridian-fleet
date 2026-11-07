@@ -63,6 +63,12 @@ lag_days = 7.0
 query_age_days = 21.0
 min_subjects = 5
 min_open_queries = 5
+# Expected-AE variant (meridian.stats.ae_expectation), chosen on the dev cuts by the
+# pre-registered experiment in docs/ae-experiment.md and frozen (commit "Freeze AE
+# expectation variant before holdout 2"): no variant beat a, so a is kept. Do not change
+# it in response to holdout 2. W of the early_window variant, in treatment days.
+ae_variant = "a"
+early_window_days = 42
 
 [agents.qtl_detector]
 # Computed once from DC-BASE: premature discontinuation 144/254 = 0.5669 (base rate)

@@ -1,6 +1,8 @@
 """Configuration models of the agents. Kept outside meridian.agents so that settings and
 the eval harness can read thresholds without importing any agent code."""
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -16,6 +18,9 @@ class KriMonitorConfig(AgentConfig):
     query_age_days: float = Field(21.0, gt=0)
     min_subjects: int = Field(5, ge=1)
     min_open_queries: int = Field(5, ge=1)
+    # Expected-AE variant (meridian.stats.ae_expectation): a, b, c, d or e.
+    ae_variant: Literal["a", "b", "c", "d", "e"] = "a"
+    early_window_days: int = Field(42, ge=1)
 
 
 class QtlDetectorConfig(AgentConfig):

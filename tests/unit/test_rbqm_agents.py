@@ -101,8 +101,9 @@ def test_kri_monitor_skips_small_sites_for_rate_tests(tmp_path: Path) -> None:
     assert skipped[0]["sites"] == [small]
 
 
-def test_agents_are_version_2() -> None:
-    for agent in (KriMonitor(), QtlDetector(), Csm()):
+def test_agent_versions() -> None:
+    assert KriMonitor().version == "2.1.0"
+    for agent in (QtlDetector(), Csm()):
         assert agent.version == "2.0.0"
 
 
@@ -114,7 +115,7 @@ def test_kri_rate_evidence_carries_phi_and_z(tmp_path: Path) -> None:
     assert {"ae_rate:phi", "ae_rate:z", "ae_rate:expected", "ae_rate:observed"} <= set(statistics)
     assert statistics["ae_rate:phi"] >= 1.0
     assert statistics["ae_rate:z"] < 0
-    assert parse_dedup_key(draft.dedup_key).agent_version == "2.0.0"
+    assert parse_dedup_key(draft.dedup_key).agent_version == "2.1.0"
 
 
 # qtl_detector
@@ -238,3 +239,20 @@ def test_csm_is_deterministic(tmp_path: Path) -> None:
     b = run_agent(Csm(), CsmConfig(), tmp_path / "b", "F", blinded, ops, unblinded)
     assert a == b
     assert [d.site_id for d in a] == ["1002", "1006"]
+
+
+@pytest.mark.parametrize("variant", ["a", "b", "c", "d", "e"])
+def test_every_ae_variant_runs_and_finds_the_planted_drop(tmp_path: Path, variant: str) -> None:
+    blinded, ops, unblinded = clean()
+    # Fixture AE onsets spread over 120 days; a 150-day window keeps variant c comparable.
+    cfg = KriMonitorConfig(ae_variant=variant, early_window_days=150)  # type: ignore[arg-type]
+    assert [
+        d
+        for d in run_agent(KriMonitor(), cfg, tmp_path, "C", blinded, ops, unblinded)
+        if parse_dedup_key(d.dedup_key).check == "ae_rate"
+    ] == []
+    blinded, ops = plant(blinded, ops, "ae_under_reporting", TARGET, {"drop_share": 0.7})
+    drafts = run_agent(KriMonitor(), cfg, tmp_path / "f", "F", blinded, ops, unblinded)
+    (draft,) = [d for d in drafts if parse_dedup_key(d.dedup_key).check == "ae_rate"]
+    assert draft.site_id == TARGET
+    assert f"variant {variant}" in draft.summary

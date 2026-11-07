@@ -58,6 +58,71 @@ def dispersion(residuals: list[float]) -> float:
     return max(1.0, median([r * r for r in residuals]) / CHI2_1_MEDIAN)
 
 
+@dataclass(frozen=True, slots=True)
+class ExpectedCount:
+    """A site's observed count, its leave-one-out expected count and its units.
+
+    units is what the reference rate for phi is taken per: exposure for a ratio
+    expectation (E = rate of the other sites x units), or E itself for a model-based one.
+    """
+
+    site: str
+    observed: int
+    expected: float
+    units: float
+    rate_others: float
+
+
+def leave_one_out(
+    counts: Mapping[str, int], units: Mapping[str, float], tested: list[str]
+) -> list[ExpectedCount]:
+    """E_i = (sum of other sites' counts / their units) * units_i, over all other sites.
+
+    Sites with no units, with no other units, or whose expected count is 0 are left out.
+    """
+    total_count = sum(counts.get(s, 0) for s in units)
+    total_units = sum(units.values())
+    out: list[ExpectedCount] = []
+    for site in tested:
+        own_count, own_units = counts.get(site, 0), units.get(site, 0.0)
+        other = total_units - own_units
+        if own_units <= 0 or other <= 0:
+            continue
+        rate = (total_count - own_count) / other
+        expected = rate * own_units
+        if expected <= 0:
+            continue
+        out.append(ExpectedCount(site, own_count, expected, own_units, rate))
+    return out
+
+
+def quasi_poisson_test(rows: list[ExpectedCount], *, lower_tail: bool) -> QuasiPoissonResult:
+    """z_i = (O_i - E_i) / sqrt(phi * E_i); lower_tail: p = Phi(z), else p = 1 - Phi(z).
+
+    phi is estimated from residuals against one robust reference rate m, the median of
+    O_i / units_i across the sites: r_i = (O_i - m units_i) / sqrt(m units_i), then
+    phi = max(1, median(r_i^2) / 0.4549). Residuals against the leave-one-out E_i would
+    not be robust: one outlier site enters every other site's E_i and shifts all their
+    residuals at once (a design change from the step 4 spec, agreed 2026-11-07).
+    """
+    reference = median([r.observed / r.units for r in rows]) if rows else 0.0
+    if reference > 0:
+        phi = dispersion(
+            [(r.observed - reference * r.units) / math.sqrt(reference * r.units) for r in rows]
+        )
+    else:
+        phi = 1.0
+    sites: list[QuasiPoissonSite] = []
+    for r in rows:
+        residual = (r.observed - r.expected) / math.sqrt(r.expected)
+        z = (r.observed - r.expected) / math.sqrt(phi * r.expected)
+        p = float(stats.norm.cdf(z) if lower_tail else stats.norm.sf(z))
+        sites.append(
+            QuasiPoissonSite(r.site, r.observed, r.expected, r.rate_others, residual, z, p)
+        )
+    return QuasiPoissonResult(phi=phi, reference_rate=reference, sites=tuple(sites))
+
+
 def quasi_poisson(
     counts: Mapping[str, int],
     exposure: Mapping[str, float],
@@ -65,49 +130,8 @@ def quasi_poisson(
     *,
     lower_tail: bool,
 ) -> QuasiPoissonResult:
-    """Leave-one-out expected counts, a robust dispersion, and one-sided normal p values.
-
-    E_i = (sum of other sites' counts / their exposure) * exposure_i, over all other sites.
-    z_i = (O_i - E_i) / sqrt(phi * E_i). lower_tail: p = Phi(z), else p = 1 - Phi(z).
-
-    phi is estimated from residuals against one robust reference rate m, the median site
-    rate across the tested sites: r_i = (O_i - m d_i) / sqrt(m d_i), then
-    phi = max(1, median(r_i^2) / 0.4549). Residuals against the leave-one-out E_i would
-    not be robust: one outlier site enters every other site's E_i and shifts all their
-    residuals at once (a design change from the step 4 spec, agreed 2026-11-07).
-    Sites with no exposure, or whose expected count is 0, are left out.
-    """
-    total_count = sum(counts.get(s, 0) for s in exposure)
-    total_exposure = sum(exposure.values())
-    base: list[tuple[str, int, float, float, float]] = []
-    for site in tested:
-        own_count, own_exposure = counts.get(site, 0), exposure.get(site, 0.0)
-        other = total_exposure - own_exposure
-        if own_exposure <= 0 or other <= 0:
-            continue
-        rate = (total_count - own_count) / other
-        expected = rate * own_exposure
-        if expected <= 0:
-            continue
-        base.append((site, own_count, expected, rate, (own_count - expected) / math.sqrt(expected)))
-
-    reference = median([counts.get(b[0], 0) / exposure[b[0]] for b in base]) if base else 0.0
-    if reference > 0:
-        phi = dispersion(
-            [
-                (counts.get(site, 0) - reference * exposure[site])
-                / math.sqrt(reference * exposure[site])
-                for site, *_ in base
-            ]
-        )
-    else:
-        phi = 1.0
-    sites: list[QuasiPoissonSite] = []
-    for site, observed, expected, rate, residual in base:
-        z = (observed - expected) / math.sqrt(phi * expected)
-        p = float(stats.norm.cdf(z) if lower_tail else stats.norm.sf(z))
-        sites.append(QuasiPoissonSite(site, observed, expected, rate, residual, z, p))
-    return QuasiPoissonResult(phi=phi, reference_rate=reference, sites=tuple(sites))
+    """Leave-one-out expected counts over exposure, then the quasi-Poisson test."""
+    return quasi_poisson_test(leave_one_out(counts, exposure, tested), lower_tail=lower_tail)
 
 
 def neg_log10(p: float, floor: float = 1e-300) -> float:

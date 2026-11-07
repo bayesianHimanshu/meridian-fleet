@@ -147,7 +147,12 @@ def injected(tmp_path: Path, ledger: SqliteLedger) -> tuple[Path, InjectResult]:
 def _tokens(scenario_path: Path) -> tuple[set[str], set[float]]:
     scenario = load_scenario(scenario_path)
     names = set(REGISTRY) | {p for kind in REGISTRY.values() for p in kind.params}
-    names |= {"base_cut", "out_cut", "faults", scenario_path.stem, scenario_path.name}
+    names |= {"base_cut", "out_cut", "faults", "label", scenario_path.name}
+    if not scenario_path.stem.isdigit():  # ae_holdout/1.toml: "1" is not a trace
+        names.add(scenario_path.stem)
+    if scenario.label is not None:
+        names |= {scenario.label, *scenario.label.split("/")} - {""}
+        names = {n for n in names if not n.isdigit()}
     names |= {"scenario", "fault_type", "fault_id", "ground_truth", "expected_kind"}
     values = {v for f in scenario.faults for v in f.params.values()}
     return names, values
@@ -212,7 +217,12 @@ def test_data_cut_payload_has_no_trace(injected: tuple[Path, InjectResult]) -> N
 
 
 def test_holdout_and_sweep_cuts_have_no_trace(tmp_path: Path, ledger: SqliteLedger) -> None:
-    from meridian.faults.scenario import ensure_sweep, sweep_items
+    from meridian.faults.scenario import (
+        ensure_ae_holdouts,
+        ensure_holdout2,
+        ensure_sweep,
+        sweep_items,
+    )
 
     blinded, ops, unblinded = make_tables(sizes=[40, 30, 26, 25, 24, 21, 18, 16, 13, 9, 8, 7])
     write_tables_cut(tmp_path / "data" / "curated", "DC-BASE", blinded, ops, unblinded)
@@ -222,20 +232,35 @@ def test_holdout_and_sweep_cuts_have_no_trace(tmp_path: Path, ledger: SqliteLedg
     base = FullCutReader(tmp_path / "data" / "curated" / STUDY / "DC-BASE").read()
     sweep = ensure_sweep(scenarios / "sweep", base, load_scenario(scenarios / "rbqm_core.toml"))
     strongest = {item.fault_type: path for item, path in zip(sweep_items(), sweep, strict=True)}
-    for path in [scenarios / "rbqm_holdout.toml", *strongest.values()]:
+    injector.inject(scenarios / "rbqm_holdout.toml")
+    holdout2 = ensure_holdout2(scenarios, base)
+    ae_holdouts = ensure_ae_holdouts(scenarios, base)
+    for path in [scenarios / "rbqm_holdout.toml", *strongest.values(), holdout2, *ae_holdouts]:
         result = injector.inject(path)
         names, values = _tokens(path)
         _assert_no_trace(result.cut_path, names, values)
         payload = result.event.payload.model_dump_json().lower()
         assert not any(name.lower() in payload for name in names), path.name
+        if path in (holdout2, *ae_holdouts):
+            assert result.ground_truth.label is not None
+            assert result.ground_truth.label not in result.manifest.cut_id
+            assert result.manifest.cut_id == load_scenario(path).out_cut
 
 
 def _repo_scenarios() -> list[Path]:
     root = REPO_ROOT / "config" / "scenarios"
-    return sorted([*root.glob("*.toml"), *(root / "sweep").glob("*.toml")])
+    return sorted(
+        [
+            *root.glob("*.toml"),
+            *(root / "sweep").glob("*.toml"),
+            *(root / "ae_holdout").glob("*.toml"),
+        ]
+    )
 
 
-@pytest.mark.parametrize("scenario", _repo_scenarios(), ids=lambda p: p.stem)
+@pytest.mark.parametrize(
+    "scenario", _repo_scenarios(), ids=lambda p: p.relative_to(REPO_ROOT).as_posix()
+)
 def test_repo_faulted_cuts_have_no_trace_if_present(scenario: Path) -> None:
     cut = REPO_ROOT / "data" / "curated" / STUDY / load_scenario(scenario).out_cut
     if not cut.exists():
