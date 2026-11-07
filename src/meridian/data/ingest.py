@@ -3,7 +3,6 @@
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
 
 import polars as pl
 
@@ -15,24 +14,19 @@ from meridian.data.cut_writer import (
     write_cut,
     write_parquet_deterministic,
 )
+from meridian.data.datacut import Ledger, find_data_cut, record_data_cut
 from meridian.data.fetch import FetchManifest, file_name
 from meridian.data.files import sha256_file
 from meridian.data.ops_synth import OpsSynthParams, synthesize
 from meridian.data.sites import ensure_site_map
 from meridian.data.xpt_reader import read_xpt
-from meridian.domain.enums import EventType, Visibility
-from meridian.domain.events import DataCut, Event, EventDraft
-from meridian.ledger.store import LedgerReader, LedgerWriter
+from meridian.domain.events import Event
 from meridian.platform.clock import Clock
 
 INGEST_ACTOR = "system.ingest"
 
 
 class IngestError(Exception):
-    pass
-
-
-class Ledger(LedgerReader, LedgerWriter, Protocol):
     pass
 
 
@@ -127,27 +121,14 @@ class IngestService:
         return self.ingest_frames(frames, cut_id=cut_id, seed=seed, sources=sources)
 
     def find_data_cut(self, cut_id: str) -> Event | None:
-        for entry in self._ledger.read(event_types=[EventType.DATA_CUT]):
-            if (
-                isinstance(entry, Event)
-                and isinstance(entry.payload, DataCut)
-                and entry.payload.cut_id == cut_id
-                and entry.payload.study_id == self._study_id
-            ):
-                return entry
-        return None
+        return find_data_cut(self._ledger, self._study_id, cut_id)
 
     def _record_cut(self, cut_id: str, path: Path) -> tuple[Event, bool]:
-        existing = self.find_data_cut(cut_id)
-        if existing is not None:
-            return existing, False
-        event = self._ledger.append(
-            EventDraft(
-                occurred_at=self._clock.now(),
-                actor=INGEST_ACTOR,
-                study_id=self._study_id,
-                visibility=Visibility.BLINDED,
-                payload=DataCut(cut_id=cut_id, study_id=self._study_id, path=path.as_posix()),
-            )
+        return record_data_cut(
+            self._ledger,
+            clock=self._clock,
+            actor=INGEST_ACTOR,
+            study_id=self._study_id,
+            cut_id=cut_id,
+            path=path,
         )
-        return event, True
