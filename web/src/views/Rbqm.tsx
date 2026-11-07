@@ -4,45 +4,54 @@ import { ErrorNote, Loading, isStatus } from "../components/common";
 import { useApi } from "../queries";
 
 type Site = Schemas["SiteMetrics"];
-type Level = "l0" | "l1" | "l2" | "na";
+type Flag = Schemas["SiteFlag"];
+export type Band = "normal" | "warning" | "critical" | "na";
 
 const STUDY = "MRD-201";
 
-/** A between-site z: under 2 in size is ordinary, 2 to 3 worth a look, 3 or more strong. */
-export function zLevel(z: number | null | undefined): Level {
+/** z columns: absolute z from 2 to 3 is warning, above 3 critical, below 2 normal. */
+export function zBand(z: number | null | undefined): Band {
   if (z === null || z === undefined) return "na";
   const size = Math.abs(z);
-  return size < 2 ? "l0" : size < 3 ? "l1" : "l2";
+  if (size > 3) return "critical";
+  return size >= 2 ? "warning" : "normal";
 }
 
-/** A value against its threshold: below three quarters ordinary, then near, then over. */
-export function ratioLevel(value: number | null | undefined, threshold: number | undefined): Level {
-  if (value === null || value === undefined || !threshold) return "na";
-  const ratio = value / threshold;
-  return ratio < 0.75 ? "l0" : ratio < 1 ? "l1" : "l2";
+/** Medians against the agents' own thresholds: above the threshold the agent flags it
+ * (warning), above the high-severity threshold it is critical. */
+export function thresholdBand(
+  value: number | null | undefined,
+  warnAbove: number | undefined,
+  criticalAbove: number | undefined,
+): Band {
+  if (value === null || value === undefined || warnAbove === undefined) return "na";
+  if (criticalAbove !== undefined && value > criticalAbove) return "critical";
+  return value > warnAbove ? "warning" : "normal";
 }
 
-/** Vital-sign spread: only unusually small spread (negative z) is a concern. */
-export function sdLevel(z: number | null | undefined, threshold: number | undefined): Level {
-  if (z === null || z === undefined) return "na";
-  const limit = threshold ?? -3.5;
-  return z > -2 ? "l0" : z > limit ? "l1" : "l2";
-}
-
-const LEVEL_TEXT: Record<Level, string> = {
-  l0: "ordinary",
-  l1: "worth a look",
-  l2: "strong signal",
-  na: "not tested",
+const BAND_TEXT: Record<Band, string> = {
+  normal: "normal",
+  warning: "warning",
+  critical: "critical",
+  na: "not computed",
 };
 
-function Cell({ text, level, flagged }: { text: string; level: Level; flagged: boolean }) {
+function flagText(flags: Flag[]): string {
+  return flags.map((f) => `${f.finding_id}, ${f.agent_id} ${f.agent_version} (${f.status})`).join("; ");
+}
+
+function Cell({ text, band, flags }: { text: string; band: Band; flags: Flag[] }) {
+  const flagged = flags.length > 0;
   return (
-    <td className={`cell ${level}${flagged ? " flagged" : ""}`}>
+    <td
+      className={`cell ${band}${flagged ? " flagged" : ""}`}
+      title={flagged ? `Flagged by ${flagText(flags)}` : undefined}
+      data-flagged={flagged ? flags.map((f) => f.finding_id).join(" ") : undefined}
+    >
       {text}
       <span className="visually-hidden">
-        , {LEVEL_TEXT[level]}
-        {flagged ? ", flagged by an agent" : ""}
+        , {BAND_TEXT[band]}
+        {flagged ? `, flagged by ${flagText(flags)}` : ""}
       </span>
     </td>
   );
@@ -50,6 +59,31 @@ function Cell({ text, level, flagged }: { text: string; level: Level; flagged: b
 
 function fmt(v: number | null | undefined, digits: number): string {
   return v === null || v === undefined ? "n/a" : v.toFixed(digits);
+}
+
+const PARAMETER_NAMES: Record<string, string> = {
+  SYSBP: "systolic blood pressure",
+  DIABP: "diastolic blood pressure",
+  PULSE: "pulse",
+};
+
+export const COLUMN_HELP = {
+  treated: "Subjects at this site who started treatment",
+  ae: "How unusual this site's adverse event rate is compared with the rest of the study (negative: fewer than expected)",
+  deviation: "How unusual this site's protocol deviation rate is compared with the rest of the study",
+  lag: "Median days from a visit to its data being entered",
+  query: "Median age in days of the site's open data queries",
+  spread: (p: string) =>
+    `How unusual the spread of ${PARAMETER_NAMES[p] ?? p} readings at this site is compared with the other sites (negative: less spread)`,
+};
+
+/** The current findings at a site that a column shows. */
+export function flagsFor(site: Site, check: string, parameter?: string): Flag[] {
+  return site.flagged_by.filter(
+    (f) =>
+      f.check === check &&
+      (parameter === undefined || f.parameters.length === 0 || f.parameters.includes(parameter)),
+  );
 }
 
 function QtlBar({ qtl }: { qtl: Schemas["QtlView"] }) {
@@ -141,7 +175,7 @@ export function RbqmView() {
 
 function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
   const t = data.thresholds;
-  const flagged = (s: Site, check: string) => s.flagged_checks.includes(check);
+  const flags = data.sites.flatMap((s) => s.flagged_by.map((f) => ({ site: s.site_id, ...f })));
   return (
     <section className="panel" aria-labelledby="heat-title">
       <div className="panel-head">
@@ -154,23 +188,23 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
           <thead>
             <tr>
               <th scope="col">Site</th>
-              <th scope="col" className="num">
+              <th scope="col" className="num" title={COLUMN_HELP.treated}>
                 Treated
               </th>
-              <th scope="col" className="num">
+              <th scope="col" className="num" title={COLUMN_HELP.ae}>
                 AE rate z
               </th>
-              <th scope="col" className="num">
+              <th scope="col" className="num" title={COLUMN_HELP.deviation}>
                 Deviation z
               </th>
-              <th scope="col" className="num">
+              <th scope="col" className="num" title={COLUMN_HELP.lag}>
                 Entry lag, days
               </th>
-              <th scope="col" className="num">
+              <th scope="col" className="num" title={COLUMN_HELP.query}>
                 Open query age, days
               </th>
               {data.parameters.map((p) => (
-                <th scope="col" className="num" key={p}>
+                <th scope="col" className="num" key={p} title={COLUMN_HELP.spread(p)}>
                   {p} spread z
                 </th>
               ))}
@@ -179,29 +213,29 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
           <tbody>
             {data.sites.map((s) => (
               <tr key={s.site_id}>
-                <th scope="row" className="mono">
-                  {s.site_id}
-                  {s.tested ? null : <span className="muted"> (too small to test)</span>}
+                <th scope="row">
+                  <span className="mono">{s.site_id}</span>
+                  {s.tested ? null : <span className="sub">too small to test</span>}
                 </th>
                 <td className="num">{s.treated}</td>
-                <Cell text={fmt(s.ae_rate_z, 2)} level={zLevel(s.ae_rate_z)} flagged={flagged(s, "ae_rate")} />
-                <Cell text={fmt(s.deviation_z, 2)} level={zLevel(s.deviation_z)} flagged={flagged(s, "deviations")} />
+                <Cell text={fmt(s.ae_rate_z, 2)} band={zBand(s.ae_rate_z)} flags={flagsFor(s, "ae_rate")} />
+                <Cell text={fmt(s.deviation_z, 2)} band={zBand(s.deviation_z)} flags={flagsFor(s, "deviations")} />
                 <Cell
                   text={fmt(s.median_entry_lag_days, 1)}
-                  level={ratioLevel(s.median_entry_lag_days, t.data_entry_lag_days)}
-                  flagged={flagged(s, "data_entry_lag")}
+                  band={thresholdBand(s.median_entry_lag_days, t.data_entry_lag_days, t.data_entry_lag_high_days)}
+                  flags={flagsFor(s, "data_entry_lag")}
                 />
                 <Cell
                   text={fmt(s.median_open_query_age_days, 1)}
-                  level={ratioLevel(s.median_open_query_age_days, t.open_query_age_days)}
-                  flagged={flagged(s, "query_aging")}
+                  band={thresholdBand(s.median_open_query_age_days, t.open_query_age_days, t.open_query_age_high_days)}
+                  flags={flagsFor(s, "query_aging")}
                 />
                 {data.parameters.map((p) => (
                   <Cell
                     key={p}
                     text={fmt(s.csm_log_sd_z[p], 2)}
-                    level={sdLevel(s.csm_log_sd_z[p], t.csm_log_sd_z)}
-                    flagged={flagged(s, "variance")}
+                    band={zBand(s.csm_log_sd_z[p])}
+                    flags={flagsFor(s, "variance", p)}
                   />
                 ))}
               </tr>
@@ -209,28 +243,38 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
           </tbody>
         </table>
       </div>
-      <div className="legend">
-        <span>
-          <i className="swatch l0" aria-hidden="true" />
-          Ordinary
-        </span>
-        <span>
-          <i className="swatch l1" aria-hidden="true" />
-          Worth a look (z 2 to 3, or over three quarters of a threshold)
-        </span>
-        <span>
-          <i className="swatch l2" aria-hidden="true" />
-          Strong signal (z 3 or more, or over the threshold)
-        </span>
-        <span>
+      <dl className="legend-list" aria-label="How to read the heatmap">
+        <dt>z columns (AE rate, deviations, spread)</dt>
+        <dd>
+          <i className="swatch warning" aria-hidden="true" />
+          warning when the absolute z is from 2 to 3; <i className="swatch critical" aria-hidden="true" />
+          critical above 3; no fill below 2.
+        </dd>
+        <dt>Entry lag</dt>
+        <dd>
+          warning above {t.data_entry_lag_days} days (the agent flags it), critical above{" "}
+          {t.data_entry_lag_high_days} days (high severity).
+        </dd>
+        <dt>Open query age</dt>
+        <dd>
+          warning above {t.open_query_age_days} days (the agent flags it), critical above{" "}
+          {t.open_query_age_high_days} days (high severity).
+        </dd>
+        <dt>
           <i className="swatch flagged" aria-hidden="true" />
-          Flagged by an agent
-        </span>
-        <span>
-          Thresholds: entry lag {t.data_entry_lag_days} days, query age {t.open_query_age_days} days, spread z{" "}
-          {t.csm_log_sd_z}
-        </span>
-      </div>
+          Outline
+        </dt>
+        <dd>
+          a current finding (newest agent version, not superseded or retired, in any status) covers
+          this cell:{" "}
+          {flags.length === 0
+            ? "none on this cut."
+            : flags.map((f) => `${f.finding_id} at site ${f.site} by ${f.agent_id} ${f.agent_version}`).join("; ") +
+              "."}
+        </dd>
+        <dt>n/a</dt>
+        <dd>not computed: the site has too few treated subjects, queries or readings for the test.</dd>
+      </dl>
     </section>
   );
 }
