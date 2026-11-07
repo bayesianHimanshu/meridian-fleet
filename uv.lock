@@ -321,8 +321,8 @@ wheels = [
 name = "meridian-fleet"
 version = "0.1.0"
 source = { editable = "." }
+default-groups = ["api", "dev"]
 dependencies = [
-    { name = "fastapi" },
     { name = "httpx" },
     { name = "numpy" },
     { name = "polars" },
@@ -332,10 +332,13 @@ dependencies = [
     { name = "scipy" },
     { name = "structlog" },
     { name = "typer" },
-    { name = "uvicorn" },
 ]
 
 [package.dev-dependencies]
+api = [
+    { name = "fastapi" },
+    { name = "uvicorn" },
+]
 dev = [
     { name = "hypothesis" },
     { name = "mypy" },
@@ -346,7 +349,6 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", specifier = ">=0.162.2" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "numpy", specifier = ">=2.5.4" },
     { name = "polars", specifier = ">=2.1.0" },
@@ -356,10 +358,13 @@ requires-dist = [
     { name = "scipy", specifier = ">=1.18.1" },
     { name = "structlog" },
     { name = "typer" },
-    { name = "uvicorn", specifier = ">=0.54.0" },
 ]
 
 [package.metadata.requires-dev]
+api = [
+    { name = "fastapi", specifier = ">=0.162.2" },
+    { name = "uvicorn", specifier = ">=0.54.0" },
+]
 dev = [
     { name = "hypothesis" },
     { name = "mypy" },

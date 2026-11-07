@@ -9,11 +9,13 @@ from meridian.api.models import (
     CutSummary,
     DecisionRequest,
     DecisionResponse,
+    Enrollment,
     FindingDetail,
     FindingPage,
     Fleet,
     Health,
     LedgerPage,
+    PersonView,
     Portfolio,
     RbqmSites,
     ReviewQueue,
@@ -27,13 +29,22 @@ from meridian.domain.enums import EventType, FindingKind, Severity
 public = APIRouter(prefix="/api/v1")
 router = APIRouter(prefix="/api/v1")
 
-Status = Literal["open", "accepted", "escalated", "dismissed"]
+Status = Literal["open", "accepted", "escalated", "dismissed", "retired"]
 
 
 @public.get("/health", tags=["meta"])
 def health() -> Health:
     """Liveness. The only route that needs no identity headers."""
     return Health()
+
+
+@public.get("/people", tags=["meta"])
+def people(ctx: Context) -> list[PersonView]:
+    """The demo people of config/people.toml, for the development role switcher. Needs no
+    identity headers: this is development identity, not sign-in."""
+    return [  # in the file's order
+        PersonView(actor=p.actor, name=p.name, role=p.role) for p in ctx.people.people.values()
+    ]
 
 
 @router.get("/whoami", tags=["meta"])
@@ -51,9 +62,22 @@ def cuts(study: str, repo: Repo) -> list[CutSummary]:
     return repo.cuts(study)
 
 
+Scope = Literal["operational", "evaluation", "all"]
+
+
+@router.get("/studies/{study}/enrollment", tags=["studies"])
+def study_enrollment(study: str, repo: Repo, ctx: Context, cut: str | None = None) -> Enrollment:
+    """Cumulative treated subjects by month (blinded DM RFSTDTC), per site and in total.
+    Default cut: the study's operational cut."""
+    return repo.enrollment(study, cut, ctx.study_reader)
+
+
 @router.get("/findings", tags=["findings"])
 def findings(
     repo: Repo,
+    scope: Scope = "operational",
+    include_superseded: bool = False,
+    include_retired: bool = False,
     cut: str | None = None,
     agent: str | None = None,
     kind: FindingKind | None = None,
@@ -63,8 +87,12 @@ def findings(
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> FindingPage:
-    """Newest first (ledger seq descending)."""
+    """Newest first (ledger seq descending). By default only operational cuts and no
+    superseded findings; widen with scope=all and include_superseded=true."""
     filters = FindingFilters(
+        scope=scope,
+        include_superseded=include_superseded,
+        include_retired=include_retired,
         cut=cut,
         agent=agent,
         kind=None if kind is None else kind.value,
@@ -88,9 +116,19 @@ def decide(finding_id: str, body: DecisionRequest, repo: Repo) -> DecisionRespon
 
 
 @router.get("/review-queue", tags=["findings"])
-def review_queue(repo: Repo) -> ReviewQueue:
-    """Open and escalated findings the caller may see, newest first."""
-    return repo.review_queue()
+def review_queue(
+    repo: Repo,
+    scope: Scope = "operational",
+    include_superseded: bool = False,
+    include_retired: bool = False,
+) -> ReviewQueue:
+    """Open and escalated findings the caller may see, newest first. By default only
+    operational cuts (never evaluation cuts), and no superseded or retired findings."""
+    return repo.review_queue(
+        FindingFilters(
+            scope=scope, include_superseded=include_superseded, include_retired=include_retired
+        )
+    )
 
 
 @router.get("/ledger", tags=["ledger"])
@@ -99,9 +137,13 @@ def ledger(
     since: Annotated[int, Query(ge=0)] = 0,
     type: Annotated[list[EventType] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=LEDGER_PAGE_MAX)] = 100,
+    order: Literal["asc", "desc"] = "asc",
+    before: Annotated[int | None, Query(ge=1)] = None,
 ) -> LedgerPage:
-    """Events after seq `since`, as the caller may see them (restricted ones redacted)."""
-    return repo.ledger_page(since, type, limit)
+    """Events as the caller may see them (restricted ones redacted). order=asc (default):
+    after seq `since`, oldest first, continue with next_since. order=desc: newest first,
+    before seq `before` if given, continue with next_before."""
+    return repo.ledger_page(since, type, limit, order, before)
 
 
 @router.get("/ledger/verify", tags=["ledger"])

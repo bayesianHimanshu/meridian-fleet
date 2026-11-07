@@ -7,13 +7,14 @@ parameters; flagged checks come from the caller's visible findings (Repository).
 
 from collections.abc import Mapping, Sequence
 
-from meridian.api.models import RbqmSites, SiteMetrics
+from meridian.agents.rbqm.kri_monitor import HIGH_SEVERITY_FACTOR
+from meridian.api.models import QtlView, RbqmSites, SiteFlag, SiteMetrics
 from meridian.data.derived import treated_per_site
 from meridian.data.study_store import StudyReader
 from meridian.platform.config import AgentsSettings
 from meridian.stats.ae_expectation import ae_expectation
 from meridian.stats.robust import quasi_poisson, quasi_poisson_test
-from meridian.stats.rules import entry_lag, query_aging
+from meridian.stats.rules import discontinuation, entry_lag, qtl_status, query_aging
 from meridian.stats.site_metrics import (
     counts_by_site,
     exposure,
@@ -23,7 +24,7 @@ from meridian.stats.site_metrics import (
 
 
 def site_metrics(
-    study: StudyReader, agents: AgentsSettings, flagged: Mapping[str, Sequence[str]]
+    study: StudyReader, agents: AgentsSettings, flagged: Mapping[str, Sequence[SiteFlag]]
 ) -> RbqmSites:
     kri, csm = agents.kri_monitor, agents.csm
     dm, sv = study.table("dm"), study.table("sv")
@@ -67,12 +68,38 @@ def site_metrics(
                 median_entry_lag_days=lag.get(site),
                 median_open_query_age_days=aging.get(site),
                 csm_log_sd_z={p: sd_z.get(p, {}).get(site) for p in csm.parameters},
-                flagged_checks=list(flagged.get(site, [])),
+                flagged_checks=sorted({f.check for f in flagged.get(site, [])}),
+                flagged_by=list(flagged.get(site, [])),
             )
         )
+    qtl_cfg = agents.qtl_detector
+    rule = discontinuation(
+        dm, study.table("ds"), qtl_cfg.discontinuation_limit, qtl_cfg.approach_band
+    )
+    qtl = QtlView(
+        name=rule.check,
+        rate=rule.value,
+        limit=qtl_cfg.discontinuation_limit,
+        approach_from=rule.threshold,
+        status=None
+        if rule.value is None
+        else qtl_status(rule.value, qtl_cfg.discontinuation_limit, qtl_cfg.approach_band).value,
+        discontinued=rule.count,
+        treated=rule.n,
+    )
     return RbqmSites(
         study_id=study.study_id,
         cut_id=study.cut_id,
         parameters=list(csm.parameters),
         sites=sites,
+        qtl=qtl,
+        thresholds={
+            # Above the threshold the agent flags (medium); above factor x it, high.
+            "data_entry_lag_days": kri.lag_days,
+            "data_entry_lag_high_days": HIGH_SEVERITY_FACTOR * kri.lag_days,
+            "open_query_age_days": kri.query_age_days,
+            "open_query_age_high_days": HIGH_SEVERITY_FACTOR * kri.query_age_days,
+            "csm_log_sd_z": -csm.z_threshold,
+            "kri_alpha": kri.alpha,
+        },
     )

@@ -18,6 +18,9 @@ SKIP_DIRS = {
     ".pytest_cache",
     ".hypothesis",
     "var",
+    # Installed third-party packages and build output of web/ (git-ignored).
+    "node_modules",
+    "dist",
 }
 
 

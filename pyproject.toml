@@ -14,8 +14,6 @@ dependencies = [
     "scipy>=1.18.1",
     "pyreadstat>=1.3.7",
     "httpx>=0.28.1",
-    "fastapi>=0.162.2",
-    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -24,6 +22,12 @@ meridian-worker = "meridian.worker:entry"
 meridian-narrator-worker = "meridian.narrator_worker:entry"
 
 [dependency-groups]
+# The Fleet API (meridian api serve). Host only: the agent image is exported with
+# --no-default-groups, so neither package is in it.
+api = [
+    "fastapi>=0.162.2",
+    "uvicorn>=0.54.0",
+]
 dev = [
     "pytest",
     "hypothesis",
@@ -31,6 +35,9 @@ dev = [
     "mypy",
     "scipy-stubs>=1.18.1.1",
 ]
+
+[tool.uv]
+default-groups = ["dev", "api"]
 
 [build-system]
 requires = ["hatchling"]

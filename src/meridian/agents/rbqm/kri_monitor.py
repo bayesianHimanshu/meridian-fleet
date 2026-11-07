@@ -62,8 +62,12 @@ def _evidence(
     )
 
 
+# A median above this many times its threshold is high severity, otherwise medium.
+HIGH_SEVERITY_FACTOR = 1.5
+
+
 def _median_severity(median: float, threshold: float) -> Severity:
-    return Severity.HIGH if median > 1.5 * threshold else Severity.MEDIUM
+    return Severity.HIGH if median > HIGH_SEVERITY_FACTOR * threshold else Severity.MEDIUM
 
 
 class KriMonitor(RbqmAgentBase):
