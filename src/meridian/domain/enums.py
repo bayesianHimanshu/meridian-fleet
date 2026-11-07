@@ -37,6 +37,7 @@ class EventType(StrEnum):
     ACTOR_SUSPENDED = "actor_suspended"
     FINDING_RAISED = "finding_raised"
     POLICY_DENIED = "policy_denied"
+    CONTAINMENT_CHECK_COMPLETED = "containment_check_completed"
     HUMAN_DECISION = "human_decision"
 
 

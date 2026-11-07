@@ -5,7 +5,14 @@ import uuid
 from pathlib import Path
 
 from meridian.domain.enums import EventType, Visibility
-from meridian.domain.events import ActorSuspended, ActorWoke, Event, EventDraft
+from meridian.domain.events import (
+    ActorSuspended,
+    ActorWoke,
+    ContainmentCheckCompleted,
+    Event,
+    EventDraft,
+    PolicyDenied,
+)
 from meridian.ledger.hashing import (
     GENESIS_HASH,
     canonical_json,
@@ -134,3 +141,61 @@ def test_phase1_actor_events_verify_and_executor_fields_round_trip(tmp_path: Pat
         assert isinstance(events[-1], Event)
         assert events[-1].payload == done
         assert ActorSuspended.model_validate_json(done.model_dump_json()) == done
+
+
+def test_old_policy_denied_verifies_next_to_containment_events(tmp_path: Path) -> None:
+    """A PolicyDenied written before step 2b (no source, zone or raw_line) still verifies."""
+    path = tmp_path / "ledger.sqlite3"
+    clock = FixedClock(T0)
+    with make_ledger(path, clock) as ledger:
+        cut = ledger.append(data_cut_draft(1))
+    old: dict[str, object] = {
+        "type": "policy_denied",
+        "agent_id": "safety.ae_watch",
+        "resource": "unblinded/arms.parquet",
+        "policy": "blinding",
+        "reason": "agent is blinded",
+    }
+    _insert_legacy(path, 2, cut.hash, old)
+    with make_ledger(path, clock) as ledger:
+        assert verify(ledger).ok
+        (legacy,) = ledger.read(event_types=[EventType.POLICY_DENIED])
+        assert isinstance(legacy, Event)
+        assert isinstance(legacy.payload, PolicyDenied)
+        assert (legacy.payload.source, legacy.payload.raw_line) == (None, None)
+        ledger.append(
+            EventDraft(
+                occurred_at=T0,
+                actor="system.conformance",
+                visibility=Visibility.BLINDED,
+                payload=PolicyDenied(
+                    agent_id="system.conformance",
+                    resource="192.0.2.1:443",
+                    policy="policies/rbqm.yaml",
+                    reason="transparent_tcp_policy_denied",
+                    source="openshell_log",
+                    raw_line="[1] [sandbox] [OCSF ] [ocsf] NET:OPEN ...",
+                ),
+            )
+        )
+        ledger.append(
+            EventDraft(
+                occurred_at=T0,
+                actor="system.conformance",
+                visibility=Visibility.BLINDED,
+                payload=ContainmentCheckCompleted(
+                    zone="rbqm",
+                    sandbox="mer-cf-rb-00000000",
+                    image="meridian-agent:0.1.0",
+                    image_digest="sha256:" + "f" * 64,
+                    policy_sha256=None,
+                    checks=(),
+                    log_line_found=False,
+                    all_refused=True,
+                    passed=False,
+                ),
+            )
+        )
+        report = verify(ledger)
+        assert report.ok, report
+        assert report.events_checked == 4
