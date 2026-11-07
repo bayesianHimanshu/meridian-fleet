@@ -16,9 +16,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
 
+from meridian.agents.base import zone_of
 from meridian.agents.rbqm import narrator
 from meridian.agents.rbqm.describe import describe
 from meridian.agents.registry import AgentRegistry
+from meridian.api import safety as safety_view
 from meridian.api import visibility
 from meridian.api.identity import Person
 from meridian.api.models import (
@@ -44,11 +46,13 @@ from meridian.api.models import (
     Portfolio,
     PortfolioAsset,
     RbqmSites,
+    Reconciliation,
     ReviewQueue,
     RunEvent,
     RunTrace,
     SiteFlag,
     StudySummary,
+    UnblindedCases,
     VerifyReport,
 )
 from meridian.api.sites import site_metrics
@@ -73,7 +77,12 @@ from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
 from meridian.ledger.verify import verify
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
-from meridian.sandbox.policies import ALL_POLICIES, NARRATOR_POLICY, policy_path
+from meridian.sandbox.policies import (
+    ALL_POLICIES,
+    NARRATOR_POLICY,
+    policy_for_agent,
+    policy_path,
+)
 
 OPAQUE_CUT = re.compile(r"^DC-[0-9a-f]{8}$")
 CLOSED: frozenset[DecisionAction] = frozenset({DecisionAction.ACCEPTED, DecisionAction.DISMISSED})
@@ -303,6 +312,9 @@ def _retirement(snap: Snapshot) -> dict[str, str]:
     return out
 
 
+RECONCILER = "safety.sae_reconciler"
+
+
 def cut_kind(cut_id: str, label: str | None) -> CutKind:
     name = cut_id.removeprefix("DC-")
     if name == "BASE":
@@ -313,6 +325,8 @@ def cut_kind(cut_id: str, label: str | None) -> CutKind:
         return "sweep"
     if "HOLDOUT" in name or (label is not None and "holdout" in label.lower()):
         return "holdout"
+    if label is not None and label.startswith("safety_clean_"):
+        return "null"  # seeded clean safety cuts: nothing planted
     return "faulted"
 
 
@@ -577,16 +591,21 @@ class Repository:
         entries = self._ledger.read(
             since_seq=since, event_types=types, viewer_role=visibility.ledger_viewer(self.role)
         )
+        visible = self.snapshot().raised.keys()
+
+        def shown_as(e: LedgerEntry) -> LedgerEntry:
+            return visibility.redact_with_findings(self.role, e, visible)
+
         if order == "desc":
             older = [e for e in entries if before is None or e.seq < before]
-            page_desc = [visibility.redact(self.role, e) for e in reversed(older[-limit:])]
+            page_desc = [shown_as(e) for e in reversed(older[-limit:])]
             more_older = len(older) > limit
             return LedgerPage(
                 entries=page_desc,
                 next_since=None,
                 next_before=page_desc[-1].seq if more_older and page_desc else None,
             )
-        shown = [visibility.redact(self.role, e) for e in entries[: limit + 1]]
+        shown = [shown_as(e) for e in entries[: limit + 1]]
         more = len(shown) > limit
         page = shown[:limit]
         return LedgerPage(entries=page, next_since=page[-1].seq if more and page else None)
@@ -605,7 +624,7 @@ class Repository:
         agents: list[FleetAgent] = []
         for registered in self._registry.all():
             a = registered.agent
-            policy = policy_path(a.zone.value, self._policies_dir)
+            policy = policy_path(policy_for_agent(a.agent_id), self._policies_dir)
             woke = [
                 e
                 for e in snap.woke
@@ -714,6 +733,8 @@ class Repository:
             f = r.finding
             if r.cut_id != cut_id or f.site_id is None or not snap.current(r.finding_id):
                 continue
+            if zone_of(f.agent_id) != "rbqm":  # the heatmap shows RBQM checks only
+                continue
             parameters = sorted(
                 {
                     e.statistic.split(":", 1)[0].upper()
@@ -765,6 +786,66 @@ class Repository:
             return site_metrics(reader(cut_id), agents, self.flagged_checks(cut_id))
         except (MissingTableError, StudyAccessError, OSError) as exc:
             raise NotFoundError("cut data not available") from exc
+
+    def reconciliation(self, cut_id: str) -> Reconciliation:
+        """Current safety.sae_reconciler findings on one cut, as this role may see them:
+        a hidden finding is neither listed nor counted."""
+        snap = self.snapshot()
+        cut = next((c for c in snap.cuts.values() if c.cut_id == cut_id), None)
+        if cut is None:
+            raise NotFoundError("cut not found")
+        trigger = next(seq for seq, c in snap.cuts.items() if c.cut_id == cut_id)
+        versions = sorted(
+            {
+                e.payload.agent_version
+                for e in snap.suspended
+                if isinstance(e.payload, ActorSuspended)
+                and e.payload.agent_id == RECONCILER
+                and e.payload.trigger_seq == trigger
+                and e.payload.agent_version is not None
+            },
+            key=_version,
+        )
+        items = [
+            safety_view.item(r.finding_id, r.check, r.finding, snap.status(r.finding_id))
+            for r in sorted(snap.raised.values(), key=lambda r: r.event.seq)
+            if r.cut_id == cut_id
+            and r.finding.agent_id == RECONCILER
+            and snap.current(r.finding_id)
+        ]
+        by_check, by_site = safety_view.counts(items)
+        return Reconciliation(
+            study_id=cut.study_id,
+            cut_id=cut_id,
+            scope=self.scope(cut_id),
+            agent_id=RECONCILER,
+            agent_version=versions[-1] if versions else None,
+            run_completed=bool(versions),
+            by_check=by_check,
+            by_site=by_site,
+            items=items,
+        )
+
+    def unblinded_cases(self, counter: Callable[[str], tuple[int, int]]) -> UnblindedCases:
+        """The unblinded statistician only: how many cases of the operational cut carry the
+        treatment field. counter(cut) gives (cases, cases with treatment)."""
+        if not visibility.can_see_unblinded_counts(self.role):
+            raise ForbiddenError(f"{self.role.value} may not see unblinded counts")
+        cut_id = next(
+            (
+                c.cut_id
+                for c in self.snapshot().cuts.values()
+                if self.scope(c.cut_id) == "operational"
+            ),
+            None,
+        )
+        if cut_id is None:
+            raise NotFoundError("no operational cut")
+        try:
+            cases, with_treatment = counter(cut_id)
+        except (MissingTableError, StudyAccessError, OSError) as exc:
+            raise NotFoundError("safety database not available for the cut") from exc
+        return UnblindedCases(cut_id=cut_id, cases=cases, cases_with_treatment=with_treatment)
 
     def portfolio(self) -> Portfolio:
         open_count = sum(1 for item in self.review_queue().items if item.study_id == self._study_id)

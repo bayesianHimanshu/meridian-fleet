@@ -96,7 +96,14 @@ def test_studies_and_verify(fx: Fixture) -> None:
 def test_fleet_lists_agents_policies_runs_and_containment(fx: Fixture) -> None:
     fleet = _get(fx.client(), "/api/v1/fleet")
     by_id = {a["agent_id"]: a for a in fleet["agents"]}
-    assert sorted(by_id) == ["rbqm.csm", "rbqm.kri_monitor", "rbqm.narrator", "rbqm.qtl_detector"]
+    assert sorted(by_id) == [
+        "rbqm.csm",
+        "rbqm.kri_monitor",
+        "rbqm.narrator",
+        "rbqm.qtl_detector",
+        "safety.sae_reconciler",
+    ]
+    assert by_id["safety.sae_reconciler"]["policy_file"].endswith("safety.sae_reconciler.yaml")
     kri = by_id["rbqm.kri_monitor"]
     expected_sha = (
         __import__("hashlib")

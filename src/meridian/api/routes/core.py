@@ -18,8 +18,10 @@ from meridian.api.models import (
     PersonView,
     Portfolio,
     RbqmSites,
+    Reconciliation,
     ReviewQueue,
     StudySummary,
+    UnblindedCases,
     VerifyReport,
     WhoAmI,
 )
@@ -160,6 +162,20 @@ def fleet(repo: Repo) -> Fleet:
 def rbqm_sites(cut: str, repo: Repo, ctx: Context) -> RbqmSites:
     """Per-site metrics for the RBQM heatmap (clinical ops, medical monitor, QA only)."""
     return repo.rbqm_sites(cut, ctx.study_reader, ctx.agents)
+
+
+@router.get("/safety/{cut}/reconciliation", tags=["safety"])
+def safety_reconciliation(cut: str, repo: Repo) -> Reconciliation:
+    """SAE reconciliation of one cut: counts per check and site, and the discrepancies,
+    from the findings the caller may see. Subject-level findings reach only the roles in
+    their visible_to; for anyone else they are neither listed nor counted."""
+    return repo.reconciliation(cut)
+
+
+@router.get("/safety/unblinded-cases", tags=["safety"])
+def safety_unblinded_cases(repo: Repo, ctx: Context) -> UnblindedCases:
+    """Unblinded statistician only: how many cases carry a treatment field (a count)."""
+    return repo.unblinded_cases(ctx.safety_case_counts)
 
 
 @router.get("/portfolio", tags=["portfolio"])

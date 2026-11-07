@@ -251,6 +251,25 @@
         "title": "AssetStatus",
         "type": "object"
       },
+      "CheckCount": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "check",
+          "count"
+        ],
+        "title": "CheckCount",
+        "type": "object"
+      },
       "ColumnRule": {
         "additionalProperties": false,
         "description": "How one heatmap column is banded, read from the agent's config.",
@@ -1370,7 +1389,8 @@
           "kri_breach",
           "qtl_breach",
           "site_data_anomaly",
-          "under_reporting"
+          "under_reporting",
+          "sae_reconciliation"
         ],
         "title": "FindingKind",
         "type": "string"
@@ -2443,6 +2463,165 @@
         "title": "RbqmSites",
         "type": "object"
       },
+      "Reconciliation": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Version"
+          },
+          "by_check": {
+            "items": {
+              "$ref": "#/components/schemas/CheckCount"
+            },
+            "title": "By Check",
+            "type": "array"
+          },
+          "by_site": {
+            "items": {
+              "$ref": "#/components/schemas/SiteCount"
+            },
+            "title": "By Site",
+            "type": "array"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReconciliationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "run_completed": {
+            "title": "Run Completed",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "operational",
+              "evaluation"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "cut_id",
+          "scope",
+          "agent_id",
+          "agent_version",
+          "run_completed",
+          "by_check",
+          "by_site",
+          "items"
+        ],
+        "title": "Reconciliation",
+        "type": "object"
+      },
+      "ReconciliationItem": {
+        "additionalProperties": false,
+        "description": "One discrepancy: a current safety.sae_reconciler finding the caller may see, with\nthe two values it compares. subject_id is set only on subject-level findings, which\nonly the roles in their visible_to ever receive.",
+        "properties": {
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "left": {
+            "title": "Left",
+            "type": "string"
+          },
+          "left_label": {
+            "title": "Left Label",
+            "type": "string"
+          },
+          "right": {
+            "title": "Right",
+            "type": "string"
+          },
+          "right_label": {
+            "title": "Right Label",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "site_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Id"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "check",
+          "site_id",
+          "subject_id",
+          "severity",
+          "status",
+          "title",
+          "left_label",
+          "left",
+          "right_label",
+          "right"
+        ],
+        "title": "ReconciliationItem",
+        "type": "object"
+      },
       "RedactedEvent": {
         "additionalProperties": false,
         "description": "What a reader without unblinded access sees in place of a restricted event.",
@@ -2646,6 +2825,25 @@
         ],
         "title": "Severity",
         "type": "string"
+      },
+      "SiteCount": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "site_id": {
+            "title": "Site Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "site_id",
+          "count"
+        ],
+        "title": "SiteCount",
+        "type": "object"
       },
       "SiteEnrollment": {
         "additionalProperties": false,
@@ -2875,6 +3073,31 @@
           "cuts"
         ],
         "title": "StudySummary",
+        "type": "object"
+      },
+      "UnblindedCases": {
+        "additionalProperties": false,
+        "description": "How many safety cases on the operational cut carry an unblinded treatment field.\nOnly the count: the treatment itself is never served.",
+        "properties": {
+          "cases": {
+            "title": "Cases",
+            "type": "integer"
+          },
+          "cases_with_treatment": {
+            "title": "Cases With Treatment",
+            "type": "integer"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cut_id",
+          "cases",
+          "cases_with_treatment"
+        ],
+        "title": "UnblindedCases",
         "type": "object"
       },
       "ValidationError": {
@@ -3983,6 +4206,155 @@
         "summary": "Review Queue",
         "tags": [
           "findings"
+        ]
+      }
+    },
+    "/api/v1/safety/unblinded-cases": {
+      "get": {
+        "description": "Unblinded statistician only: how many cases carry a treatment field (a count).",
+        "operationId": "safety_unblinded_cases_api_v1_safety_unblinded_cases_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnblindedCases"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Safety Unblinded Cases",
+        "tags": [
+          "safety"
+        ]
+      }
+    },
+    "/api/v1/safety/{cut}/reconciliation": {
+      "get": {
+        "description": "SAE reconciliation of one cut: counts per check and site, and the discrepancies,\nfrom the findings the caller may see. Subject-level findings reach only the roles in\ntheir visible_to; for anyone else they are neither listed nor counted.",
+        "operationId": "safety_reconciliation_api_v1_safety__cut__reconciliation_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cut",
+            "required": true,
+            "schema": {
+              "title": "Cut",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reconciliation"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Safety Reconciliation",
+        "tags": [
+          "safety"
         ]
       }
     },

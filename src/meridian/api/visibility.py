@@ -5,15 +5,25 @@
 * A ledger event is shown as the ledger shows it: restricted events are redacted for
   every role but the unblinded statistician (SqliteLedger.read with viewer_role).
 * A narrative or a decision is visible exactly when its finding is.
+* In the ledger, an event about a finding the role may not see (its FindingRaised, a
+  narrative or a decision) is redacted like a restricted event: a subject-level safety
+  finding carries a subject id, and the ledger must not show it to portfolio_lead.
 * Readable labels of opaque cut ids go only to roles that review the evaluation.
 
 Repository functions call these; no route handler filters anything itself.
 """
 
-from collections.abc import Iterable
+from collections.abc import Collection, Iterable
 
 from meridian.domain.enums import Role, Visibility
-from meridian.domain.events import Event, LedgerEntry, RedactedEvent
+from meridian.domain.events import (
+    Event,
+    FindingNarrative,
+    FindingRaised,
+    HumanDecision,
+    LedgerEntry,
+    RedactedEvent,
+)
 from meridian.domain.findings import Finding
 
 FULL_ACCESS = Role.UNBLINDED_STATISTICIAN
@@ -52,6 +62,42 @@ def redact(role: Role, entry: LedgerEntry) -> LedgerEntry:
         hash=entry.hash,
         prev_hash=entry.prev_hash,
     )
+
+
+def finding_id_of(entry: Event) -> str | None:
+    """The finding an event is about, if any."""
+    p = entry.payload
+    if isinstance(p, FindingRaised):
+        return p.finding.finding_id
+    if isinstance(p, FindingNarrative):
+        return p.finding_id
+    if isinstance(p, HumanDecision):
+        return p.decision.finding_id
+    return None
+
+
+def redact_with_findings(
+    role: Role, entry: LedgerEntry, visible_finding_ids: Collection[str]
+) -> LedgerEntry:
+    """redact, and also redact any event about a finding outside visible_finding_ids
+    (the findings this role may see)."""
+    shown = redact(role, entry)
+    if isinstance(shown, Event):
+        finding_id = finding_id_of(shown)
+        if finding_id is not None and finding_id not in visible_finding_ids:
+            return RedactedEvent(
+                seq=shown.seq,
+                event_type=shown.event_type,
+                recorded_at=shown.recorded_at,
+                hash=shown.hash,
+                prev_hash=shown.prev_hash,
+            )
+    return shown
+
+
+# The count of safety cases that carry an unblinded treatment field (never the field).
+def can_see_unblinded_counts(role: Role) -> bool:
+    return role is FULL_ACCESS
 
 
 def visible_findings(role: Role, findings: Iterable[Finding]) -> list[Finding]:

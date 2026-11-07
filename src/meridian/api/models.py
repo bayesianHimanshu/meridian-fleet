@@ -425,3 +425,65 @@ class ErrorBody(BaseModel):
     model_config = _FROZEN
 
     detail: str
+
+
+# ---- SAE reconciliation (phase 3 step 3a)
+
+
+class CheckCount(BaseModel):
+    model_config = _FROZEN
+
+    check: str
+    count: int
+
+
+class SiteCount(BaseModel):
+    model_config = _FROZEN
+
+    site_id: str
+    count: int
+
+
+class ReconciliationItem(BaseModel):
+    """One discrepancy: a current safety.sae_reconciler finding the caller may see, with
+    the two values it compares. subject_id is set only on subject-level findings, which
+    only the roles in their visible_to ever receive."""
+
+    model_config = _FROZEN
+
+    finding_id: str
+    check: str
+    site_id: str | None
+    subject_id: str | None
+    severity: Severity
+    status: FindingStatus
+    title: str
+    left_label: str
+    left: str
+    right_label: str
+    right: str
+
+
+class Reconciliation(BaseModel):
+    model_config = _FROZEN
+
+    study_id: str
+    cut_id: str
+    scope: CutScope
+    agent_id: str
+    agent_version: str | None  # the newest version that completed a run on the cut
+    run_completed: bool
+    by_check: list[CheckCount]  # every check, zero counts included
+    by_site: list[SiteCount]
+    items: list[ReconciliationItem]
+
+
+class UnblindedCases(BaseModel):
+    """How many safety cases on the operational cut carry an unblinded treatment field.
+    Only the count: the treatment itself is never served."""
+
+    model_config = _FROZEN
+
+    cut_id: str
+    cases: int
+    cases_with_treatment: int
