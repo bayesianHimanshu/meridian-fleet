@@ -74,6 +74,19 @@ curl -s http://127.0.0.1:8765/api/v1/review-queue \
   -H 'X-Meridian-Actor: asha.rao' -H 'X-Meridian-Role: clinical_ops_lead'
 ```
 
+Step 2: the Command Center (`web/`), a React client of the Fleet API built from the design
+mock. It reads live API data only; the role switcher is development identity, not sign-in.
+Run it with two commands, in two terminals, from the repository root:
+
+```sh
+uv run meridian api serve                      # the Fleet API on 127.0.0.1:8765
+cd web && npm ci && npm run dev                # the Command Center on http://127.0.0.1:5173
+```
+
+Checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:api` (in `web/`).
+The API types in `web/src/api/schema.ts` are generated from `openapi/meridian-api.json`
+with `npm run gen:api`.
+
 ## Setup
 
 ```sh
