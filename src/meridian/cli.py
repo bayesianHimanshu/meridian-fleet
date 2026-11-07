@@ -714,3 +714,65 @@ def sandbox_reap() -> None:
         typer.echo(f"  FAILED       {name}")
     if report.failed:
         raise typer.Exit(code=1)
+
+
+@sandbox_app.command("conformance")
+def sandbox_conformance(
+    zones: Annotated[
+        list[str], typer.Option("--zone", help="Zone to check; repeatable, or 'all'.")
+    ],
+) -> None:
+    """Check a zone's committed policy in a real sandbox and record the result."""
+    from meridian.sandbox.conformance import ledger_drafts, run_conformance
+    from meridian.sandbox.openshell import SubprocessOpenShellClient
+
+    selected = sorted(policies.POLICIES) if zones == ["all"] else zones
+    unknown = sorted(set(selected) - set(policies.POLICIES))
+    if unknown:
+        typer.echo(
+            f"error: unknown zone(s) {unknown}; known: {sorted(policies.POLICIES)}", err=True
+        )
+        raise typer.Exit(code=2)
+    failed = []
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        rt = c.settings.runtime
+        ref = c.image_ref()
+        try:
+            digest = image.inspect(ref).digest
+            for zone in selected:
+                result = run_conformance(
+                    client=SubprocessOpenShellClient(),
+                    zone=zone,
+                    image=ref,
+                    image_digest=digest,
+                    policies_dir=rt.policies_dir,
+                    tracker=c.sandbox_tracker(),
+                    log=log,
+                    log_timeout_seconds=rt.conformance_log_timeout_seconds,
+                    delete_confirm_seconds=rt.delete_confirm_seconds,
+                )
+                events = [c.ledger.append(d) for d in ledger_drafts(result, c.clock)]
+                verdict = "pass" if result.passed else "FAIL"
+                typer.echo(
+                    f"{verdict}  {zone} (sandbox {result.sandbox}, ledger seq "
+                    f"{events[0].seq}-{events[-1].seq}, log line after {result.log_wait_ms} ms)"
+                )
+                for check in result.checks:
+                    typer.echo(
+                        f"  {check.name:<24} expect {check.expect:<8} got {check.outcome:<12} "
+                        f"exit {check.exit_code}  {check.message}"
+                    )
+                for record in result.log_records:
+                    typer.echo(f"  log: {record.raw}")
+                if result.malformed_lines:
+                    typer.echo(f"  malformed NET:OPEN lines: {len(result.malformed_lines)}")
+                for failure in result.failures():
+                    typer.echo(f"  FAIL: {failure}")
+                if not result.passed:
+                    failed.append(zone)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    if failed:
+        raise typer.Exit(code=1)

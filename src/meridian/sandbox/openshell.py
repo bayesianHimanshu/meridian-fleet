@@ -120,3 +120,7 @@ class SubprocessOpenShellClient:
 
     def names(self) -> list[str]:
         return self._checked(["sandbox", "list", "--names"]).split()
+
+    def logs(self, name: str, lines: int = 2000) -> str:
+        """The sandbox's own log lines (openshell logs NAME --source sandbox -n LINES)."""
+        return self._checked(["logs", name, "--source", "sandbox", "-n", str(lines)])
