@@ -2,19 +2,22 @@
 
 Precedence, highest first: constructor arguments, environment variables, the TOML file,
 field defaults. The TOML file path defaults to config/default.toml relative to the
-working directory and can be changed with MERIDIAN_CONFIG_FILE.
+working directory and can be changed with MERIDIAN_CONFIG_FILE. Nested values use a
+double underscore in environment variables, for example MERIDIAN_OPS_SYNTH__ENTRY_LAG_SIGMA.
 """
 
 import os
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
     SettingsConfigDict,
     TomlConfigSettingsSource,
 )
+
+from meridian.data.ops_synth import OpsSynthParams
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
 DEFAULT_CONFIG_FILE = Path("config/default.toml")
@@ -28,19 +31,40 @@ DEFAULT_FINDING_ID_PREFIXES: dict[str, str] = {
     "unblinded": "DSMB",
 }
 
+PILOT_BASE_URL = (
+    "https://github.com/cdisc-org/sdtm-adam-pilot-project/raw/master/"
+    "updated-pilot-submission-package/900172/m5/datasets/cdiscpilot01/tabulations/sdtm"
+)
+
 
 def config_file_path() -> Path:
     return Path(os.environ.get(CONFIG_FILE_ENV, str(DEFAULT_CONFIG_FILE)))
 
 
+class PilotSource(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    base_url: str = PILOT_BASE_URL
+    domains: tuple[str, ...] = ("dm", "ae", "vs", "lb", "ds", "sv", "ex")
+    timeout_seconds: float = 120.0
+
+
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MERIDIAN_", extra="ignore", frozen=True)
+    model_config = SettingsConfigDict(
+        env_prefix="MERIDIAN_", env_nested_delimiter="__", extra="ignore", frozen=True
+    )
 
     ledger_path: Path = Path("var/ledger.sqlite3")
     default_seed: int = 0
     finding_id_prefixes: dict[str, str] = Field(
         default_factory=lambda: dict(DEFAULT_FINDING_ID_PREFIXES)
     )
+    study_id: str = "MRD-201"
+    raw_dir: Path = Path("data/raw/cdisc_pilot")
+    curated_root: Path = Path("data/curated")
+    sites_file: Path = Path("config/sites.toml")
+    pilot: PilotSource = Field(default_factory=PilotSource)
+    ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)
 
     @classmethod
     def settings_customise_sources(

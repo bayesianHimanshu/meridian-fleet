@@ -5,6 +5,11 @@
 ledger_path = "var/ledger.sqlite3"
 default_seed = 20261107
 
+study_id = "MRD-201"
+raw_dir = "data/raw/cdisc_pilot"
+curated_root = "data/curated"
+sites_file = "config/sites.toml"
+
 # Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
 [finding_id_prefixes]
 rbqm = "RBQM"
@@ -13,3 +18,30 @@ quality = "QA"
 preclinical = "PRE"
 tmf = "TMF"
 unblinded = "DSMB"
+
+# Source of the CDISC pilot SDTM transport files.
+[pilot]
+base_url = "https://github.com/cdisc-org/sdtm-adam-pilot-project/raw/master/updated-pilot-submission-package/900172/m5/datasets/cdiscpilot01/tabulations/sdtm"
+domains = ["dm", "ae", "vs", "lb", "ds", "sv", "ex"]
+timeout_seconds = 120.0
+
+# Operational data synthesis. Log-normal sigmas are on the natural log scale.
+[ops_synth]
+study_median_entry_lag_days = 3.0
+site_median_lag_sigma = 0.5
+entry_lag_sigma = 0.6
+queries_per_subject_visit = 0.4
+query_open_probability = 0.25
+open_query_age_mean_days = 10.0
+deviation_rate_mean = 0.15
+deviation_rate_shape = 4.0
+deviation_categories = [
+    "informed_consent",
+    "eligibility",
+    "visit_window",
+    "procedure_not_done",
+    "lab_sample_handling",
+    "concomitant_medication",
+]
+screen_failure_rate_mean = 0.3
+screen_failure_concentration = 20.0

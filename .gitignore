@@ -231,3 +231,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+# Downloaded and generated study data (reproducible with meridian data fetch/ingest)
+data/raw/
+data/curated/
