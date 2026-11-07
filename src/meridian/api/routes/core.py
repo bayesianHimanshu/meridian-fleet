@@ -128,9 +128,13 @@ def ledger(
     since: Annotated[int, Query(ge=0)] = 0,
     type: Annotated[list[EventType] | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=LEDGER_PAGE_MAX)] = 100,
+    order: Literal["asc", "desc"] = "asc",
+    before: Annotated[int | None, Query(ge=1)] = None,
 ) -> LedgerPage:
-    """Events after seq `since`, as the caller may see them (restricted ones redacted)."""
-    return repo.ledger_page(since, type, limit)
+    """Events as the caller may see them (restricted ones redacted). order=asc (default):
+    after seq `since`, oldest first, continue with next_since. order=desc: newest first,
+    before seq `before` if given, continue with next_before."""
+    return repo.ledger_page(since, type, limit, order, before)
 
 
 @router.get("/ledger/verify", tags=["ledger"])

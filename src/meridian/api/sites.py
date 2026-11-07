@@ -7,13 +7,13 @@ parameters; flagged checks come from the caller's visible findings (Repository).
 
 from collections.abc import Mapping, Sequence
 
-from meridian.api.models import RbqmSites, SiteMetrics
+from meridian.api.models import QtlView, RbqmSites, SiteMetrics
 from meridian.data.derived import treated_per_site
 from meridian.data.study_store import StudyReader
 from meridian.platform.config import AgentsSettings
 from meridian.stats.ae_expectation import ae_expectation
 from meridian.stats.robust import quasi_poisson, quasi_poisson_test
-from meridian.stats.rules import entry_lag, query_aging
+from meridian.stats.rules import discontinuation, entry_lag, qtl_status, query_aging
 from meridian.stats.site_metrics import (
     counts_by_site,
     exposure,
@@ -70,9 +70,25 @@ def site_metrics(
                 flagged_checks=list(flagged.get(site, [])),
             )
         )
+    qtl_cfg = agents.qtl_detector
+    rule = discontinuation(
+        dm, study.table("ds"), qtl_cfg.discontinuation_limit, qtl_cfg.approach_band
+    )
+    qtl = QtlView(
+        name=rule.check,
+        rate=rule.value,
+        limit=qtl_cfg.discontinuation_limit,
+        approach_from=rule.threshold,
+        status=None
+        if rule.value is None
+        else qtl_status(rule.value, qtl_cfg.discontinuation_limit, qtl_cfg.approach_band).value,
+        discontinued=rule.count,
+        treated=rule.n,
+    )
     return RbqmSites(
         study_id=study.study_id,
         cut_id=study.cut_id,
         parameters=list(csm.parameters),
         sites=sites,
+        qtl=qtl,
     )

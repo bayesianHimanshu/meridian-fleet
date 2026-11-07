@@ -23,6 +23,7 @@ from meridian.api.identity import Person
 from meridian.api.models import (
     AssetLive,
     AssetStatic,
+    ContainmentCheckView,
     ContainmentView,
     CutKind,
     CutScope,
@@ -505,11 +506,27 @@ class Repository:
         return ReviewQueue(items=items)
 
     def ledger_page(
-        self, since: int, types: Collection[EventType] | None, limit: int
+        self,
+        since: int,
+        types: Collection[EventType] | None,
+        limit: int,
+        order: Literal["asc", "desc"] = "asc",
+        before: int | None = None,
     ) -> LedgerPage:
+        """asc: events after since, oldest first. desc: the newest events before `before`
+        (or the newest of all), newest first, for a reader paging back in time."""
         entries = self._ledger.read(
             since_seq=since, event_types=types, viewer_role=visibility.ledger_viewer(self.role)
         )
+        if order == "desc":
+            older = [e for e in entries if before is None or e.seq < before]
+            page_desc = [visibility.redact(self.role, e) for e in reversed(older[-limit:])]
+            more_older = len(older) > limit
+            return LedgerPage(
+                entries=page_desc,
+                next_since=None,
+                next_before=page_desc[-1].seq if more_older and page_desc else None,
+            )
         shown = [visibility.redact(self.role, e) for e in entries[: limit + 1]]
         more = len(shown) > limit
         page = shown[:limit]
@@ -615,6 +632,16 @@ class Repository:
                     all_refused=p.all_refused,
                     log_line_found=p.log_line_found,
                     credential_value_visible=p.credential_value_visible,
+                    checks=[
+                        ContainmentCheckView(
+                            name=c.name,
+                            expect=c.expect,
+                            outcome=c.outcome,
+                            passed=c.passed,
+                            message=c.message,
+                        )
+                        for c in p.checks
+                    ],
                 )
             )
         return Fleet(agents=sorted(agents, key=lambda a: a.agent_id), containment=containment)

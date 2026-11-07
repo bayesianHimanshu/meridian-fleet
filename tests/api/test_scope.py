@@ -151,3 +151,81 @@ def test_the_portfolio_has_the_mock_assets_and_mrd201s_real_indication(fx: Fixtu
     assert mrd201["indication"] == "Mild to moderate Alzheimer's disease"
     assert mrd201["intervention"] == "Xanomeline transdermal"
     assert "pulmonary" not in json.dumps(assets).lower()
+
+
+def test_the_ledger_pages_newest_first(fx: Fixture) -> None:
+    client = fx.client()
+    head = len(fx.events)
+    first = _get(client, "/api/v1/ledger?order=desc&limit=3")
+    assert [e["seq"] for e in first["entries"]] == [head, head - 1, head - 2]
+    assert (first["next_since"], first["next_before"]) == (None, head - 2)
+    second = _get(client, f"/api/v1/ledger?order=desc&limit=3&before={first['next_before']}")
+    assert [e["seq"] for e in second["entries"]] == [head - 3, head - 4, head - 5]
+    last = _get(client, "/api/v1/ledger?order=desc&limit=1000&before=3")
+    assert ([e["seq"] for e in last["entries"]], last["next_before"]) == ([2, 1], None)
+    # Redaction is the same in either order.
+    qa = headers(Role.QA_AUDITOR)
+    redacted = [
+        e["seq"]
+        for e in _get(client, "/api/v1/ledger?order=desc&limit=1000", qa)["entries"]
+        if "marker" in e
+    ]
+    assert redacted
+    assert all(
+        "payload" not in e
+        for e in _get(client, "/api/v1/ledger?order=desc&limit=1000", qa)["entries"]
+        if e["seq"] in redacted
+    )
+
+
+def test_fleet_containment_lists_its_checks(fx: Fixture) -> None:
+    from meridian.domain.events import ContainmentCheck, ContainmentCheckCompleted
+
+    fx.append(
+        ContainmentCheckCompleted(
+            zone="safety",
+            sandbox="mer-cf-sa-00000000",
+            image="meridian-agent:0.1.0",
+            image_digest="sha256:" + "a" * 64,
+            policy_sha256="b" * 64,
+            checks=(
+                ContainmentCheck(
+                    name="write_var_tmp",
+                    expect="refused",
+                    command=": > /var/tmp/x",
+                    outcome="refused",
+                    exit_code=1,
+                    message="Permission denied",
+                    passed=True,
+                ),
+            ),
+            log_line_found=True,
+            all_refused=True,
+            passed=True,
+        )
+    )
+    containment = {c["policy"]: c for c in _get(fx.client(), "/api/v1/fleet")["containment"]}
+    assert containment["safety"]["checks"] == [
+        {
+            "name": "write_var_tmp",
+            "expect": "refused",
+            "outcome": "refused",
+            "passed": True,
+            "message": "Permission denied",
+        }
+    ]
+    assert containment["rbqm"]["checks"] == []
+
+
+def test_rbqm_sites_carry_the_qtl(tmp_path: Path) -> None:
+    fx = build(tmp_path / "l")
+    blinded, ops, unblinded = clean()
+    write_tables_cut(tmp_path / "curated", "DC-SITES", blinded, ops, unblinded)
+    fx.append(DataCut(cut_id="DC-SITES", study_id=STUDY, path="curated/MRD-201/DC-SITES"))
+    qtl = _get(fx.client(curated_root=tmp_path / "curated"), "/api/v1/rbqm/DC-SITES/sites")["qtl"]
+    assert qtl["name"] == "premature_discontinuation"
+    assert qtl["limit"] == 0.617
+    assert qtl["approach_from"] == pytest.approx(0.597)
+    assert qtl["treated"] > 0
+    assert qtl["discontinued"] / qtl["treated"] == pytest.approx(qtl["rate"])
+    assert qtl["status"] in ("within", "approaching", "breached")

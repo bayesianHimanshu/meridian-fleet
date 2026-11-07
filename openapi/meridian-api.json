@@ -420,12 +420,62 @@
         "title": "ContainmentCheckCompleted",
         "type": "object"
       },
+      "ContainmentCheckView": {
+        "additionalProperties": false,
+        "properties": {
+          "expect": {
+            "enum": [
+              "refused",
+              "allowed"
+            ],
+            "title": "Expect",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "refused",
+              "allowed",
+              "inconclusive"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "expect",
+          "outcome",
+          "passed",
+          "message"
+        ],
+        "title": "ContainmentCheckView",
+        "type": "object"
+      },
       "ContainmentView": {
         "additionalProperties": false,
         "properties": {
           "all_refused": {
             "title": "All Refused",
             "type": "boolean"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ContainmentCheckView"
+            },
+            "title": "Checks",
+            "type": "array"
           },
           "credential_value_visible": {
             "anyOf": [
@@ -494,7 +544,8 @@
           "passed",
           "all_refused",
           "log_line_found",
-          "credential_value_visible"
+          "credential_value_visible",
+          "checks"
         ],
         "title": "ContainmentView",
         "type": "object"
@@ -1868,6 +1919,17 @@
             "title": "Entries",
             "type": "array"
           },
+          "next_before": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Before"
+          },
           "next_since": {
             "anyOf": [
               {
@@ -2165,6 +2227,77 @@
         "title": "PortfolioAsset",
         "type": "object"
       },
+      "QtlView": {
+        "additionalProperties": false,
+        "description": "A study-level quality tolerance limit, as qtl_detector computes it.",
+        "properties": {
+          "approach_from": {
+            "title": "Approach From",
+            "type": "number"
+          },
+          "discontinued": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discontinued"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "number"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "rate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rate"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "within",
+                  "approaching",
+                  "breached"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "treated": {
+            "title": "Treated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "rate",
+          "limit",
+          "approach_from",
+          "status",
+          "discontinued",
+          "treated"
+        ],
+        "title": "QtlView",
+        "type": "object"
+      },
       "RbqmSites": {
         "additionalProperties": false,
         "properties": {
@@ -2178,6 +2311,9 @@
             },
             "title": "Parameters",
             "type": "array"
+          },
+          "qtl": {
+            "$ref": "#/components/schemas/QtlView"
           },
           "sites": {
             "items": {
@@ -2195,7 +2331,8 @@
           "study_id",
           "cut_id",
           "parameters",
-          "sites"
+          "sites",
+          "qtl"
         ],
         "title": "RbqmSites",
         "type": "object"
@@ -3149,7 +3286,7 @@
     },
     "/api/v1/ledger": {
       "get": {
-        "description": "Events after seq `since`, as the caller may see them (restricted ones redacted).",
+        "description": "Events as the caller may see them (restricted ones redacted). order=asc (default):\nafter seq `since`, oldest first, continue with next_since. order=desc: newest first,\nbefore seq `before` if given, continue with next_before.",
         "operationId": "ledger_api_v1_ledger_get",
         "parameters": [
           {
@@ -3192,6 +3329,37 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": "asc",
+              "enum": [
+                "asc",
+                "desc"
+              ],
+              "title": "Order",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Before"
             }
           },
           {

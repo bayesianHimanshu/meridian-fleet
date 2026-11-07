@@ -201,8 +201,10 @@ class LedgerPage(BaseModel):
     model_config = _FROZEN
 
     entries: list[Event | RedactedEvent]
-    # Pass as ?since= to continue; None when this page reached the end.
+    # order=asc: pass as ?since= to continue; None when this page reached the end.
     next_since: int | None
+    # order=desc: pass as ?before= for the next (older) page; None at the first event.
+    next_before: int | None = None
 
 
 class VerifyReport(BaseModel):
@@ -231,6 +233,16 @@ class FleetAgent(BaseModel):
     last_trigger_seq: int | None
 
 
+class ContainmentCheckView(BaseModel):
+    model_config = _FROZEN
+
+    name: str
+    expect: Literal["refused", "allowed"]
+    outcome: Literal["refused", "allowed", "inconclusive"]
+    passed: bool
+    message: str
+
+
 class ContainmentView(BaseModel):
     model_config = _FROZEN
 
@@ -245,6 +257,7 @@ class ContainmentView(BaseModel):
     all_refused: bool
     log_line_found: bool
     credential_value_visible: bool | None
+    checks: list[ContainmentCheckView]
 
 
 class Fleet(BaseModel):
@@ -268,6 +281,20 @@ class SiteMetrics(BaseModel):
     flagged_checks: list[str]
 
 
+class QtlView(BaseModel):
+    """A study-level quality tolerance limit, as qtl_detector computes it."""
+
+    model_config = _FROZEN
+
+    name: str
+    rate: float | None
+    limit: float
+    approach_from: float
+    status: Literal["within", "approaching", "breached"] | None
+    discontinued: int | None
+    treated: int
+
+
 class RbqmSites(BaseModel):
     model_config = _FROZEN
 
@@ -275,6 +302,7 @@ class RbqmSites(BaseModel):
     cut_id: str
     parameters: list[str]
     sites: list[SiteMetrics]
+    qtl: QtlView
 
 
 class AssetStatus(BaseModel):
