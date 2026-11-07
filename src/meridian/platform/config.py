@@ -63,6 +63,7 @@ class Settings(BaseSettings):
     raw_dir: Path = Path("data/raw/cdisc_pilot")
     curated_root: Path = Path("data/curated")
     sites_file: Path = Path("config/sites.toml")
+    ground_truth_dir: Path = Path("data/ground_truth")
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)
 

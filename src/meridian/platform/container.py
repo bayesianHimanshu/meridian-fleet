@@ -6,6 +6,7 @@ from typing import Self
 
 from meridian.data.ingest import IngestService
 from meridian.data.study_store import ParquetStudyReader, StudyReader
+from meridian.faults.inject import FaultInjector
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
 from meridian.platform.config import Settings
@@ -39,6 +40,15 @@ class Container:
             sites_file=self.settings.sites_file,
             study_id=self.settings.study_id,
             ops_params=self.settings.ops_synth,
+        )
+
+    def fault_injector(self) -> FaultInjector:
+        return FaultInjector(
+            clock=self.clock,
+            ledger=self.ledger,
+            curated_root=self.settings.curated_root,
+            study_id=self.settings.study_id,
+            ground_truth_dir=self.settings.ground_truth_dir,
         )
 
     def close(self) -> None:

@@ -9,6 +9,7 @@ study_id = "MRD-201"
 raw_dir = "data/raw/cdisc_pilot"
 curated_root = "data/curated"
 sites_file = "config/sites.toml"
+ground_truth_dir = "data/ground_truth"
 
 # Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
 [finding_id_prefixes]

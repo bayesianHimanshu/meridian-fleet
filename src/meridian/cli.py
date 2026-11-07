@@ -2,6 +2,7 @@
 
 import sys
 from collections.abc import MutableMapping
+from pathlib import Path
 from typing import Annotated, Any
 
 import httpx
@@ -17,6 +18,9 @@ from meridian.data.study_store import StudyAccessError, StudyReader
 from meridian.domain.enums import FindingKind, Role, Severity, Visibility
 from meridian.domain.events import DataCut, EventDraft, FindingRaised
 from meridian.domain.findings import Evidence, Finding
+from meridian.faults.catalog import FaultError
+from meridian.faults.inject import InjectionError
+from meridian.faults.scenario import ScenarioError
 from meridian.ledger.store import LedgerError
 from meridian.ledger.verify import verify
 from meridian.platform.clock import Clock
@@ -25,9 +29,11 @@ from meridian.platform.container import Container
 
 app = typer.Typer(no_args_is_help=True, help="Meridian Agent Fleet.")
 ledger_app = typer.Typer(no_args_is_help=True, help="Inspect and manage the event ledger.")
+faults_app = typer.Typer(no_args_is_help=True, help="Plant known faults into a copy of a cut.")
 data_app = typer.Typer(no_args_is_help=True, help="Fetch, ingest and inspect study data.")
 app.add_typer(ledger_app, name="ledger")
 app.add_typer(data_app, name="data")
+app.add_typer(faults_app, name="faults")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -176,6 +182,9 @@ DATA_ERRORS = (
     LedgerError,
     httpx.HTTPError,
     FileNotFoundError,
+    FaultError,
+    InjectionError,
+    ScenarioError,
 )
 
 
@@ -307,3 +316,34 @@ def data_show(
             tbl_rows=-1, tbl_cols=-1, tbl_width_chars=200, tbl_hide_dataframe_shape=True
         ):
             typer.echo(str(summary))
+
+
+@faults_app.command("inject")
+def faults_inject(
+    scenario: Annotated[Path, typer.Option("--scenario", help="Scenario TOML file.")],
+) -> None:
+    """Write the faulted cut, its ground truth and a DataCut event (each once)."""
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        try:
+            result = c.fault_injector().inject(scenario)
+        except DATA_ERRORS as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+        log.info(
+            "faults.injected",
+            cut_id=result.manifest.cut_id,
+            cut_created=result.cut_created,
+            event_appended=result.event_appended,
+        )
+        state = "written" if result.cut_created else "already present, identical"
+        typer.echo(f"cut {result.manifest.cut_id} {state} at {result.cut_path}")
+        typer.echo(f"ground truth at {result.ground_truth_path}")
+        for record in result.ground_truth.faults:
+            achieved = ", ".join(f"{k}={v:.4g}" for k, v in record.achieved.items())
+            typer.echo(
+                f"  {record.fault_id} {record.fault_type:<22} target {record.target:<6} "
+                f"rows {sum(record.rows_touched.values()):>5}  {achieved}"
+            )
+        verb = "appended" if result.event_appended else "already recorded"
+        typer.echo(f"DataCut {verb} at ledger seq {result.event.seq}")
