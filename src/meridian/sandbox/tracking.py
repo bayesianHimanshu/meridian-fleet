@@ -10,6 +10,7 @@ and only those.
 import json
 import os
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
@@ -86,6 +87,20 @@ class SandboxTracker:
 Deleter = Callable[[str], None]
 
 
+def wait_gone(
+    name: str, live: Callable[[], list[str]], seconds: float, poll_seconds: float = 0.5
+) -> bool:
+    """True once `name` is no longer listed; False if it still is after `seconds`."""
+    deadline = time.monotonic() + seconds
+    waiter = threading.Event()
+    while True:
+        if name not in live():
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        waiter.wait(poll_seconds)
+
+
 @dataclass
 class DrainReport:
     deleted: list[str] = field(default_factory=list)
@@ -93,7 +108,14 @@ class DrainReport:
 
 
 class BackgroundDeleter:
-    """Deletes sandboxes off the critical path. workers = 0 deletes synchronously."""
+    """Deletes sandboxes off the critical path. workers = 0 deletes synchronously.
+
+    `openshell sandbox delete` (0.1.7) returns once the gateway has accepted the deletion
+    ("cleanup is pending"); the sandbox can stay listed for a while. With `live` given, a
+    sandbox is recorded as deleted only once it is no longer listed, polling every
+    `poll_seconds` for at most `confirm_seconds`; after that it is delete_failed
+    ("still listed") and meridian sandbox reap will try again.
+    """
 
     def __init__(
         self,
@@ -102,9 +124,15 @@ class BackgroundDeleter:
         tracker: SandboxTracker,
         workers: int,
         log: structlog.typing.FilteringBoundLogger,
+        live: Callable[[], list[str]] | None = None,
+        confirm_seconds: float = 60.0,
+        poll_seconds: float = 0.5,
     ) -> None:
         if workers < 0:
             raise ValueError("workers must be 0 or more")
+        self._live = live
+        self._confirm_seconds = confirm_seconds
+        self._poll_seconds = poll_seconds
         self._delete = delete
         self._tracker = tracker
         self._log = log
@@ -113,12 +141,23 @@ class BackgroundDeleter:
         self._lock = threading.Lock()
         self._report = DrainReport()
 
+    def _gone(self, name: str) -> bool:
+        if self._live is None:
+            return True
+        return wait_gone(name, self._live, self._confirm_seconds, self._poll_seconds)
+
     def _run(self, name: str) -> tuple[str, bool]:
         try:
             self._delete(name)
+            gone = self._gone(name)
         except OpenShellError as exc:
             self._tracker.record(name, "delete_failed", str(exc)[:500])
             self._log.error("sandbox.delete_failed", sandbox=name, error=str(exc))
+            return name, False
+        if not gone:
+            detail = f"still listed {self._confirm_seconds:g} s after delete"
+            self._tracker.record(name, "delete_failed", detail)
+            self._log.error("sandbox.delete_failed", sandbox=name, error=detail)
             return name, False
         self._tracker.record(name, "deleted")
         return name, True
@@ -163,6 +202,8 @@ def reap(
     delete: Deleter,
     live: Callable[[], list[str]],
     log: structlog.typing.FilteringBoundLogger,
+    confirm_seconds: float = 60.0,
+    poll_seconds: float = 0.5,
 ) -> ReapReport:
     """Delete every tracked sandbox whose latest event is not deleted, and nothing else.
 
@@ -181,9 +222,16 @@ def reap(
         tracker.record(name, "delete_requested", "reap")
         try:
             delete(name)
+            gone = wait_gone(name, live, confirm_seconds, poll_seconds)
         except OpenShellError as exc:
             tracker.record(name, "delete_failed", str(exc)[:500])
             log.error("sandbox.reap_failed", sandbox=name, error=str(exc))
+            report.failed.append(name)
+            continue
+        if not gone:
+            tracker.record(
+                name, "delete_failed", f"still listed {confirm_seconds:g} s after delete"
+            )
             report.failed.append(name)
             continue
         tracker.record(name, "deleted", "reap")

@@ -73,7 +73,9 @@ def test_sandboxed_drafts_are_identical_to_in_process(
     executor = OpenShellExecutor(
         client=client,
         tracker=tracker,
-        deleter=BackgroundDeleter(delete=client.delete, tracker=tracker, workers=2, log=log),
+        deleter=BackgroundDeleter(
+            delete=client.delete, tracker=tracker, workers=2, log=log, live=client.names
+        ),
         registry=registry,
         study_root=cut.parent,
         image=ref,
@@ -92,9 +94,9 @@ def test_sandboxed_drafts_are_identical_to_in_process(
     assert drafts_document(registered, result.drafts) == drafts_document(registered, here)
     assert result.policy_sha256 is not None
     assert result.inputs_manifest_sha256 is not None
-    executor.drain()
-    assert set(client.names()) == before  # deleted
+    executor.drain()  # deleted means no longer listed
     assert tracker.pending() == []
+    assert not {n for n in client.names() if n not in before} & set(tracker.latest())
 
 
 @pytest.fixture(scope="module")

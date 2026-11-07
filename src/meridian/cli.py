@@ -692,7 +692,13 @@ def sandbox_reap() -> None:
         tracker = c.sandbox_tracker()
         client = SubprocessOpenShellClient()
         try:
-            report = reap(tracker=tracker, delete=client.delete, live=client.names, log=log)
+            report = reap(
+                tracker=tracker,
+                delete=client.delete,
+                live=client.names,
+                log=log,
+                confirm_seconds=c.settings.runtime.delete_confirm_seconds,
+            )
         except (TrackingError, OpenShellError) as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc

@@ -146,12 +146,18 @@ def test_reap_deletes_only_tracked_undeleted_sandboxes(tmp_path: Path) -> None:
     tracker.record("mer-d", "created")  # gone already (for example deleted by hand)
     live = ["mer-a", "mer-b", "mer-c", "someone-elses-sandbox"]
     deleted: list[str] = []
-    report = reap(tracker=tracker, delete=deleted.append, live=lambda: live, log=LOG)
+
+    def delete(name: str) -> None:
+        deleted.append(name)
+        live.remove(name)
+
+    report = reap(tracker=tracker, delete=delete, live=lambda: list(live), log=LOG)
     assert deleted == ["mer-b", "mer-c"]
     assert report.deleted == ["mer-b", "mer-c"]
     assert report.already_gone == ["mer-d"]
     assert tracker.pending() == []
     assert "someone-elses-sandbox" not in tracker.latest()
+    assert "someone-elses-sandbox" in live
     # A second reap has nothing to do and asks for nothing.
     calls: list[str] = []
     again = reap(
@@ -171,6 +177,16 @@ def test_reap_records_a_failed_delete_and_keeps_it_pending(tmp_path: Path) -> No
         raise OpenShellError("no")
 
     report = reap(tracker=tracker, delete=refuse, live=lambda: ["mer-b"], log=LOG)
+    assert report.failed == ["mer-b"]
+    stuck = reap(
+        tracker=tracker,
+        delete=lambda _: None,
+        live=lambda: ["mer-b"],
+        log=LOG,
+        confirm_seconds=0.05,
+        poll_seconds=0.01,
+    )
+    assert stuck.failed == ["mer-b"]
     assert report.failed == ["mer-b"]
     assert tracker.pending() == ["mer-b"]
 
@@ -208,3 +224,42 @@ def test_the_executor_tracks_kept_and_failed_sandboxes(tmp_path: Path) -> None:
     (name,) = client.created
     assert executor._tracker.latest() == {name: "created"}
     assert executor._tracker.pending() == [name]  # reap will find it
+
+
+def test_deleted_means_no_longer_listed(tmp_path: Path) -> None:
+    """delete returns at "cleanup is pending"; deleted is recorded only once it is gone."""
+    tracker = _tracker(tmp_path)
+    listings = iter([["mer-a"], ["mer-a"], []])
+    deleter = BackgroundDeleter(
+        delete=lambda _: None,
+        tracker=tracker,
+        workers=1,
+        log=LOG,
+        live=lambda: next(listings),
+        poll_seconds=0.01,
+    )
+    tracker.record("mer-a", "created")
+    deleter.submit("mer-a")
+    assert deleter.drain().deleted == ["mer-a"]
+    assert tracker.latest() == {"mer-a": "deleted"}
+    deleter.close()
+
+
+def test_still_listed_after_the_timeout_is_delete_failed(tmp_path: Path) -> None:
+    tracker = _tracker(tmp_path)
+    deleter = BackgroundDeleter(
+        delete=lambda _: None,
+        tracker=tracker,
+        workers=1,
+        log=LOG,
+        live=lambda: ["mer-a"],
+        confirm_seconds=0.05,
+        poll_seconds=0.01,
+    )
+    tracker.record("mer-a", "created")
+    deleter.submit("mer-a")
+    assert deleter.drain().failed == ["mer-a"]
+    (last,) = [e for e in tracker.events() if e["event"] == "delete_failed"]
+    assert "still listed" in str(last["detail"])
+    assert tracker.pending() == ["mer-a"]
+    deleter.close()

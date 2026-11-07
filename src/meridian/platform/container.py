@@ -89,7 +89,12 @@ class Container:
         resolved = client or SubprocessOpenShellClient()
         tracker = self.sandbox_tracker()
         deleter = BackgroundDeleter(
-            delete=resolved.delete, tracker=tracker, workers=rt.delete_workers, log=log
+            delete=resolved.delete,
+            tracker=tracker,
+            workers=rt.delete_workers,
+            log=log,
+            live=resolved.names,
+            confirm_seconds=rt.delete_confirm_seconds,
         )
         return OpenShellExecutor(
             client=resolved,

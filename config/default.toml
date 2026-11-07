@@ -57,6 +57,7 @@ exec_timeout_seconds = 120
 keep_failed = false
 policies_dir = "policies"
 delete_workers = 4  # background deletion threads; 0 deletes synchronously
+delete_confirm_seconds = 60.0  # until a deleted sandbox must be gone from sandbox list
 sandboxes_log = "var/sandboxes.jsonl"
 
 # Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
