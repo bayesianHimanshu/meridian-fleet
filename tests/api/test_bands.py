@@ -106,3 +106,43 @@ def test_no_critical_cell_without_an_outline_on_real_cuts() -> None:
                     uncovered.append(f"{cut} {site['site_id']} {key}")
     assert critical > 0
     assert uncovered == []
+
+
+AGE = ColumnRule(
+    agent="a",
+    unit="days",
+    direction="high",
+    warning_from=15.75,
+    critical_beyond=21.0,
+    rule="",
+    min_count=5,
+    count_label="open queries",
+)
+
+
+@pytest.mark.parametrize(
+    ("value", "count", "expected"),
+    [
+        (15.8, 4, "too_few"),  # site 1002: a warning value, but too few queries to test
+        (40.0, 3, "too_few"),
+        (40.0, None, "too_few"),
+        (15.8, 5, "warning"),
+        (21.5, 5, "critical"),
+        (10.0, 9, "normal"),
+        (None, 9, "na"),
+    ],
+)
+def test_the_minimum_open_query_count_applies_to_every_band(
+    value: float | None, count: int | None, expected: str
+) -> None:
+    assert band(value, AGE, count) == expected
+
+
+def test_only_query_age_has_a_minimum_count() -> None:
+    agents = Settings().agents
+    rules = column_rules(agents, n_ae=13, n_dev=13, parameters=("SYSBP",))
+    age = rules["median_open_query_age_days"]
+    assert (age.min_count, age.count_label) == (agents.kri_monitor.min_open_queries, "open queries")
+    assert [k for k, r in rules.items() if r.min_count is not None] == [
+        "median_open_query_age_days"
+    ]

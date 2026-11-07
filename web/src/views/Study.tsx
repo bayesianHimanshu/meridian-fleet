@@ -168,7 +168,7 @@ export function StudyView() {
               <h2 id="enrol-title">Enrollment</h2>
               <span className="src">
                 cut <span className="mono">{enrollment.data.cut_id}</span>,{" "}
-                <span className="num">{enrollment.data.total.at(-1) ?? 0}</span> treated
+                <span className="fig">{enrollment.data.total.at(-1) ?? 0}</span> treated
               </span>
             </div>
             <EnrollmentChart data={enrollment.data} />

@@ -288,7 +288,8 @@ class SiteFlag(BaseModel):
 
 
 # untested_direction: a value on the side the agent does not test (no fill).
-Band = Literal["normal", "warning", "critical", "untested_direction", "na"]
+# too_few: below the minimum count the agent needs before it tests at all (no fill).
+Band = Literal["normal", "warning", "critical", "untested_direction", "too_few", "na"]
 
 
 class ColumnRule(BaseModel):
@@ -304,6 +305,10 @@ class ColumnRule(BaseModel):
     # Critical strictly beyond this: the agent's own threshold (signed for z).
     critical_beyond: float
     rule: str  # what the agent tests, in words
+    # The agent tests a site only with at least this many items (open queries); below it
+    # the cell is too_few, whatever its value.
+    min_count: int | None = None
+    count_label: str | None = None  # what is counted, for example "open queries"
 
 
 class SiteMetrics(BaseModel):
