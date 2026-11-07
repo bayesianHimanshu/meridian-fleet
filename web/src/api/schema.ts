@@ -218,6 +218,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/safety/unblinded-cases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Safety Unblinded Cases
+         * @description Unblinded statistician only: how many cases carry a treatment field (a count).
+         */
+        get: operations["safety_unblinded_cases_api_v1_safety_unblinded_cases_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/safety/{cut}/reconciliation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Safety Reconciliation
+         * @description SAE reconciliation of one cut: counts per check and site, and the discrepancies,
+         *     from the findings the caller may see. Subject-level findings reach only the roles in
+         *     their visible_to; for anyone else they are neither listed nor counted.
+         */
+        get: operations["safety_reconciliation_api_v1_safety__cut__reconciliation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studies": {
         parameters: {
             query?: never;
@@ -375,6 +417,13 @@ export interface components {
             level: "good" | "warning" | "critical" | "info";
             /** Text */
             text: string;
+        };
+        /** CheckCount */
+        CheckCount: {
+            /** Check */
+            check: string;
+            /** Count */
+            count: number;
         };
         /**
          * ColumnRule
@@ -765,7 +814,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1103,6 +1152,62 @@ export interface components {
             /** Study Id */
             study_id: string;
         };
+        /** Reconciliation */
+        Reconciliation: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string | null;
+            /** By Check */
+            by_check: components["schemas"]["CheckCount"][];
+            /** By Site */
+            by_site: components["schemas"]["SiteCount"][];
+            /** Cut Id */
+            cut_id: string;
+            /** Items */
+            items: components["schemas"]["ReconciliationItem"][];
+            /** Run Completed */
+            run_completed: boolean;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "operational" | "evaluation";
+            /** Study Id */
+            study_id: string;
+        };
+        /**
+         * ReconciliationItem
+         * @description One discrepancy: a current safety.sae_reconciler finding the caller may see, with
+         *     the two values it compares. subject_id is set only on subject-level findings, which
+         *     only the roles in their visible_to ever receive.
+         */
+        ReconciliationItem: {
+            /** Check */
+            check: string;
+            /** Finding Id */
+            finding_id: string;
+            /** Left */
+            left: string;
+            /** Left Label */
+            left_label: string;
+            /** Right */
+            right: string;
+            /** Right Label */
+            right_label: string;
+            severity: components["schemas"]["Severity"];
+            /** Site Id */
+            site_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "escalated" | "dismissed" | "retired";
+            /** Subject Id */
+            subject_id: string | null;
+            /** Title */
+            title: string;
+        };
         /**
          * RedactedEvent
          * @description What a reader without unblinded access sees in place of a restricted event.
@@ -1178,6 +1283,13 @@ export interface components {
          * @enum {string}
          */
         Severity: "low" | "medium" | "high";
+        /** SiteCount */
+        SiteCount: {
+            /** Count */
+            count: number;
+            /** Site Id */
+            site_id: string;
+        };
         /** SiteEnrollment */
         SiteEnrollment: {
             /** Cumulative */
@@ -1244,6 +1356,19 @@ export interface components {
             cuts: number;
             /** Study Id */
             study_id: string;
+        };
+        /**
+         * UnblindedCases
+         * @description How many safety cases on the operational cut carry an unblinded treatment field.
+         *     Only the count: the treatment itself is never served.
+         */
+        UnblindedCases: {
+            /** Cases */
+            cases: number;
+            /** Cases With Treatment */
+            cases_with_treatment: number;
+            /** Cut Id */
+            cut_id: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -1662,6 +1787,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewQueue"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    safety_unblinded_cases_api_v1_safety_unblinded_cases_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UnblindedCases"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    safety_reconciliation_api_v1_safety__cut__reconciliation_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                cut: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reconciliation"];
                 };
             };
             /** @description Validation Error */

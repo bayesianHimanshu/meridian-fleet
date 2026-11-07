@@ -3,7 +3,11 @@
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useIdentity } from "./identity";
 
-export function useApi<T>(key: readonly unknown[], fetcher: () => Promise<T>): UseQueryResult<T> {
+export function useApi<T>(
+  key: readonly unknown[],
+  fetcher: () => Promise<T>,
+  options: { enabled?: boolean } = {},
+): UseQueryResult<T> {
   const { person } = useIdentity();
-  return useQuery({ queryKey: [person.actor, ...key], queryFn: fetcher });
+  return useQuery({ queryKey: [person.actor, ...key], queryFn: fetcher, enabled: options.enabled ?? true });
 }

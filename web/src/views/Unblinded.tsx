@@ -9,6 +9,9 @@ export function UnblindedView() {
   const findings = useApi(["findings", "restricted"], () =>
     unwrap(api.GET("/api/v1/findings", { params: { query: { scope: "all", include_superseded: true, limit: 500 } } })),
   );
+  const cases = useApi(["safety", "unblinded-cases"], () => unwrap(api.GET("/api/v1/safety/unblinded-cases")), {
+    enabled: allowed,
+  });
   if (!allowed) {
     return <p className="message">The unblinded zone is only for the unblinded statistician.</p>;
   }
@@ -33,6 +36,23 @@ export function UnblindedView() {
         {findings.isSuccess ? (
           <p>
             Restricted findings in the ledger now: <span className="fig">{restricted.length}</span>.
+          </p>
+        ) : null}
+      </div>
+      <div className="restricted-panel">
+        <h2>Safety database</h2>
+        <p>
+          Some expedited safety cases (suspected unexpected serious adverse reactions) carry the subject's
+          treatment, as an unblinded process would hold it. That field is split into the unblinded zone when the
+          safety database is ingested; no agent and no other role ever reads it, and it is not shown here.
+        </p>
+        {cases.isPending ? <Loading what="the case count" /> : null}
+        {cases.isError ? <ErrorNote error={cases.error} /> : null}
+        {cases.isSuccess ? (
+          <p data-testid="unblinded-cases">
+            On cut <span className="mono">{cases.data.cut_id}</span>,{" "}
+            <span className="fig">{cases.data.cases_with_treatment}</span> of{" "}
+            <span className="fig">{cases.data.cases}</span> safety cases carry an unblinded treatment field.
           </p>
         ) : null}
       </div>
