@@ -9,18 +9,27 @@ the docker compute driver.
 1. **Stage.** The host copies `<cut>/blinded/*.parquet` and `<cut>/ops/*.parquet` into a
    temporary folder named `cut`, and writes the DataCut event as `cut/trigger.json`. Never
    `unblinded/`, never the manifest (it lists the unblinded files), never ground truth.
-   The folder is checked twice, once after copying and once just before upload.
+   The folder is checked twice, once after copying and once just before upload. Last,
+   the host writes `cut/inputs_manifest.json`: path, size and sha256 of every staged file.
 2. **Create.** `openshell sandbox create --name mer-km-7n-1a2b3c4d --from
    meridian-agent:0.1.0 --policy policies/rbqm.yaml --detach --upload <stage>/cut:/tmp`.
    One sandbox per agent run, from the agent image, with the zone's policy.
 3. **Run.** `openshell sandbox exec ... --timeout 120 -- meridian-worker run --agent ...
-   --trigger /tmp/cut/trigger.json --cut-dir /tmp/cut`. The worker prints one canonical
-   JSON document on stdout, and logs go to stderr.
+   --trigger /tmp/cut/trigger.json --cut-dir /tmp/cut`. Before reading any data the worker
+   checks every file against the inputs manifest and exits 3 on a missing, extra or
+   changed file (the cut sits in writable /tmp, and a failed upload can leave a partial
+   one). It prints one canonical JSON document on stdout, and logs go to stderr.
 4. **Check the policy.** `openshell sandbox get <name> --policy-only` returns the policy
    the sandbox enforces. The host checks it matches the committed file and stores its
-   sha256 on the ActorSuspended event, next to the image digest.
-5. **Delete.** Always, in a `finally`, even when create, upload, exec or parsing fails.
-   With `keep_failed = true` a failed sandbox is kept and its name is logged.
+   sha256 on the ActorSuspended event, next to the image digest and the inputs manifest
+   sha256.
+5. **Delete.** Always, even when create, upload, exec or parsing fails, but off the
+   critical path: the sandbox goes to a background deleter (a thread pool of
+   `[runtime] delete_workers`) and the run returns. The runner drains the deleter before
+   the pass ends. With `keep_failed = true` a failed sandbox is kept and its name logged.
+   Every sandbox is tracked in `var/sandboxes.jsonl` (append-only: created,
+   delete_requested, deleted, delete_failed); `meridian sandbox reap` deletes the tracked
+   ones not yet deleted, and never anything else.
 6. **Record.** Only the host runner writes to the ledger.
 
 `meridian sandbox verify` runs every agent both ways and compares the drafts byte for byte.
@@ -90,6 +99,39 @@ Each run costs about 8.1 s in a sandbox, against 6 to 50 ms in process:
 Precompiling bytecode in the image cut the exec from 3.0 s to 1.4 s, because the sandbox
 cannot write `.pyc` files. Deleting a sandbox that never ran an exec takes 0.3 s, so most
 of the delete time is cleanup after a session.
+
+With deletion in the background (step 2, `scripts/teardown_timing.py`, 3 agents on
+DC-BASE, two runs each):
+
+| | Per-run critical path | Pass wall time |
+| --- | ---: | ---: |
+| Synchronous delete (step 1) | 8.5 s | 25.5 s |
+| Background delete, 4 workers | 2.9 s | 14.6 s |
+
+The pass still ends about 5.4 s after the last run, waiting for its delete; runs are
+still sequential, so the critical path is what a longer pass saves on.
+
+`openshell sandbox delete` returns once the gateway accepts the deletion ("cleanup is
+pending"), sometimes in 0.4 s, and the sandbox can stay in `sandbox list` for seconds
+after. The deleter therefore records `deleted` only when the sandbox is no longer
+listed, polling for at most `delete_confirm_seconds`; otherwise it records
+`delete_failed` ("still listed") and reap tries again.
+
+## The policy prover (`meridian policy prove`)
+
+`openshell-prover check <zone policy> --boundary policies/boundaries/blinded.yaml
+--output json` runs for every zone. A zone passes only on `within_boundary` with coverage
+of filesystem, process and landlock; anything else fails with the prover's reason. CI
+runs it on every pull request with the prover from the 0.1.7 release, checksum verified.
+
+On 0.1.7 a boundary is an allow-list in the policy format. Process and Landlock are
+proved properly: `run_as_user: root` or `best_effort` give `exceeds_boundary` with a
+counterexample. Filesystem is not: a candidate path that the boundary does not list
+returns `unsupported` (`unresolved_filesystem_path`, "use matching paths in candidate and
+boundary") rather than a proof that the path is out of bounds, and a boundary cannot
+forbid a path. So the prover only confirms that a policy's paths match the boundary's
+allow-list. The policy render test (committed files equal the rendering, only allowed
+paths, no network) stays the primary filesystem check; the prover is a second one.
 
 ## Where the installed CLI (0.1.7) differs from the docs
 

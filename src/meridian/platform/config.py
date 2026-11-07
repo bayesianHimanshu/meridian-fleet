@@ -74,6 +74,12 @@ class RuntimeSettings(BaseModel):
     # Keep a failed sandbox (and log its name) instead of deleting it.
     keep_failed: bool = False
     policies_dir: Path = Path("policies")
+    # Background sandbox deletion: thread pool size; 0 deletes synchronously (step 1).
+    delete_workers: int = Field(4, ge=0, le=32)
+    # A deleted sandbox must leave `openshell sandbox list` within this many seconds.
+    delete_confirm_seconds: float = Field(60.0, gt=0)
+    # Append-only record of every sandbox this code creates and its teardown.
+    sandboxes_log: Path = Path("var/sandboxes.jsonl")
 
 
 class Settings(BaseSettings):

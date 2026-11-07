@@ -119,6 +119,7 @@ def test_phase1_actor_events_verify_and_executor_fields_round_trip(tmp_path: Pat
             executor="openshell",
             image_digest=digest,
             policy_sha256=policy,
+            inputs_manifest_sha256="e" * 64,
         )
         for payload in (woke, done):
             ledger.append(

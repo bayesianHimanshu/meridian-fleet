@@ -619,11 +619,32 @@ def image_build(
 
 @policy_app.command("render")
 def policy_render() -> None:
-    """Write policies/<zone>.yaml for every zone."""
-    with _container() as c:
-        root = c.settings.runtime.policies_dir
+    """Write policies/<zone>.yaml for every zone and policies/boundaries/<name>.yaml."""
+    root = Settings().runtime.policies_dir
     for path in policies.render_all(root):
         typer.echo(f"wrote {path} (sha256 {policies.sha256_text(path.read_text())})")
+
+
+@policy_app.command("prove")
+def policy_prove(
+    prover: Annotated[
+        str, typer.Option("--prover", help="openshell-prover binary.")
+    ] = "openshell-prover",
+) -> None:
+    """Check every zone policy against its boundary with openshell-prover."""
+    from meridian.sandbox.prover import ProverError, prove_all
+
+    root = Settings().runtime.policies_dir
+    try:
+        results = prove_all(root, prover)
+    except ProverError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    for zone, result in results.items():
+        verdict = "pass" if result.passed else "FAIL"
+        typer.echo(f"{verdict}  {zone:<12} vs {result.boundary}: {result.explain()}")
+    if not all(r.passed for r in results.values()):
+        raise typer.Exit(code=1)
 
 
 @sandbox_app.command("verify")
@@ -657,4 +678,39 @@ def sandbox_verify(
             f"{r.sandbox_ms} | {r.inprocess_ms} |"
         )
     if not all(r.identical for r in rows):
+        raise typer.Exit(code=1)
+
+
+@sandbox_app.command("reap")
+def sandbox_reap() -> None:
+    """Delete every sandbox in var/sandboxes.jsonl that is not yet deleted, and only those."""
+    from meridian.sandbox.openshell import SubprocessOpenShellClient
+    from meridian.sandbox.tracking import TrackingError, reap
+
+    with _container() as c:
+        log = _configure_logging(c.clock)
+        tracker = c.sandbox_tracker()
+        client = SubprocessOpenShellClient()
+        try:
+            report = reap(
+                tracker=tracker,
+                delete=client.delete,
+                live=client.names,
+                log=log,
+                confirm_seconds=c.settings.runtime.delete_confirm_seconds,
+            )
+        except (TrackingError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    typer.echo(
+        f"reaped {len(report.deleted)}, already gone {len(report.already_gone)}, "
+        f"failed {len(report.failed)} (tracked in {tracker.path})"
+    )
+    for name in report.deleted:
+        typer.echo(f"  deleted      {name}")
+    for name in report.already_gone:
+        typer.echo(f"  already gone {name}")
+    for name in report.failed:
+        typer.echo(f"  FAILED       {name}")
+    if report.failed:
         raise typer.Exit(code=1)

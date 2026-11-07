@@ -16,11 +16,14 @@ from meridian.agents.catalog import build_registry
 from meridian.agents.execute import drafts_document, run_agent
 from meridian.data.study_store import ParquetStudyReader
 from meridian.platform.agent_settings import QtlDetectorConfig
+from meridian.platform.clock import FixedClock
 from meridian.platform.config import AgentsSettings
 from meridian.sandbox import image
 from meridian.sandbox.executor import OpenShellExecutor, sandbox_name
 from meridian.sandbox.openshell import SubprocessOpenShellClient
 from meridian.sandbox.policies import policy_path
+from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
+from tests.rbqm_support import NOW
 from tests.worker_support import cut_trigger, tiny_cut
 
 pytestmark = pytest.mark.openshell
@@ -65,8 +68,14 @@ def test_sandboxed_drafts_are_identical_to_in_process(
     cut = tiny_cut(tmp_path / "curated")
     registry = build_registry(AGENTS)
     ref = image.default_image()
+    tracker = SandboxTracker(tmp_path / "sandboxes.jsonl", FixedClock(NOW))
+    log = structlog.get_logger()
     executor = OpenShellExecutor(
         client=client,
+        tracker=tracker,
+        deleter=BackgroundDeleter(
+            delete=client.delete, tracker=tracker, workers=2, log=log, live=client.names
+        ),
         registry=registry,
         study_root=cut.parent,
         image=ref,
@@ -84,7 +93,10 @@ def test_sandboxed_drafts_are_identical_to_in_process(
     here = run_agent(registered, cut_trigger(), reader, structlog.get_logger())
     assert drafts_document(registered, result.drafts) == drafts_document(registered, here)
     assert result.policy_sha256 is not None
-    assert set(client.names()) == before  # deleted
+    assert result.inputs_manifest_sha256 is not None
+    executor.drain()  # deleted means no longer listed
+    assert tracker.pending() == []
+    assert not {n for n in client.names() if n not in before} & set(tracker.latest())
 
 
 @pytest.fixture(scope="module")

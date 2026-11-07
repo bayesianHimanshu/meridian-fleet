@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from meridian.agents.base import FindingDraft, zone_of
 from meridian.agents.execute import DraftsDocument, run_agent
 from meridian.agents.registry import AgentRegistry
+from meridian.data.inputs_manifest import MANIFEST_FILE, build_manifest
 from meridian.data.study_store import StudyReader
 from meridian.domain.events import DataCut, Event
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
@@ -32,6 +33,7 @@ from meridian.sandbox.staging import (
     assert_clean_stage,
     stage_cut,
 )
+from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
 INPROCESS = "inprocess"
 OPENSHELL = "openshell"
@@ -51,6 +53,7 @@ class ExecutionResult:
     policy_sha256: str | None
     duration_ms: int
     stderr_tail: str
+    inputs_manifest_sha256: str | None = None
 
 
 class Executor(Protocol):
@@ -58,6 +61,8 @@ class Executor(Protocol):
     def name(self) -> str: ...
 
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult: ...
+
+    def drain(self) -> None: ...
 
 
 def _ms(start: float) -> int:
@@ -93,6 +98,9 @@ class InProcessExecutor:
             duration_ms=_ms(start),
             stderr_tail="",
         )
+
+    def drain(self) -> None:
+        """Nothing runs in the background in process."""
 
 
 # The installed gateway (0.1.7) refuses sandbox names longer than 19 characters.
@@ -141,10 +149,14 @@ class OpenShellExecutor:
         exec_timeout_seconds: int,
         keep_failed: bool,
         log: structlog.typing.FilteringBoundLogger,
+        tracker: SandboxTracker,
+        deleter: BackgroundDeleter,
         staging_dir: Path | None = None,
         name_factory: Callable[[str, int], str] = sandbox_name,
     ) -> None:
         self._client = client
+        self._tracker = tracker
+        self._deleter = deleter
         self._registry = registry
         self._study_root = study_root
         self._image = image
@@ -169,7 +181,13 @@ class OpenShellExecutor:
         with tempfile.TemporaryDirectory(prefix="meridian-stage-", dir=self._staging_dir) as tmp:
             stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp))
             assert_clean_stage(stage)  # again, right before it leaves the host
+            recomputed = build_manifest(stage)
+            if (stage / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():
+                raise ExecutionError("staged files changed after the inputs manifest was written")
+            inputs_sha = recomputed.sha256()
             ok = False
+            # Recorded before the call: a failed create or upload can leave it behind.
+            self._tracker.record(name, "created")
             try:
                 self._client.create(name, self._image, policy_file, [(stage, SANDBOX_ROOT)])
                 out = self._client.exec(name, self._argv(agent_id), self._timeout)
@@ -198,6 +216,7 @@ class OpenShellExecutor:
             policy_sha256=sha256_text(effective),
             duration_ms=_ms(start),
             stderr_tail=stderr_tail,
+            inputs_manifest_sha256=inputs_sha,
         )
         log.info("sandbox.run_done", duration_ms=result.duration_ms, drafts=len(drafts))
         return result
@@ -228,9 +247,13 @@ class OpenShellExecutor:
 
     def _finish(self, name: str, ok: bool, log: structlog.typing.FilteringBoundLogger) -> None:
         if not ok and self._keep_failed:
+            # Tracked as created and never delete_requested: meridian sandbox reap finds it.
             log.warning("sandbox.kept_for_debugging", sandbox=name)
             return
-        try:
-            self._client.delete(name)
-        except OpenShellError as exc:
-            log.error("sandbox.delete_failed", sandbox=name, error=str(exc))
+        self._deleter.submit(name)
+
+    def drain(self) -> None:
+        """Wait until every sandbox handed to the deleter is deleted or failed to delete."""
+        report = self._deleter.drain()
+        if report.failed:
+            self._log.error("sandbox.deletes_failed", sandboxes=report.failed)

@@ -3,7 +3,8 @@
     meridian-worker run --agent AGENT_ID --trigger /tmp/cut/trigger.json --cut-dir /tmp/cut
 
 This is what runs inside a sandbox. It reads a trigger (a DataCut event as JSON) and a
-cut directory holding only blinded/ and ops/, builds the agent from the packaged config,
+cut directory holding only blinded/ and ops/, checks every staged file against the
+host's inputs_manifest.json, builds the agent from the packaged config,
 and prints one canonical JSON document {"agent_id", "agent_version", "drafts"} on stdout.
 Logs go to stderr. It never opens the ledger, never touches the network and never sees
 unblinded data or ground truth.
@@ -25,6 +26,7 @@ from pydantic import ValidationError
 from meridian.agents.catalog import build_registry
 from meridian.agents.execute import drafts_document, run_agent
 from meridian.agents.registry import RegistrationError
+from meridian.data.inputs_manifest import InputsManifestError, verify_manifest
 from meridian.data.study_store import MissingTableError, ParquetStudyReader, StudyAccessError
 from meridian.domain.events import DataCut, Event
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
@@ -96,6 +98,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (OSError, tomllib.TOMLDecodeError, ValidationError, RegistrationError) as exc:
         log.error("worker.bad_config", error=f"{type(exc).__name__}: {exc}")
         return EXIT_BAD_ARGS
+    try:
+        # Before any data is read: the staged files must be exactly the host's manifest.
+        verify_manifest(args.cut_dir)
+    except InputsManifestError as exc:
+        log.error("worker.inputs_rejected", error=str(exc))
+        return EXIT_DATA
     try:
         trigger = Event.model_validate_json(args.trigger.read_bytes())
         if not isinstance(trigger.payload, DataCut):

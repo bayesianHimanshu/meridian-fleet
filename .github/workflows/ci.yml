@@ -1,0 +1,73 @@
+# Quality checks and the policy prover on every pull request and push to main.
+# Actions are pinned by commit sha (tag in the comment). openshell-prover comes from the
+# pinned OpenShell 0.1.7 release and is verified against its published checksums.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  OPENSHELL_VERSION: "0.1.7"
+  PROVER_ASSET: openshell-prover-x86_64-unknown-linux-musl.tar.gz
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv and Python 3.14.10
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: "0.13.7"
+          python-version: "3.14.10"
+
+      - name: Install the locked environment
+        run: uv sync --locked
+
+      - name: Install openshell-prover ${{ env.OPENSHELL_VERSION }} (checksum verified)
+        run: |
+          set -euo pipefail
+          base="https://github.com/NVIDIA/OpenShell/releases/download/v${OPENSHELL_VERSION}"
+          dir="${RUNNER_TEMP}/openshell-prover"
+          mkdir -p "${dir}/bin"
+          cd "${dir}"
+          curl -fsSLO "${base}/${PROVER_ASSET}"
+          curl -fsSLO "${base}/openshell-prover-checksums-sha256.txt"
+          grep -E "  ${PROVER_ASSET}\$" openshell-prover-checksums-sha256.txt > expected.txt
+          test "$(wc -l < expected.txt)" -eq 1
+          sha256sum --check --strict expected.txt
+          tar -xzf "${PROVER_ASSET}" -C bin openshell-prover
+          echo "${dir}/bin" >> "${GITHUB_PATH}"
+          "${dir}/bin/openshell-prover" --version
+
+      - name: ruff format --check
+        run: uv run ruff format --check
+
+      - name: ruff check
+        run: uv run ruff check
+
+      - name: mypy --strict (src, tests, scripts)
+        run: uv run mypy
+
+      - name: pytest (default markers, no slow or openshell)
+        run: uv run pytest
+
+      - name: Policies render to the committed files
+        run: |
+          uv run meridian policy render
+          git diff --exit-code -- policies
+          test -z "$(git status --porcelain -- policies)"
+
+      - name: Policies prove within their boundaries
+        run: uv run meridian policy prove

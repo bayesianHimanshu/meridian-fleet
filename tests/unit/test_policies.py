@@ -35,8 +35,10 @@ def test_rendered_policy_equals_the_committed_file(zone: str) -> None:
 
 
 def test_render_all_writes_the_same_bytes(tmp_path: Path) -> None:
-    for path in policies.render_all(tmp_path):
-        assert path.read_bytes() == (COMMITTED / path.name).read_bytes()
+    written = policies.render_all(tmp_path)
+    assert len(written) == len(policies.POLICIES) + len(policies.BOUNDARIES)
+    for path in written:
+        assert path.read_bytes() == (COMMITTED / path.relative_to(tmp_path)).read_bytes()
 
 
 @pytest.mark.parametrize("zone", sorted(policies.POLICIES))

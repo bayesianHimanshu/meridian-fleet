@@ -36,6 +36,9 @@ class RunOutcome(Protocol):
     @property
     def policy_sha256(self) -> str | None: ...
 
+    @property
+    def inputs_manifest_sha256(self) -> str | None: ...
+
 
 class AgentExecutor(Protocol):
     """Where a run happens (meridian.sandbox.executor.Executor)."""
@@ -44,6 +47,10 @@ class AgentExecutor(Protocol):
     def name(self) -> str: ...
 
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> RunOutcome: ...
+
+    def drain(self) -> None:
+        """Block until background work (sandbox deletion) has finished."""
+        ...
 
 
 @dataclass(slots=True)
@@ -108,6 +115,7 @@ class AgentRunner:
                 if (agent.agent_id, agent.version, trigger.seq) in done:
                     continue
                 self._run_one(registered, trigger, report)
+        self._executor.drain()  # a pass ends only when every sandbox is torn down
         return report
 
     def _run_one(self, registered: RegisteredAgent, trigger: Event, report: RunReport) -> None:
@@ -156,6 +164,7 @@ class AgentRunner:
                 executor=self._executor.name,
                 image_digest=outcome.image_digest,
                 policy_sha256=outcome.policy_sha256,
+                inputs_manifest_sha256=outcome.inputs_manifest_sha256,
             ),
         )
         report.completed.append((agent.agent_id, trigger.seq))

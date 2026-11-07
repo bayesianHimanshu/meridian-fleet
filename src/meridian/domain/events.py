@@ -66,6 +66,9 @@ class ActorSuspended(BaseModel):
     executor: str | None = None
     image_digest: Sha256Digest | None = None
     policy_sha256: Sha256Hex | None = None
+    # sha256 of the inputs_manifest.json the worker verified (phase 2 step 2). Null in
+    # process and on older events.
+    inputs_manifest_sha256: Sha256Hex | None = None
 
 
 class FindingRaised(BaseModel):

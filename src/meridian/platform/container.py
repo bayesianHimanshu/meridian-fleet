@@ -25,6 +25,7 @@ from meridian.sandbox.executor import (
 )
 from meridian.sandbox.image import default_image
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
+from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
 
 @dataclass(frozen=True, slots=True)
@@ -85,8 +86,20 @@ class Container:
     ) -> OpenShellExecutor:
         rt = self.settings.runtime
         ref = self.image_ref()
+        resolved = client or SubprocessOpenShellClient()
+        tracker = self.sandbox_tracker()
+        deleter = BackgroundDeleter(
+            delete=resolved.delete,
+            tracker=tracker,
+            workers=rt.delete_workers,
+            log=log,
+            live=resolved.names,
+            confirm_seconds=rt.delete_confirm_seconds,
+        )
         return OpenShellExecutor(
-            client=client or SubprocessOpenShellClient(),
+            client=resolved,
+            tracker=tracker,
+            deleter=deleter,
             registry=self.agent_registry(),
             study_root=self.settings.curated_root / self.settings.study_id,
             image=ref,
@@ -96,6 +109,9 @@ class Container:
             keep_failed=rt.keep_failed,
             log=log,
         )
+
+    def sandbox_tracker(self) -> SandboxTracker:
+        return SandboxTracker(self.settings.runtime.sandboxes_log, self.clock)
 
     def executor(self, log: structlog.typing.FilteringBoundLogger) -> Executor:
         """The executor [runtime] executor names."""
