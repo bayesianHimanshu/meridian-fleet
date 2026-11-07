@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, isStatus } from "../components/common";
 import { useApi } from "../queries";
@@ -15,28 +15,73 @@ const BAND_TEXT: Record<Band, string> = {
   warning: "warning",
   critical: "critical",
   untested_direction: "a direction the agent does not test",
+  too_few: "too few to test",
   na: "not computed",
 };
+
+/** True while the element has columns hidden past its right edge. */
+export function hasMoreRight(el: { scrollLeft: number; clientWidth: number; scrollWidth: number }): boolean {
+  return el.scrollLeft + el.clientWidth < el.scrollWidth - 1;
+}
+
+function useMoreRight(): React.RefObject<HTMLDivElement | null> {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const update = () => {
+      el.dataset.moreRight = String(hasMoreRight(el));
+    };
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer?.disconnect();
+    };
+  }, []);
+  return ref;
+}
 
 function flagText(flags: Flag[]): string {
   return flags.map((f) => `${f.finding_id}, ${f.agent_id} ${f.agent_version} (${f.status})`).join("; ");
 }
 
-function Cell({ text, band, flags }: { text: string; band: Band; flags: Flag[] }) {
+function Cell({
+  text,
+  band,
+  flags,
+  reason,
+}: {
+  text: string;
+  band: Band;
+  flags: Flag[];
+  reason?: string | undefined;
+}) {
   const flagged = flags.length > 0;
+  const why = band === "too_few" ? reason : undefined;
+  const title = [why, flagged ? `Flagged by ${flagText(flags)}` : undefined].filter(Boolean).join(". ");
   return (
     <td
       className={`cell ${band}${flagged ? " flagged" : ""}`}
-      title={flagged ? `Flagged by ${flagText(flags)}` : undefined}
+      title={title || undefined}
       data-flagged={flagged ? flags.map((f) => f.finding_id).join(" ") : undefined}
     >
       {text}
       <span className="visually-hidden">
-        , {BAND_TEXT[band]}
+        , {why ?? BAND_TEXT[band]}
         {flagged ? `, flagged by ${flagText(flags)}` : ""}
       </span>
     </td>
   );
+}
+
+/** Why a cell is too_few: the count, and the minimum its agent needs. */
+export function tooFewReason(rule: Rule | undefined, count: number | null | undefined): string | undefined {
+  if (!rule?.min_count) return undefined;
+  const what = rule.count_label ?? "items";
+  return `too few ${what} (${count ?? 0}; ${rule.agent} needs at least ${rule.min_count})`;
 }
 
 function fmt(v: number | null | undefined, digits: number): string {
@@ -81,9 +126,9 @@ function QtlBar({ qtl }: { qtl: Schemas["QtlView"] }) {
         </span>
       </div>
       <p>
-        <span className="num">{qtl.rate === null ? "n/a" : `${(100 * rate).toFixed(1)}%`}</span> discontinued
-        against a limit of <span className="num">{(100 * qtl.limit).toFixed(1)}%</span>; approaching from{" "}
-        <span className="num">{(100 * qtl.approach_from).toFixed(1)}%</span>. Status:{" "}
+        <span className="fig">{qtl.rate === null ? "n/a" : `${(100 * rate).toFixed(1)}%`}</span> discontinued
+        against a limit of <span className="fig">{(100 * qtl.limit).toFixed(1)}%</span>; approaching from{" "}
+        <span className="fig">{(100 * qtl.approach_from).toFixed(1)}%</span>. Status:{" "}
         <strong>{qtl.status ?? "not computed"}</strong>.
       </p>
       <div
@@ -183,8 +228,15 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
     { label: "Open query age", keys: ["median_open_query_age_days"] },
     { label: "Spread z (SYSBP, DIABP, PULSE)", keys: data.parameters.map((p) => `csm_log_sd_z:${p}`) },
   ];
+  const moreRight = useMoreRight();
   const cell = (s: Site, key: string, text: string, check: string, parameter?: string) => (
-    <Cell key={key} text={text} band={s.bands[key] ?? "na"} flags={flagsFor(s, check, parameter)} />
+    <Cell
+      key={key}
+      text={text}
+      band={s.bands[key] ?? "na"}
+      flags={flagsFor(s, check, parameter)}
+      reason={key === "median_open_query_age_days" ? tooFewReason(col(key), s.open_queries) : undefined}
+    />
   );
   return (
     <section className="panel" aria-labelledby="heat-title">
@@ -192,7 +244,7 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
         <h2 id="heat-title">Site heatmap</h2>
         <span className="src mono">{data.cut_id}</span>
       </div>
-      <div className="table-wrap heat-wrap">
+      <div className="table-wrap heat-wrap" ref={moreRight}>
         <table className="heat">
           <caption className="visually-hidden">Per-site RBQM metrics for {data.cut_id}</caption>
           <thead>
@@ -268,6 +320,12 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
             ? "none on this cut."
             : flags.map((f) => `${f.finding_id} at site ${f.site} by ${f.agent_id} ${f.agent_version}`).join("; ") +
               "."}
+        </dd>
+        <dt>Muted value</dt>
+        <dd>
+          shown but not tested: too few items for the agent (open query age needs at least{" "}
+          {col("median_open_query_age_days")?.min_count ?? 5} open queries), or a direction the
+          agent does not test.
         </dd>
         <dt>n/a</dt>
         <dd>not computed: the site has too few treated subjects, queries or readings for the test.</dd>

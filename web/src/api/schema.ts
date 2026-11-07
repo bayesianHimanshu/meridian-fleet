@@ -383,6 +383,8 @@ export interface components {
         ColumnRule: {
             /** Agent */
             agent: string;
+            /** Count Label */
+            count_label?: string | null;
             /** Critical Beyond */
             critical_beyond: number;
             /**
@@ -390,6 +392,8 @@ export interface components {
              * @enum {string}
              */
             direction: "low" | "high" | "both";
+            /** Min Count */
+            min_count?: number | null;
             /** Rule */
             rule: string;
             /**
@@ -1205,7 +1209,7 @@ export interface components {
             ae_rate_z: number | null;
             /** Bands */
             bands: {
-                [key: string]: "normal" | "warning" | "critical" | "untested_direction" | "na";
+                [key: string]: "normal" | "warning" | "critical" | "untested_direction" | "too_few" | "na";
             };
             /** Csm Log Sd Z */
             csm_log_sd_z: {

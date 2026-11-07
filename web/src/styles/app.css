@@ -57,6 +57,11 @@ textarea {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
 }
+/* Figures inside running text: the UI face with tabular numbers, never mono (the wide
+   mono full stop reads as a gap inside a sentence). */
+.fig {
+  font-variant-numeric: tabular-nums;
+}
 .muted {
   color: var(--muted);
 }
@@ -151,6 +156,27 @@ input[type="search"] {
   padding: 5px var(--space-2);
   min-width: 0;
   max-width: 100%;
+}
+/* Nothing may be wider than the viewport: controls, media and flex or grid children can
+   shrink, and long values wrap. */
+select,
+input,
+textarea,
+svg,
+img {
+  max-width: 100%;
+}
+.view-head > *,
+.toolbar > *,
+.panel-head > *,
+.switcher > *,
+.brand,
+.field {
+  min-width: 0;
+  max-width: 100%;
+}
+.field select {
+  width: 100%;
 }
 .dev-banner {
   background: var(--warning-soft);
@@ -676,7 +702,28 @@ table.evidence .ev-source {
   color: var(--muted);
 }
 .heat-wrap {
-  max-width: 1200px;
+  max-width: 100%;
+}
+table.heat {
+  max-width: 1200px; /* columns stay together on wide screens */
+}
+/* The site column stays visible while the table scrolls sideways. */
+.heat thead th:first-child,
+.heat tbody th {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+.heat tbody th .sub {
+  white-space: nowrap;
+}
+/* A fade on the right edge while more columns are hidden. */
+.heat-wrap[data-more-right="true"] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+.heat .too_few {
+  color: var(--muted);
 }
 .heat td.flagged {
   outline: 2px solid var(--fg);
