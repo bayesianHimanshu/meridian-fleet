@@ -1,4 +1,4 @@
-"""rbqm.kri_monitor v2.1: key risk indicators per site.
+"""rbqm.kri_monitor v2.2: key risk indicators per site.
 
 ae_rate and deviations use a quasi-Poisson test: leave-one-out expected counts, a robust
 dispersion phi estimated across the tested sites, and z = (O - E) / sqrt(phi * E). Real
@@ -7,6 +7,11 @@ query_aging compare site medians with absolute operational thresholds.
 
 2.1.0 (step 5): the expected AE count comes from the configured variant in
 meridian.stats.ae_expectation; variant a is the 2.0.0 subject-days expectation.
+
+2.2.0 (phase 2 step 4): the same findings, with evidence described (role, direction,
+expected, display; meridian.agents.rbqm.describe), the median-to-threshold ratio as its
+own supporting item, and p values in the summary as their displays (2 significant digits,
+floored at 1e-12).
 """
 
 from collections.abc import Sequence
@@ -14,6 +19,7 @@ from functools import partial
 
 from meridian.agents.base import AgentContext, FindingDraft, make_dedup_key, parse_dedup_key
 from meridian.agents.rbqm.common import RbqmAgentBase, cut_id_of
+from meridian.agents.rbqm.describe import describe, fmt_p, ratio_evidence
 from meridian.domain.enums import FindingKind, Severity
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
@@ -31,8 +37,16 @@ _RATE_STATS = ("observed", "expected", "phi", "z", "p", "p_adjusted", "excluded_
 STATISTICS: dict[str, tuple[str, ...]] = {
     "ae_rate": (*(f"ae_rate:{s}" for s in _RATE_STATS), "ae_rate:per_100_subject_days"),
     "deviations": tuple(f"deviations:{s}" for s in _RATE_STATS),
-    "data_entry_lag": ("data_entry_lag:median_days", "data_entry_lag:entries"),
-    "query_aging": ("query_aging:median_open_age_days", "query_aging:open_queries"),
+    "data_entry_lag": (
+        "data_entry_lag:median_days",
+        "data_entry_lag:entries",
+        "data_entry_lag:ratio_to_threshold",
+    ),
+    "query_aging": (
+        "query_aging:median_open_age_days",
+        "query_aging:open_queries",
+        "query_aging:ratio_to_threshold",
+    ),
 }
 
 
@@ -54,7 +68,9 @@ def _median_severity(median: float, threshold: float) -> Severity:
 
 class KriMonitor(RbqmAgentBase):
     agent_id = "rbqm.kri_monitor"
-    version = "2.1.0"  # 2.0.0 plus the configurable expected-AE variant (step 5)
+    # 2.1.0: the configurable expected-AE variant (phase 1 step 5). 2.2.0: described
+    # evidence, the same findings.
+    version = "2.2.0"
     config_model = KriMonitorConfig
 
     def run(self, trigger: Event, ctx: AgentContext[KriMonitorConfig]) -> Sequence[FindingDraft]:
@@ -152,10 +168,10 @@ class KriMonitor(RbqmAgentBase):
                             f"{site_exp['subject_days']} subject-days; the rest of the study "
                             f"implies {res.expected:.1f}{basis}. With dispersion phi = "
                             f"{result.phi:.2f}, "
-                            f"z = {res.z:.2f}, p = {res.p:.2e}, {adjusted:.2e} after Bonferroni "
-                            f"over {n_tested} sites."
+                            f"z = {res.z:.2f}, p = {fmt_p(res.p)}, {fmt_p(adjusted)} after "
+                            f"Bonferroni over {n_tested} sites."
                         ),
-                        evidence=tuple(evidence),
+                        evidence=describe(evidence),
                         score=neg_log10(adjusted),
                     )
                 )
@@ -175,21 +191,30 @@ class KriMonitor(RbqmAgentBase):
                         f"Median entry lag at site {site} is {median:.1f} days over {n} visits; "
                         f"the threshold is {cfg.lag_days:g} days."
                     ),
-                    evidence=(
-                        Evidence(
-                            source="ops/data_entry",
-                            selector=f"SITEID={site}",
-                            statistic="data_entry_lag:median_days",
-                            value=median,
-                            threshold=cfg.lag_days,
-                        ),
-                        Evidence(
-                            source="ops/data_entry",
-                            selector=f"SITEID={site}",
-                            statistic="data_entry_lag:entries",
-                            value=n,
-                            threshold=None,
-                        ),
+                    evidence=describe(
+                        (
+                            Evidence(
+                                source="ops/data_entry",
+                                selector=f"SITEID={site}",
+                                statistic="data_entry_lag:median_days",
+                                value=median,
+                                threshold=cfg.lag_days,
+                            ),
+                            Evidence(
+                                source="ops/data_entry",
+                                selector=f"SITEID={site}",
+                                statistic="data_entry_lag:entries",
+                                value=n,
+                                threshold=None,
+                            ),
+                            ratio_evidence(
+                                "ops/data_entry",
+                                f"SITEID={site}",
+                                "data_entry_lag",
+                                median,
+                                cfg.lag_days,
+                            ),
+                        )
                     ),
                     score=median / cfg.lag_days,
                 )
@@ -211,21 +236,30 @@ class KriMonitor(RbqmAgentBase):
                         f"Median age of {n} open queries at site {site} is {median:.1f} days; "
                         f"the threshold is {cfg.query_age_days:g} days."
                     ),
-                    evidence=(
-                        Evidence(
-                            source="ops/queries",
-                            selector=f"SITEID={site};status=open",
-                            statistic="query_aging:median_open_age_days",
-                            value=median,
-                            threshold=cfg.query_age_days,
-                        ),
-                        Evidence(
-                            source="ops/queries",
-                            selector=f"SITEID={site};status=open",
-                            statistic="query_aging:open_queries",
-                            value=n,
-                            threshold=None,
-                        ),
+                    evidence=describe(
+                        (
+                            Evidence(
+                                source="ops/queries",
+                                selector=f"SITEID={site};status=open",
+                                statistic="query_aging:median_open_age_days",
+                                value=median,
+                                threshold=cfg.query_age_days,
+                            ),
+                            Evidence(
+                                source="ops/queries",
+                                selector=f"SITEID={site};status=open",
+                                statistic="query_aging:open_queries",
+                                value=n,
+                                threshold=None,
+                            ),
+                            ratio_evidence(
+                                "ops/queries",
+                                f"SITEID={site};status=open",
+                                "query_aging",
+                                median,
+                                cfg.query_age_days,
+                            ),
+                        )
                     ),
                     score=median / cfg.query_age_days,
                 )

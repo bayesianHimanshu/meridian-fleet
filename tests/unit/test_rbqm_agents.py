@@ -102,9 +102,9 @@ def test_kri_monitor_skips_small_sites_for_rate_tests(tmp_path: Path) -> None:
 
 
 def test_agent_versions() -> None:
-    assert KriMonitor().version == "2.1.0"
-    for agent in (QtlDetector(), Csm()):
-        assert agent.version == "2.0.0"
+    assert KriMonitor().version == "2.2.0"
+    assert QtlDetector().version == "2.1.0"
+    assert Csm().version == "2.1.0"
 
 
 def test_kri_rate_evidence_carries_phi_and_z(tmp_path: Path) -> None:
@@ -115,7 +115,7 @@ def test_kri_rate_evidence_carries_phi_and_z(tmp_path: Path) -> None:
     assert {"ae_rate:phi", "ae_rate:z", "ae_rate:expected", "ae_rate:observed"} <= set(statistics)
     assert statistics["ae_rate:phi"] >= 1.0
     assert statistics["ae_rate:z"] < 0
-    assert parse_dedup_key(draft.dedup_key).agent_version == "2.1.0"
+    assert parse_dedup_key(draft.dedup_key).agent_version == "2.2.0"
 
 
 # qtl_detector
