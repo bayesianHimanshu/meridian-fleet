@@ -1,0 +1,3555 @@
+{
+  "components": {
+    "schemas": {
+      "ActorSuspended": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Version"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digest"
+          },
+          "inputs_manifest_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Manifest Sha256"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "trigger_seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Trigger Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "actor_suspended",
+            "default": "actor_suspended",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "trigger_seq"
+        ],
+        "title": "ActorSuspended",
+        "type": "object"
+      },
+      "ActorWoke": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Version"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "trigger_seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Trigger Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "actor_woke",
+            "default": "actor_woke",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "trigger_seq"
+        ],
+        "title": "ActorWoke",
+        "type": "object"
+      },
+      "AssetLive": {
+        "additionalProperties": false,
+        "description": "Computed from the ledger at request time, as the caller may see it.",
+        "properties": {
+          "open_findings": {
+            "title": "Open Findings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "open_findings"
+        ],
+        "title": "AssetLive",
+        "type": "object"
+      },
+      "AssetStatic": {
+        "additionalProperties": false,
+        "description": "Served as written in config/portfolio.toml.",
+        "properties": {
+          "indication": {
+            "title": "Indication",
+            "type": "string"
+          },
+          "modality": {
+            "title": "Modality",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "stage": {
+            "title": "Stage",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "stage",
+          "indication",
+          "modality"
+        ],
+        "title": "AssetStatic",
+        "type": "object"
+      },
+      "ContainmentCheck": {
+        "additionalProperties": false,
+        "description": "One command of a conformance run and what happened to it.",
+        "properties": {
+          "command": {
+            "minLength": 1,
+            "title": "Command",
+            "type": "string"
+          },
+          "exit_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exit Code"
+          },
+          "expect": {
+            "enum": [
+              "refused",
+              "allowed"
+            ],
+            "title": "Expect",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "refused",
+              "allowed",
+              "inconclusive"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "expect",
+          "command",
+          "outcome",
+          "exit_code",
+          "message",
+          "passed"
+        ],
+        "title": "ContainmentCheck",
+        "type": "object"
+      },
+      "ContainmentCheckCompleted": {
+        "additionalProperties": false,
+        "description": "A zone's committed policy was checked in a real sandbox (meridian sandbox conformance).",
+        "properties": {
+          "all_refused": {
+            "title": "All Refused",
+            "type": "boolean"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/ContainmentCheck"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "credential_value_visible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Value Visible"
+          },
+          "image": {
+            "minLength": 1,
+            "title": "Image",
+            "type": "string"
+          },
+          "image_digest": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "title": "Image Digest",
+            "type": "string"
+          },
+          "log_line_found": {
+            "title": "Log Line Found",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "policy_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Name"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "providers": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Providers",
+            "type": "array"
+          },
+          "sandbox": {
+            "minLength": 1,
+            "title": "Sandbox",
+            "type": "string"
+          },
+          "type": {
+            "const": "containment_check_completed",
+            "default": "containment_check_completed",
+            "title": "Type",
+            "type": "string"
+          },
+          "zone": {
+            "minLength": 1,
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zone",
+          "sandbox",
+          "image",
+          "image_digest",
+          "policy_sha256",
+          "checks",
+          "log_line_found",
+          "all_refused",
+          "passed"
+        ],
+        "title": "ContainmentCheckCompleted",
+        "type": "object"
+      },
+      "ContainmentView": {
+        "additionalProperties": false,
+        "properties": {
+          "all_refused": {
+            "title": "All Refused",
+            "type": "boolean"
+          },
+          "credential_value_visible": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credential Value Visible"
+          },
+          "image_digest": {
+            "title": "Image Digest",
+            "type": "string"
+          },
+          "log_line_found": {
+            "title": "Log Line Found",
+            "type": "boolean"
+          },
+          "passed": {
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "policy": {
+            "title": "Policy",
+            "type": "string"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "sandbox": {
+            "title": "Sandbox",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "policy",
+          "zone",
+          "seq",
+          "recorded_at",
+          "sandbox",
+          "image_digest",
+          "policy_sha256",
+          "passed",
+          "all_refused",
+          "log_line_found",
+          "credential_value_visible"
+        ],
+        "title": "ContainmentView",
+        "type": "object"
+      },
+      "CutSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_runs_completed": {
+            "title": "Agent Runs Completed",
+            "type": "integer"
+          },
+          "created": {
+            "format": "date-time",
+            "title": "Created",
+            "type": "string"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "base",
+                  "null",
+                  "faulted",
+                  "holdout",
+                  "sweep"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "opaque": {
+            "title": "Opaque",
+            "type": "boolean"
+          },
+          "trigger_seq": {
+            "title": "Trigger Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cut_id",
+          "trigger_seq",
+          "kind",
+          "label",
+          "opaque",
+          "created",
+          "agent_runs_completed"
+        ],
+        "title": "CutSummary",
+        "type": "object"
+      },
+      "DataCut": {
+        "additionalProperties": false,
+        "properties": {
+          "cut_id": {
+            "minLength": 1,
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "path": {
+            "minLength": 1,
+            "title": "Path",
+            "type": "string"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "data_cut",
+            "default": "data_cut",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cut_id",
+          "study_id",
+          "path"
+        ],
+        "title": "DataCut",
+        "type": "object"
+      },
+      "Decision": {
+        "additionalProperties": false,
+        "description": "A human's disposition of a finding.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DecisionAction"
+          },
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "finding_id": {
+            "pattern": "^[A-Z]+-[0-9]{4}$",
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "finding_id",
+          "action",
+          "actor",
+          "role"
+        ],
+        "title": "Decision",
+        "type": "object"
+      },
+      "DecisionAction": {
+        "enum": [
+          "accepted",
+          "escalated",
+          "dismissed"
+        ],
+        "title": "DecisionAction",
+        "type": "string"
+      },
+      "DecisionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DecisionAction"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "DecisionRequest",
+        "type": "object"
+      },
+      "DecisionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/DecisionView"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "status",
+          "decision"
+        ],
+        "title": "DecisionResponse",
+        "type": "object"
+      },
+      "DecisionView": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DecisionAction"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "prev_hash": {
+            "title": "Prev Hash",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "hash",
+          "prev_hash",
+          "recorded_at",
+          "actor",
+          "role",
+          "action",
+          "reason"
+        ],
+        "title": "DecisionView",
+        "type": "object"
+      },
+      "DocumentFiled": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "minLength": 1,
+            "title": "Artifact",
+            "type": "string"
+          },
+          "doc_id": {
+            "minLength": 1,
+            "title": "Doc Id",
+            "type": "string"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "document_filed",
+            "default": "document_filed",
+            "title": "Type",
+            "type": "string"
+          },
+          "zone": {
+            "minLength": 1,
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "doc_id",
+          "study_id",
+          "zone",
+          "artifact"
+        ],
+        "title": "DocumentFiled",
+        "type": "object"
+      },
+      "Event": {
+        "additionalProperties": false,
+        "description": "A sealed, hash-chained ledger entry.",
+        "properties": {
+          "actor": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "event_id": {
+            "format": "uuid",
+            "title": "Event Id",
+            "type": "string"
+          },
+          "hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Hash",
+            "type": "string"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "discriminator": {
+              "mapping": {
+                "actor_suspended": "#/components/schemas/ActorSuspended",
+                "actor_woke": "#/components/schemas/ActorWoke",
+                "containment_check_completed": "#/components/schemas/ContainmentCheckCompleted",
+                "data_cut": "#/components/schemas/DataCut",
+                "document_filed": "#/components/schemas/DocumentFiled",
+                "finding_narrative": "#/components/schemas/FindingNarrative",
+                "finding_raised": "#/components/schemas/FindingRaised",
+                "human_decision": "#/components/schemas/HumanDecision",
+                "policy_denied": "#/components/schemas/PolicyDenied"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DataCut"
+              },
+              {
+                "$ref": "#/components/schemas/DocumentFiled"
+              },
+              {
+                "$ref": "#/components/schemas/ActorWoke"
+              },
+              {
+                "$ref": "#/components/schemas/ActorSuspended"
+              },
+              {
+                "$ref": "#/components/schemas/FindingRaised"
+              },
+              {
+                "$ref": "#/components/schemas/PolicyDenied"
+              },
+              {
+                "$ref": "#/components/schemas/ContainmentCheckCompleted"
+              },
+              {
+                "$ref": "#/components/schemas/FindingNarrative"
+              },
+              {
+                "$ref": "#/components/schemas/HumanDecision"
+              }
+            ],
+            "title": "Payload"
+          },
+          "prev_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Prev Hash",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          },
+          "study_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Study Id"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          }
+        },
+        "required": [
+          "seq",
+          "event_id",
+          "occurred_at",
+          "recorded_at",
+          "actor",
+          "visibility",
+          "payload",
+          "prev_hash",
+          "hash"
+        ],
+        "title": "Event",
+        "type": "object"
+      },
+      "EventType": {
+        "enum": [
+          "data_cut",
+          "document_filed",
+          "actor_woke",
+          "actor_suspended",
+          "finding_raised",
+          "policy_denied",
+          "containment_check_completed",
+          "finding_narrative",
+          "human_decision"
+        ],
+        "title": "EventType",
+        "type": "string"
+      },
+      "Evidence": {
+        "additionalProperties": false,
+        "description": "One measurable fact supporting a finding.\n\nPhase 2 step 4 adds context, all optional (null on events written before it): role\nsays whether the finding rests on this item (primary) or it only adds context\n(supporting); direction is the value against its reference (low, high, or none for a\np value or a count); expected is that reference (the expected count, the median site,\nthe chance level of a terminal digit, the limit); display is the value as it should\nbe read, at the precision fixed for its statistic (meridian.agents.rbqm.describe).",
+        "properties": {
+          "direction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "low",
+                  "high",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Direction"
+          },
+          "display": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Display"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "primary",
+                  "supporting"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "selector": {
+            "minLength": 1,
+            "title": "Selector",
+            "type": "string"
+          },
+          "source": {
+            "minLength": 1,
+            "title": "Source",
+            "type": "string"
+          },
+          "statistic": {
+            "minLength": 1,
+            "title": "Statistic",
+            "type": "string"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "source",
+          "selector",
+          "statistic",
+          "value"
+        ],
+        "title": "Evidence",
+        "type": "object"
+      },
+      "Finding": {
+        "additionalProperties": false,
+        "description": "Something an agent believes a human should look at.\n\nfinding_id is issued by the ledger when the finding is first recorded, so a\nfinding inside an EventDraft carries finding_id=None.",
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "minLength": 1,
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "minItems": 1,
+            "title": "Evidence",
+            "type": "array"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]+-[0-9]{4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FindingKind"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "site_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Id"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "summary": {
+            "minLength": 1,
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          },
+          "visible_to": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Visible To",
+            "type": "array",
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "kind",
+          "agent_id",
+          "agent_version",
+          "study_id",
+          "severity",
+          "title",
+          "summary",
+          "evidence",
+          "visibility",
+          "visible_to",
+          "score"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "FindingDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionView"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "dedup_key": {
+            "title": "Dedup Key",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "finding": {
+            "$ref": "#/components/schemas/FindingSummary"
+          },
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "narratives": {
+            "items": {
+              "$ref": "#/components/schemas/NarrativeView"
+            },
+            "title": "Narratives",
+            "type": "array"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunTrace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "finding",
+          "dedup_key",
+          "hash",
+          "evidence",
+          "narratives",
+          "decisions",
+          "run"
+        ],
+        "title": "FindingDetail",
+        "type": "object"
+      },
+      "FindingKind": {
+        "enum": [
+          "kri_breach",
+          "qtl_breach",
+          "site_data_anomaly",
+          "under_reporting"
+        ],
+        "title": "FindingKind",
+        "type": "string"
+      },
+      "FindingNarrative": {
+        "additionalProperties": false,
+        "description": "A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).\n\nThe finding itself is never changed. accepted: the model's text passed validation, and\nonly then are headline and explanation recorded. rejected: it failed validation\n(reasons say why). refused: the de-identification check stopped the input; nothing\nwas sent. error: the call failed (retried on the next pass). Hashes are of the\ncanonical request body sent and of the raw response body received.",
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "minLength": 1,
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "finding_id": {
+            "pattern": "^[A-Z]+-[0-9]{4}$",
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "finding_seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Finding Seq",
+            "type": "integer"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "rejection_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "request_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Sha256"
+          },
+          "response_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Sha256"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "refused",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "const": "finding_narrative",
+            "default": "finding_narrative",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "finding_seq",
+          "agent_id",
+          "agent_version",
+          "status",
+          "model"
+        ],
+        "title": "FindingNarrative",
+        "type": "object"
+      },
+      "FindingPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FindingSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "limit": {
+            "title": "Limit",
+            "type": "integer"
+          },
+          "offset": {
+            "title": "Offset",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "title": "FindingPage",
+        "type": "object"
+      },
+      "FindingRaised": {
+        "additionalProperties": false,
+        "properties": {
+          "dedup_key": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Dedup Key",
+            "type": "string"
+          },
+          "finding": {
+            "$ref": "#/components/schemas/Finding"
+          },
+          "type": {
+            "const": "finding_raised",
+            "default": "finding_raised",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding",
+          "dedup_key"
+        ],
+        "title": "FindingRaised",
+        "type": "object"
+      },
+      "FindingSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "decision_count": {
+            "title": "Decision Count",
+            "type": "integer"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FindingKind"
+          },
+          "latest_narrative": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LatestNarrative"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "raised_at": {
+            "format": "date-time",
+            "title": "Raised At",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "site_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Id"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/Visibility"
+          },
+          "visible_to": {
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            },
+            "title": "Visible To",
+            "type": "array"
+          }
+        },
+        "required": [
+          "finding_id",
+          "seq",
+          "raised_at",
+          "study_id",
+          "cut_id",
+          "check",
+          "agent_id",
+          "agent_version",
+          "kind",
+          "site_id",
+          "severity",
+          "title",
+          "summary",
+          "score",
+          "visibility",
+          "visible_to",
+          "status",
+          "decision_count",
+          "latest_narrative"
+        ],
+        "title": "FindingSummary",
+        "type": "object"
+      },
+      "Fleet": {
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/FleetAgent"
+            },
+            "title": "Agents",
+            "type": "array"
+          },
+          "containment": {
+            "items": {
+              "$ref": "#/components/schemas/ContainmentView"
+            },
+            "title": "Containment",
+            "type": "array"
+          }
+        },
+        "required": [
+          "agents",
+          "containment"
+        ],
+        "title": "Fleet",
+        "type": "object"
+      },
+      "FleetAgent": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "last_outcome": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completed",
+                  "not_completed",
+                  "accepted",
+                  "rejected",
+                  "refused",
+                  "error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Outcome"
+          },
+          "last_run_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Run At"
+          },
+          "last_trigger_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Trigger Seq"
+          },
+          "policy_file": {
+            "title": "Policy File",
+            "type": "string"
+          },
+          "policy_sha256": {
+            "title": "Policy Sha256",
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "detector",
+              "narrator"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent_id",
+          "version",
+          "zone",
+          "role",
+          "enabled",
+          "policy_file",
+          "policy_sha256",
+          "last_run_at",
+          "last_outcome",
+          "last_trigger_seq"
+        ],
+        "title": "FleetAgent",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "auth": {
+            "const": "development",
+            "default": "development",
+            "title": "Auth",
+            "type": "string"
+          },
+          "status": {
+            "const": "ok",
+            "default": "ok",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "title": "Health",
+        "type": "object"
+      },
+      "HumanDecision": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/Decision"
+          },
+          "type": {
+            "const": "human_decision",
+            "default": "human_decision",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "HumanDecision",
+        "type": "object"
+      },
+      "LatestNarrative": {
+        "additionalProperties": false,
+        "properties": {
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "headline": {
+            "title": "Headline",
+            "type": "string"
+          },
+          "narrator_version": {
+            "title": "Narrator Version",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "narrator_version",
+          "headline",
+          "explanation",
+          "seq"
+        ],
+        "title": "LatestNarrative",
+        "type": "object"
+      },
+      "LedgerPage": {
+        "additionalProperties": false,
+        "properties": {
+          "entries": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Event"
+                },
+                {
+                  "$ref": "#/components/schemas/RedactedEvent"
+                }
+              ]
+            },
+            "title": "Entries",
+            "type": "array"
+          },
+          "next_since": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Since"
+          }
+        },
+        "required": [
+          "entries",
+          "next_since"
+        ],
+        "title": "LedgerPage",
+        "type": "object"
+      },
+      "NarrativeView": {
+        "additionalProperties": false,
+        "properties": {
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation"
+          },
+          "headline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Headline"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "narrator_version": {
+            "title": "Narrator Version",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "rejection_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "refused",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seq",
+          "recorded_at",
+          "narrator_version",
+          "status",
+          "headline",
+          "explanation",
+          "model",
+          "rejection_reasons",
+          "executor",
+          "sandbox"
+        ],
+        "title": "NarrativeView",
+        "type": "object"
+      },
+      "PolicyDenied": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "check": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Check"
+          },
+          "policy": {
+            "minLength": 1,
+            "title": "Policy",
+            "type": "string"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "raw_line": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Line"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "resource": {
+            "minLength": 1,
+            "title": "Resource",
+            "type": "string"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "harness",
+                  "openshell_log"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source"
+          },
+          "type": {
+            "const": "policy_denied",
+            "default": "policy_denied",
+            "title": "Type",
+            "type": "string"
+          },
+          "zone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Zone"
+          }
+        },
+        "required": [
+          "agent_id",
+          "resource",
+          "policy",
+          "reason"
+        ],
+        "title": "PolicyDenied",
+        "type": "object"
+      },
+      "Portfolio": {
+        "additionalProperties": false,
+        "properties": {
+          "assets": {
+            "items": {
+              "$ref": "#/components/schemas/PortfolioAsset"
+            },
+            "title": "Assets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "assets"
+        ],
+        "title": "Portfolio",
+        "type": "object"
+      },
+      "PortfolioAsset": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_id": {
+            "title": "Asset Id",
+            "type": "string"
+          },
+          "live": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssetLive"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "static": {
+            "$ref": "#/components/schemas/AssetStatic"
+          }
+        },
+        "required": [
+          "asset_id",
+          "static",
+          "live"
+        ],
+        "title": "PortfolioAsset",
+        "type": "object"
+      },
+      "RbqmSites": {
+        "additionalProperties": false,
+        "properties": {
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "parameters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Parameters",
+            "type": "array"
+          },
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/SiteMetrics"
+            },
+            "title": "Sites",
+            "type": "array"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "cut_id",
+          "parameters",
+          "sites"
+        ],
+        "title": "RbqmSites",
+        "type": "object"
+      },
+      "RedactedEvent": {
+        "additionalProperties": false,
+        "description": "What a reader without unblinded access sees in place of a restricted event.",
+        "properties": {
+          "event_type": {
+            "$ref": "#/components/schemas/EventType"
+          },
+          "hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Hash",
+            "type": "string"
+          },
+          "marker": {
+            "const": "restricted",
+            "default": "restricted",
+            "title": "Marker",
+            "type": "string"
+          },
+          "prev_hash": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Prev Hash",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "event_type",
+          "recorded_at",
+          "hash",
+          "prev_hash"
+        ],
+        "title": "RedactedEvent",
+        "type": "object"
+      },
+      "ReviewQueue": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FindingSummary"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReviewQueue",
+        "type": "object"
+      },
+      "Role": {
+        "enum": [
+          "portfolio_lead",
+          "toxicologist",
+          "clinical_ops_lead",
+          "medical_monitor",
+          "qa_auditor",
+          "unblinded_statistician"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "RunEvent": {
+        "additionalProperties": false,
+        "properties": {
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "hash": {
+            "title": "Hash",
+            "type": "string"
+          },
+          "image_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Digest"
+          },
+          "inputs_manifest_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inputs Manifest Sha256"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seq",
+          "hash",
+          "recorded_at",
+          "executor"
+        ],
+        "title": "RunEvent",
+        "type": "object"
+      },
+      "RunTrace": {
+        "additionalProperties": false,
+        "description": "The run that raised the finding: its ActorWoke and ActorSuspended events.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "suspended": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trigger_seq": {
+            "title": "Trigger Seq",
+            "type": "integer"
+          },
+          "woke": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunEvent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "agent_id",
+          "agent_version",
+          "trigger_seq",
+          "cut_id",
+          "woke",
+          "suspended"
+        ],
+        "title": "RunTrace",
+        "type": "object"
+      },
+      "Severity": {
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "SiteMetrics": {
+        "additionalProperties": false,
+        "properties": {
+          "ae_rate_z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ae Rate Z"
+          },
+          "csm_log_sd_z": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Csm Log Sd Z",
+            "type": "object"
+          },
+          "deviation_z": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deviation Z"
+          },
+          "flagged_checks": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Flagged Checks",
+            "type": "array"
+          },
+          "median_entry_lag_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Entry Lag Days"
+          },
+          "median_open_query_age_days": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Median Open Query Age Days"
+          },
+          "site_id": {
+            "title": "Site Id",
+            "type": "string"
+          },
+          "tested": {
+            "title": "Tested",
+            "type": "boolean"
+          },
+          "treated": {
+            "title": "Treated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "site_id",
+          "treated",
+          "tested",
+          "ae_rate_z",
+          "deviation_z",
+          "median_entry_lag_days",
+          "median_open_query_age_days",
+          "csm_log_sd_z",
+          "flagged_checks"
+        ],
+        "title": "SiteMetrics",
+        "type": "object"
+      },
+      "StudySummary": {
+        "additionalProperties": false,
+        "properties": {
+          "cuts": {
+            "title": "Cuts",
+            "type": "integer"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "cuts"
+        ],
+        "title": "StudySummary",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "VerifyReport": {
+        "additionalProperties": false,
+        "properties": {
+          "events_checked": {
+            "title": "Events Checked",
+            "type": "integer"
+          },
+          "first_broken_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Broken Seq"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Problem"
+          }
+        },
+        "required": [
+          "ok",
+          "events_checked",
+          "first_broken_seq",
+          "problem"
+        ],
+        "title": "VerifyReport",
+        "type": "object"
+      },
+      "Visibility": {
+        "enum": [
+          "blinded",
+          "restricted"
+        ],
+        "title": "Visibility",
+        "type": "string"
+      },
+      "WhoAmI": {
+        "additionalProperties": false,
+        "properties": {
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "auth": {
+            "const": "development",
+            "default": "development",
+            "title": "Auth",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          }
+        },
+        "required": [
+          "actor",
+          "name",
+          "role"
+        ],
+        "title": "WhoAmI",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The Meridian Fleet API: read findings, narratives, the ledger and the fleet, and record\nhuman decisions. Agents raise findings; people close them here. Nothing is ever updated\nor deleted: a decision is an appended HumanDecision event.\n\n**This is not real authentication.** Every request names a person in `X-Meridian-Actor`\nand a role in `X-Meridian-Role`; the API only checks that config/people.toml lists that\nperson with that role. Anyone who can reach the port can claim any listed identity. Every\nresponse carries `X-Meridian-Auth: development`. Development use only, on 127.0.0.1.\n",
+    "title": "Meridian Fleet API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/findings": {
+      "get": {
+        "description": "Newest first (ledger seq descending).",
+        "operationId": "findings_api_v1_findings_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cut",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cut"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/FindingKind"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "site",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Site"
+            }
+          },
+          {
+            "in": "query",
+            "name": "severity",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Severity"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Severity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "open",
+                    "accepted",
+                    "escalated",
+                    "dismissed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Findings",
+        "tags": [
+          "findings"
+        ]
+      }
+    },
+    "/api/v1/findings/{finding_id}": {
+      "get": {
+        "operationId": "finding_api_v1_findings__finding_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FindingDetail"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Finding",
+        "tags": [
+          "findings"
+        ]
+      }
+    },
+    "/api/v1/findings/{finding_id}/decisions": {
+      "post": {
+        "description": "Append one HumanDecision. 404 if the caller may not see the finding, 403 for\nqa_auditor, 422 for a dismissal without a reason, 409 if already accepted or dismissed.",
+        "operationId": "decide_api_v1_findings__finding_id__decisions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "finding_id",
+            "required": true,
+            "schema": {
+              "title": "Finding Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decide",
+        "tags": [
+          "findings"
+        ]
+      }
+    },
+    "/api/v1/fleet": {
+      "get": {
+        "operationId": "fleet_api_v1_fleet_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Fleet"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Fleet",
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
+    "/api/v1/health": {
+      "get": {
+        "description": "Liveness. The only route that needs no identity headers.",
+        "operationId": "health_api_v1_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/api/v1/ledger": {
+      "get": {
+        "description": "Events after seq `since`, as the caller may see them (restricted ones redacted).",
+        "operationId": "ledger_api_v1_ledger_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Since",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/EventType"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LedgerPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ledger",
+        "tags": [
+          "ledger"
+        ]
+      }
+    },
+    "/api/v1/ledger/verify": {
+      "get": {
+        "operationId": "ledger_verify_api_v1_ledger_verify_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VerifyReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Ledger Verify",
+        "tags": [
+          "ledger"
+        ]
+      }
+    },
+    "/api/v1/portfolio": {
+      "get": {
+        "operationId": "portfolio_api_v1_portfolio_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Portfolio"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Portfolio",
+        "tags": [
+          "portfolio"
+        ]
+      }
+    },
+    "/api/v1/rbqm/{cut}/sites": {
+      "get": {
+        "description": "Per-site metrics for the RBQM heatmap (clinical ops, medical monitor, QA only).",
+        "operationId": "rbqm_sites_api_v1_rbqm__cut__sites_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cut",
+            "required": true,
+            "schema": {
+              "title": "Cut",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RbqmSites"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rbqm Sites",
+        "tags": [
+          "rbqm"
+        ]
+      }
+    },
+    "/api/v1/review-queue": {
+      "get": {
+        "description": "Open and escalated findings the caller may see, newest first.",
+        "operationId": "review_queue_api_v1_review_queue_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewQueue"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Review Queue",
+        "tags": [
+          "findings"
+        ]
+      }
+    },
+    "/api/v1/studies": {
+      "get": {
+        "operationId": "studies_api_v1_studies_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/StudySummary"
+                  },
+                  "title": "Response Studies Api V1 Studies Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Studies",
+        "tags": [
+          "studies"
+        ]
+      }
+    },
+    "/api/v1/studies/{study}/cuts": {
+      "get": {
+        "operationId": "cuts_api_v1_studies__study__cuts_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "study",
+            "required": true,
+            "schema": {
+              "title": "Study",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CutSummary"
+                  },
+                  "title": "Response Cuts Api V1 Studies  Study  Cuts Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cuts",
+        "tags": [
+          "studies"
+        ]
+      }
+    },
+    "/api/v1/whoami": {
+      "get": {
+        "operationId": "whoami_api_v1_whoami_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WhoAmI"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Whoami",
+        "tags": [
+          "meta"
+        ]
+      }
+    }
+  }
+}
