@@ -34,10 +34,13 @@ Z_WARNING_FROM = 2.0  # absolute z where the warning band starts, for every z co
 APPROACH_SHARE = 0.75  # a median above this share of its threshold is warning
 
 
-def band(value: float | None, rule: ColumnRule) -> Band:
-    """The band of one value under its column's rule."""
+def band(value: float | None, rule: ColumnRule, count: int | None = None) -> Band:
+    """The band of one value under its column's rule. Below the agent's minimum count the
+    agent does not test the site, so neither warning nor critical can apply."""
     if value is None:
         return "na"
+    if rule.min_count is not None and (count is None or count < rule.min_count):
+        return "too_few"
     if rule.unit == "z":
         if (rule.direction == "low" and value > 0) or (rule.direction == "high" and value < 0):
             return "untested_direction"
@@ -96,6 +99,8 @@ def column_rules(
             critical_beyond=kri.query_age_days,
             rule=f"median open query age above {kri.query_age_days:g} days, with at least "
             f"{kri.min_open_queries} open queries",
+            min_count=kri.min_open_queries,
+            count_label="open queries",
         ),
     }
     for p in parameters:
@@ -147,6 +152,7 @@ def site_metrics(
     rules = column_rules(agents, len(ae_result.sites), len(dev_result.sites), csm.parameters)
     sites = []
     for site in sorted(treated):
+        counts = {"median_open_query_age_days": open_queries.get(site)}
         values: dict[str, float | None] = {
             "ae_rate_z": ae_z.get(site),
             "deviation_z": dev_z.get(site),
@@ -166,7 +172,9 @@ def site_metrics(
                 open_queries=open_queries.get(site),
                 csm_log_sd_z={p: sd_z.get(p, {}).get(site) for p in csm.parameters},
                 csm_sd_ratio={p: sd_ratio.get(p, {}).get(site) for p in csm.parameters},
-                bands={key: band(values[key], rule) for key, rule in rules.items()},
+                bands={
+                    key: band(values[key], rule, counts.get(key)) for key, rule in rules.items()
+                },
                 flagged_checks=sorted({f.check for f in flagged.get(site, [])}),
                 flagged_by=list(flagged.get(site, [])),
             )

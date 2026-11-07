@@ -259,6 +259,17 @@
             "title": "Agent",
             "type": "string"
           },
+          "count_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count Label"
+          },
           "critical_beyond": {
             "title": "Critical Beyond",
             "type": "number"
@@ -271,6 +282,17 @@
             ],
             "title": "Direction",
             "type": "string"
+          },
+          "min_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Count"
           },
           "rule": {
             "title": "Rule",
@@ -2711,6 +2733,7 @@
                 "warning",
                 "critical",
                 "untested_direction",
+                "too_few",
                 "na"
               ],
               "type": "string"
