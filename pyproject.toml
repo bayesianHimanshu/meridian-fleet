@@ -14,6 +14,8 @@ dependencies = [
     "scipy>=1.18.1",
     "pyreadstat>=1.3.7",
     "httpx>=0.28.1",
+    "fastapi>=0.162.2",
+    "uvicorn>=0.54.0",
 ]
 
 [project.scripts]
@@ -66,6 +68,8 @@ warn_required_dynamic_aliases = true
 testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "-q --strict-markers -m 'not slow and not openshell'"
+# fastapi's TestClient (starlette) suggests httpx2; httpx is the dependency in use.
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
 markers = [
     "slow: needs network and real CDISC pilot data; run with -m slow",
     "openshell: needs the openshell CLI, a gateway and the agent image; run with -m openshell",
