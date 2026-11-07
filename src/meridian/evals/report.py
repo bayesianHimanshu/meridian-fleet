@@ -42,10 +42,13 @@ REVISION_NOTE = (
 
 
 def commit_with_message(message: str, cwd: Path | None = None) -> str:
-    """The latest commit whose message contains `message` (read-only git log)."""
+    """The oldest commit whose subject line is exactly `message` (read-only git log).
+
+    The subject must match exactly: later commits may quote the message in their body.
+    """
     try:
         done = subprocess.run(  # noqa: S603 (fixed argv, read-only git log)
-            ["git", "log", "-1", "--format=%H", f"--grep={message}"],  # noqa: S607
+            ["git", "log", "--format=%H %s", f"--grep={message}", "--fixed-strings"],  # noqa: S607
             cwd=cwd,
             capture_output=True,
             text=True,
@@ -53,7 +56,12 @@ def commit_with_message(message: str, cwd: Path | None = None) -> str:
         )
     except OSError, subprocess.CalledProcessError:
         return "unknown"
-    return done.stdout.strip() or "not frozen yet"
+    exact = [
+        sha
+        for sha, _, subject in (line.partition(" ") for line in done.stdout.splitlines())
+        if subject == message
+    ]
+    return exact[-1] if exact else "not frozen yet"
 
 
 def frozen_commit(cwd: Path | None = None) -> str:

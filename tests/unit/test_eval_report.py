@@ -1,3 +1,4 @@
+import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -130,3 +131,27 @@ def test_freeze_order_violations_by_recorded_commit() -> None:
         card("r3", "before", ["DC-abcdef12"]),
     ]
     assert freeze_order_violations(cards, ["DC-abcdef12"], "freeze", ancestry) == ["r3"]
+
+
+def test_freeze_commit_is_matched_by_exact_subject_not_by_a_quote(tmp_path: Path) -> None:
+    def git(*args: str) -> None:
+        subprocess.run(
+            ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    git("commit", "-q", "--allow-empty", "-m", "start")
+    git("commit", "-q", "--allow-empty", "-m", report.FREEZE_MESSAGE)
+    frozen = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    git("commit", "-q", "--allow-empty", "-m", f'Later\n\nQuotes "{report.FREEZE_MESSAGE}".')
+    assert report.frozen_commit(tmp_path) == frozen
+    assert report.ae_frozen_commit(tmp_path) == "not frozen yet"
