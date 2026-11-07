@@ -52,3 +52,26 @@ def test_the_scenarios_flag_something_for_every_agent(
 ) -> None:
     for agent in AGENTS:
         assert any(golden[s][agent] for s in golden), agent
+
+
+def test_every_cut_in_the_local_ledger_is_equivalent() -> None:
+    """The same check on every real cut (scripts/detector_equivalence.py). Skipped without
+    a local ledger in which both versions ran (CI has none)."""
+    from meridian.evals.detector_equivalence import compare
+    from meridian.ledger.store import SqliteLedger
+    from meridian.platform.clock import SystemClock
+    from meridian.platform.config import Settings
+
+    s = Settings()
+    if not Path(s.ledger_path).exists():
+        pytest.skip("no local ledger")
+    ledger = SqliteLedger(
+        path=Path(s.ledger_path), clock=SystemClock(), finding_id_prefixes=s.finding_id_prefixes
+    )
+    try:
+        result = compare(ledger, s.study_id)
+    finally:
+        ledger.close()
+    if result.pairs == 0:
+        pytest.skip("the new detector versions have not run on this ledger")
+    assert result.differences == []
