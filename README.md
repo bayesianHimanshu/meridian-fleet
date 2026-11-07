@@ -18,12 +18,15 @@ and the report shows the original ones next to the revised ones. See
 
 Step 1: agents run in NVIDIA OpenShell sandboxes, one per run, with no network, no ledger
 and no credentials. Sandboxed drafts are byte-identical to in-process ones. See
-[docs/openshell-notes.md](docs/openshell-notes.md).
+[docs/openshell-notes.md](docs/openshell-notes.md) and
+[docs/threat-model.md](docs/threat-model.md).
 
 ```sh
 uv run meridian image build                  # docker build meridian-agent:<version>, print digest
 uv run meridian policy render                # policies/<zone>.yaml (committed)
 uv run meridian sandbox verify               # in process vs sandbox, byte for byte
+uv run meridian sandbox conformance --zone all   # each zone policy in a real sandbox
+uv run meridian sandbox reap                 # delete tracked sandboxes left behind
 uv run meridian agents run --executor openshell
 uv run pytest -m openshell                   # needs openshell, a gateway and the image
 ```
