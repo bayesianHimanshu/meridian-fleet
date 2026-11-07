@@ -26,7 +26,7 @@ holdout.
 - **Runs.** The agent runs in OpenShell sandboxes on DC-BASE and the dev set, so the
   ledger holds real runs; the clean and holdout sets are run the same way, holdout last.
 - **Scoring.** `meridian safety eval --set dev|holdout|clean|base` reads the ledger and
-  writes `data/evals/safety_<set>.json`.
+  writes `data/evals/safety/<set>.json`.
 
 ## Targets
 

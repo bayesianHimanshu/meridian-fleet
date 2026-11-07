@@ -1015,7 +1015,7 @@ def safety_run(
 def safety_eval(
     set_name: Annotated[str, typer.Option("--set", help="dev, holdout, clean or base (DC-BASE).")],
 ) -> None:
-    """Precision and recall per check from the ledger; writes data/evals/safety_<set>.json."""
+    """Precision and recall per check from the ledger; writes data/evals/safety/<set>.json."""
     from meridian.agents.safety.sae_reconciler import AGENT_ID, VERSION
     from meridian.evals.safety import evaluate, set_cuts, table
 
@@ -1033,8 +1033,9 @@ def safety_eval(
             agent_id=AGENT_ID,
             agent_version=VERSION,
         )
-        s.evals_dir.mkdir(parents=True, exist_ok=True)
-        out = s.evals_dir / f"safety_{set_name}.json"
+        # Its own folder: data/evals/*.json are RBQM scorecards.
+        out = s.evals_dir / "safety" / f"{set_name}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(result.to_json(), encoding="utf-8")
         typer.echo(table([result]))
         typer.echo(

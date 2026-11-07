@@ -30,6 +30,16 @@ exactly like one that does not exist: 404 with the same body, `finding not found
 reads and decisions alike. 403 is kept for what is public anyway: qa_auditor may see a
 finding but may never decide, and a role outside RBQM may not open the site heatmap.
 
+## Why the ledger redacts events about findings you may not see
+
+Until phase 3 step 3a the ledger view redacted only restricted events, so a blinded finding
+outside a role's visible_to (an RBQM finding, for portfolio_lead) still showed in full in
+the event list while its detail page was 404. Safety findings made that a real leak: a
+subject-level reconciliation finding names the subject. Now the visibility module also
+redacts every FindingRaised, narrative and decision whose finding the caller may not see,
+in the same redacted form as a restricted event (seq, type, time and hashes, so the chain
+can still be checked). For the roles RBQM findings are for, the ledger is unchanged.
+
 ## Why decisions are events, not status updates
 
 There is no status column. Status (open, accepted, escalated, dismissed) is derived from
