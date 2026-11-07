@@ -77,6 +77,14 @@ timeout_seconds = 30.0
 [narrator]
 max_calls_per_pass = 20
 
+# The Fleet API (phase 3): `meridian api serve`. Binds to 127.0.0.1 only; identity is
+# development-only (config/people.toml), not authentication.
+[api]
+port = 8765
+people_file = "config/people.toml"
+portfolio_file = "config/portfolio.toml"
+openapi_file = "openapi/meridian-api.json"
+
 # Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
 # They were tuned only on DC-BASE, DC-RBQM-CORE and DC-NULL-S1 to S5; the defaults were
 # kept (see docs/tuning-phase1.md). Do not change them in response to holdout or sweep results.

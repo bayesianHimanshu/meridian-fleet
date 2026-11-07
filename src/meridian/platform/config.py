@@ -107,6 +107,17 @@ class NarratorSettings(BaseModel):
     max_calls_per_pass: int = Field(20, ge=1)
 
 
+class ApiSettings(BaseModel):
+    """The Fleet API ([api] in TOML). It always binds to 127.0.0.1."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    port: int = Field(8765, ge=1024, le=65535)
+    people_file: Path = Path("config/people.toml")
+    portfolio_file: Path = Path("config/portfolio.toml")
+    openapi_file: Path = Path("openapi/meridian-api.json")
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="MERIDIAN_", env_nested_delimiter="__", extra="ignore", frozen=True
@@ -129,6 +140,7 @@ class Settings(BaseSettings):
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
     llm: LlmSettings = Field(default_factory=LlmSettings)
     narrator: NarratorSettings = Field(default_factory=NarratorSettings)
+    api: ApiSettings = Field(default_factory=ApiSettings)
 
     @classmethod
     def settings_customise_sources(
