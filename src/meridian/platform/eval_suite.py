@@ -159,6 +159,8 @@ def run_suite(
             f'no "{report.AE_FREEZE_MESSAGE}" commit ({sha}); holdout 2 is generated only '
             "after the AE expectation variant is frozen"
         )
+    # Holdout 2 must avoid the step 4 holdout's pairs, so that file has to exist first.
+    injector.ensure_scenario(scenario_dir / "rbqm_holdout.toml")
     scenarios.append(ensure_holdout2(scenario_dir, base))
     scenarios += ensure_ae_holdouts(scenario_dir, base)
     for path in scenarios:
