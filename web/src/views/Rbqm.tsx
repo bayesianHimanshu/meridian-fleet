@@ -5,34 +5,16 @@ import { useApi } from "../queries";
 
 type Site = Schemas["SiteMetrics"];
 type Flag = Schemas["SiteFlag"];
-export type Band = "normal" | "warning" | "critical" | "na";
+export type Band = Schemas["SiteMetrics"]["bands"][string];
+type Rule = Schemas["ColumnRule"];
 
 const STUDY = "MRD-201";
-
-/** z columns: absolute z from 2 to 3 is warning, above 3 critical, below 2 normal. */
-export function zBand(z: number | null | undefined): Band {
-  if (z === null || z === undefined) return "na";
-  const size = Math.abs(z);
-  if (size > 3) return "critical";
-  return size >= 2 ? "warning" : "normal";
-}
-
-/** Medians against the agents' own thresholds: above the threshold the agent flags it
- * (warning), above the high-severity threshold it is critical. */
-export function thresholdBand(
-  value: number | null | undefined,
-  warnAbove: number | undefined,
-  criticalAbove: number | undefined,
-): Band {
-  if (value === null || value === undefined || warnAbove === undefined) return "na";
-  if (criticalAbove !== undefined && value > criticalAbove) return "critical";
-  return value > warnAbove ? "warning" : "normal";
-}
 
 const BAND_TEXT: Record<Band, string> = {
   normal: "normal",
   warning: "warning",
   critical: "critical",
+  untested_direction: "a direction the agent does not test",
   na: "not computed",
 };
 
@@ -173,16 +155,44 @@ export function RbqmView() {
   );
 }
 
+function num(v: number, unit: Rule["unit"]): string {
+  const text = Math.abs(v) >= 10 || Number.isInteger(v) ? v.toFixed(unit === "z" ? 2 : 1) : v.toFixed(2);
+  return text.replace(/\.?0+$/, "") || "0";
+}
+
+/** The bands of one column in words, with their numbers, from the agent's rule. */
+export function bandsText(rule: Rule): string {
+  if (rule.unit === "days") {
+    return `warning above ${num(rule.warning_from, "days")} days, critical above ${num(rule.critical_beyond, "days")} days`;
+  }
+  const side = rule.direction === "low" ? "below" : rule.direction === "high" ? "above" : "beyond";
+  const sign = rule.direction === "low" ? "-" : rule.direction === "high" ? "+" : "\u00b1";
+  const limit = num(Math.abs(rule.critical_beyond), "z");
+  const untested =
+    rule.direction === "both" ? "" : `; ${rule.direction === "low" ? "positive" : "negative"} z: no fill (not tested)`;
+  return `warning from z ${sign}2 to ${sign}${limit}, critical ${side} ${sign}${limit}${untested}`;
+}
+
 function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
-  const t = data.thresholds;
   const flags = data.sites.flatMap((s) => s.flagged_by.map((f) => ({ site: s.site_id, ...f })));
+  const col = (key: string) => data.columns[key];
+  const groups: { label: string; keys: string[] }[] = [
+    { label: "AE rate z", keys: ["ae_rate_z"] },
+    { label: "Deviation z", keys: ["deviation_z"] },
+    { label: "Entry lag", keys: ["median_entry_lag_days"] },
+    { label: "Open query age", keys: ["median_open_query_age_days"] },
+    { label: "Spread z (SYSBP, DIABP, PULSE)", keys: data.parameters.map((p) => `csm_log_sd_z:${p}`) },
+  ];
+  const cell = (s: Site, key: string, text: string, check: string, parameter?: string) => (
+    <Cell key={key} text={text} band={s.bands[key] ?? "na"} flags={flagsFor(s, check, parameter)} />
+  );
   return (
     <section className="panel" aria-labelledby="heat-title">
       <div className="panel-head">
         <h2 id="heat-title">Site heatmap</h2>
         <span className="src mono">{data.cut_id}</span>
       </div>
-      <div className="table-wrap">
+      <div className="table-wrap heat-wrap">
         <table className="heat">
           <caption className="visually-hidden">Per-site RBQM metrics for {data.cut_id}</caption>
           <thead>
@@ -218,48 +228,35 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
                   {s.tested ? null : <span className="sub">too small to test</span>}
                 </th>
                 <td className="num">{s.treated}</td>
-                <Cell text={fmt(s.ae_rate_z, 2)} band={zBand(s.ae_rate_z)} flags={flagsFor(s, "ae_rate")} />
-                <Cell text={fmt(s.deviation_z, 2)} band={zBand(s.deviation_z)} flags={flagsFor(s, "deviations")} />
-                <Cell
-                  text={fmt(s.median_entry_lag_days, 1)}
-                  band={thresholdBand(s.median_entry_lag_days, t.data_entry_lag_days, t.data_entry_lag_high_days)}
-                  flags={flagsFor(s, "data_entry_lag")}
-                />
-                <Cell
-                  text={fmt(s.median_open_query_age_days, 1)}
-                  band={thresholdBand(s.median_open_query_age_days, t.open_query_age_days, t.open_query_age_high_days)}
-                  flags={flagsFor(s, "query_aging")}
-                />
-                {data.parameters.map((p) => (
-                  <Cell
-                    key={p}
-                    text={fmt(s.csm_log_sd_z[p], 2)}
-                    band={zBand(s.csm_log_sd_z[p])}
-                    flags={flagsFor(s, "variance", p)}
-                  />
-                ))}
+                {cell(s, "ae_rate_z", fmt(s.ae_rate_z, 2), "ae_rate")}
+                {cell(s, "deviation_z", fmt(s.deviation_z, 2), "deviations")}
+                {cell(s, "median_entry_lag_days", fmt(s.median_entry_lag_days, 1), "data_entry_lag")}
+                {cell(s, "median_open_query_age_days", fmt(s.median_open_query_age_days, 1), "query_aging")}
+                {data.parameters.map((p) => cell(s, `csm_log_sd_z:${p}`, fmt(s.csm_log_sd_z[p], 2), "variance", p))}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       <dl className="legend-list" aria-label="How to read the heatmap">
-        <dt>z columns (AE rate, deviations, spread)</dt>
+        <dt>Fill</dt>
         <dd>
           <i className="swatch warning" aria-hidden="true" />
-          warning when the absolute z is from 2 to 3; <i className="swatch critical" aria-hidden="true" />
-          critical above 3; no fill below 2.
+          warning, <i className="swatch critical" aria-hidden="true" />
+          critical, no fill otherwise. Each column follows what its agent tests: the direction and
+          the agent's own threshold, so critical means the agent's threshold is passed.
         </dd>
-        <dt>Entry lag</dt>
-        <dd>
-          warning above {t.data_entry_lag_days} days (the agent flags it), critical above{" "}
-          {t.data_entry_lag_high_days} days (high severity).
-        </dd>
-        <dt>Open query age</dt>
-        <dd>
-          warning above {t.open_query_age_days} days (the agent flags it), critical above{" "}
-          {t.open_query_age_high_days} days (high severity).
-        </dd>
+        {groups.map((g) => {
+          const rule = g.keys[0] ? col(g.keys[0]) : undefined;
+          return rule ? (
+            <div key={g.label} style={{ display: "contents" }}>
+              <dt>{g.label}</dt>
+              <dd>
+                {bandsText(rule)}. <span className="muted">{rule.agent}: {rule.rule}.</span>
+              </dd>
+            </div>
+          ) : null;
+        })}
         <dt>
           <i className="swatch flagged" aria-hidden="true" />
           Outline

@@ -377,6 +377,30 @@ export interface components {
             text: string;
         };
         /**
+         * ColumnRule
+         * @description How one heatmap column is banded, read from the agent's config.
+         */
+        ColumnRule: {
+            /** Agent */
+            agent: string;
+            /** Critical Beyond */
+            critical_beyond: number;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "low" | "high" | "both";
+            /** Rule */
+            rule: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "z" | "days";
+            /** Warning From */
+            warning_from: number;
+        };
+        /**
          * ContainmentCheck
          * @description One command of a conformance run and what happened to it.
          */
@@ -1061,6 +1085,10 @@ export interface components {
         };
         /** RbqmSites */
         RbqmSites: {
+            /** Columns */
+            columns: {
+                [key: string]: components["schemas"]["ColumnRule"];
+            };
             /** Cut Id */
             cut_id: string;
             /** Parameters */
@@ -1070,10 +1098,6 @@ export interface components {
             sites: components["schemas"]["SiteMetrics"][];
             /** Study Id */
             study_id: string;
-            /** Thresholds */
-            thresholds: {
-                [key: string]: number;
-            };
         };
         /**
          * RedactedEvent
@@ -1179,8 +1203,16 @@ export interface components {
         SiteMetrics: {
             /** Ae Rate Z */
             ae_rate_z: number | null;
+            /** Bands */
+            bands: {
+                [key: string]: "normal" | "warning" | "critical" | "untested_direction" | "na";
+            };
             /** Csm Log Sd Z */
             csm_log_sd_z: {
+                [key: string]: number | null;
+            };
+            /** Csm Sd Ratio */
+            csm_sd_ratio: {
                 [key: string]: number | null;
             };
             /** Deviation Z */
@@ -1193,6 +1225,8 @@ export interface components {
             median_entry_lag_days: number | null;
             /** Median Open Query Age Days */
             median_open_query_age_days: number | null;
+            /** Open Queries */
+            open_queries: number | null;
             /** Site Id */
             site_id: string;
             /** Tested */
