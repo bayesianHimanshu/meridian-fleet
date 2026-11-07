@@ -248,9 +248,20 @@ class SqliteLedger:
     # Writing
 
     def append(self, draft: EventDraft) -> Event:
+        return self.append_guarded(draft, lambda: None)
+
+    def append_guarded(self, draft: EventDraft, guard: Callable[[], None]) -> Event:
+        """Append draft only if guard() returns without raising.
+
+        guard runs inside the same write transaction (BEGIN IMMEDIATE), so what it reads
+        through this ledger cannot change before the append: no other writer, in this
+        process or another, can commit in between. Whatever guard raises propagates and
+        nothing is written.
+        """
         conn = self._ready()
         conn.execute("BEGIN IMMEDIATE")
         try:
+            guard()
             event = self._seal(conn, draft)
             conn.execute(_INSERT_SQL, _row_values(event))
         except BaseException:
