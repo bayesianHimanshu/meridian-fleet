@@ -265,3 +265,37 @@ def test_older_detector_versions_are_not_narrated_by_1_1_0(ledger: SqliteLedger)
     _raise(ledger, old)
     _raise(ledger, _finding("1002"))
     assert [e.seq for e in _runner(ledger, FakeModelClient()).pending()] == [2]
+
+
+def _safety_finding() -> Finding:
+    return _finding("1001").model_copy(
+        update={
+            "agent_id": "safety.sae_reconciler",
+            "agent_version": "1.0.0",
+            "kind": FindingKind.SAE_RECONCILIATION,
+            "title": "Serious AE of 201-1001-004 has no case in the safety database",
+        }
+    )
+
+
+def test_a_safety_finding_is_never_narrated_or_sent(
+    ledger: SqliteLedger, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meridian.agents.rbqm import narrator
+
+    _raise(ledger, _safety_finding())
+    client = FakeModelClient()
+    runner = _runner(ledger, client)
+    assert runner.pending() == []
+    report = runner.run_pass()
+    assert report.counts == {}
+    assert client.requests == []
+    # Even if someone subscribed the narrator to it, the zone exclusion holds.
+    monkeypatch.setitem(narrator.NARRATES, "safety.sae_reconciler", "1.0.0")
+    assert runner.pending() == []
+    assert runner.run_pass().counts == {}
+    assert client.requests == []
+    assert _narratives(ledger) == []
+    assert not narrator.may_narrate(_safety_finding())
+    assert "safety" in narrator.EXCLUDED_ZONES
+    assert not any(a.startswith("safety.") for a in narrator.SUBSCRIBES_TO_AGENTS)

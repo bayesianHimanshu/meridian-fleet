@@ -128,7 +128,7 @@ class NarratorRunner:
             if not isinstance(entry, Event) or not isinstance(entry.payload, FindingRaised):
                 continue
             finding = entry.payload.finding
-            if narrator.NARRATES.get(finding.agent_id) != finding.agent_version:
+            if not narrator.may_narrate(finding):
                 continue
             if finding.finding_id is None or finding.finding_id in done:
                 continue
@@ -165,6 +165,8 @@ class NarratorRunner:
         queue: list[_Pending] = []
         for event in self.pending(cuts):
             assert isinstance(event.payload, FindingRaised)
+            if not narrator.may_narrate(event.payload.finding):  # again, before it can leave
+                raise RuntimeError(f"finding at seq {event.seq} may not be narrated")
             inp = narrator.narrator_input(event.payload.finding)
             problems = narrator.deid_problems(canonical_json(inp))
             if problems:

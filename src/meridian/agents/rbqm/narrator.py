@@ -43,6 +43,7 @@ __all__ = [
     "ALLOWED_EVIDENCE_FIELDS",
     "ALLOWED_FIELDS",
     "EM_DASH",
+    "EXCLUDED_ZONES",
     "NARRATES",
     "SUBSCRIBES_TO_AGENTS",
     "SYSTEM_PROMPT",
@@ -50,6 +51,7 @@ __all__ = [
     "Validation",
     "build_request",
     "deid_problems",
+    "may_narrate",
     "narrator_input",
     "validate",
 ]
@@ -64,6 +66,20 @@ NARRATES: dict[str, str] = {
     "rbqm.csm": "2.1.0",
 }
 SUBSCRIBES_TO_AGENTS = frozenset(NARRATES)
+# The cloud model never receives a finding of these zones, whatever NARRATES says: safety
+# findings are about individual subjects. Patient-level narration waits for a local model.
+EXCLUDED_ZONES = frozenset({"safety"})
+if any(agent.split(".", 1)[0] in EXCLUDED_ZONES for agent in NARRATES):
+    raise RuntimeError("the narrator may not subscribe to an excluded zone")
+
+
+def may_narrate(finding: Finding) -> bool:
+    """True only for a finding of a subscribed detector version outside excluded zones."""
+    if finding.agent_id.split(".", 1)[0] in EXCLUDED_ZONES:
+        return False
+    return NARRATES.get(finding.agent_id) == finding.agent_version
+
+
 ALLOWED_EVIDENCE_FIELDS = frozenset(
     {"source", "selector", "statistic", "role", "direction", "expected", "display"}
 )
