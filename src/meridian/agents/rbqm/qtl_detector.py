@@ -6,17 +6,24 @@ does not make the clean base "approaching" by construction.
 """
 
 from collections.abc import Sequence
-from enum import StrEnum
 
 from meridian.agents.base import AgentContext, FindingDraft, make_dedup_key
 from meridian.agents.rbqm.common import RbqmAgentBase, cut_id_of
-from meridian.data.derived import premature_discontinuation
 from meridian.domain.enums import FindingKind, Severity
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
 from meridian.platform.agent_settings import QtlDetectorConfig
+from meridian.stats.rules import QtlStatus, discontinuation, qtl_status
 
-__all__ = ["CHECKS", "QTL_NAME", "STATISTICS", "QtlDetector", "QtlDetectorConfig", "QtlStatus"]
+__all__ = [
+    "CHECKS",
+    "QTL_NAME",
+    "STATISTICS",
+    "QtlDetector",
+    "QtlDetectorConfig",
+    "QtlStatus",
+    "qtl_status",
+]
 
 QTL_NAME = "premature_discontinuation"
 CHECKS: tuple[str, ...] = (QTL_NAME,)
@@ -30,20 +37,6 @@ STATISTICS: dict[str, tuple[str, ...]] = {
 }
 
 
-class QtlStatus(StrEnum):
-    WITHIN = "within"
-    APPROACHING = "approaching"
-    BREACHED = "breached"
-
-
-def qtl_status(rate: float, limit: float, approach_band: float) -> QtlStatus:
-    if rate >= limit:
-        return QtlStatus.BREACHED
-    if rate >= limit - approach_band:
-        return QtlStatus.APPROACHING
-    return QtlStatus.WITHIN
-
-
 class QtlDetector(RbqmAgentBase):
     agent_id = "rbqm.qtl_detector"
     config_model = QtlDetectorConfig
@@ -52,14 +45,13 @@ class QtlDetector(RbqmAgentBase):
         cfg = ctx.config
         study = ctx.study
         cut_id = cut_id_of(trigger, study)
-        discontinued, treated = premature_discontinuation(study.table("dm"), study.table("ds"))
-        if treated == 0:
+        dm, ds = study.table("dm"), study.table("ds")
+        condition = discontinuation(dm, ds, cfg.discontinuation_limit, cfg.approach_band)
+        if not condition.met or condition.value is None or condition.count is None:
             return []
-        rate = discontinued / treated
+        rate, treated, discontinued = condition.value, condition.n, condition.count
         limit = cfg.discontinuation_limit
         status = qtl_status(rate, limit, cfg.approach_band)
-        if status is QtlStatus.WITHIN:
-            return []
         approach_from = limit - cfg.approach_band
         selector = "treated subjects; DSCAT=DISPOSITION EVENT"
         return [

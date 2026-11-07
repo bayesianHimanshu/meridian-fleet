@@ -9,16 +9,14 @@ query_aging compare site medians with absolute operational thresholds.
 from collections.abc import Sequence
 from functools import partial
 
-import polars as pl
-
 from meridian.agents.base import AgentContext, FindingDraft, make_dedup_key, parse_dedup_key
 from meridian.agents.rbqm.common import RbqmAgentBase, cut_id_of
-from meridian.data.derived import treated_subjects
 from meridian.domain.enums import FindingKind, Severity
 from meridian.domain.events import Event
 from meridian.domain.findings import Evidence
 from meridian.platform.agent_settings import KriMonitorConfig
 from meridian.stats.robust import neg_log10, quasi_poisson
+from meridian.stats.rules import entry_lag, query_aging
 from meridian.stats.site_metrics import counts_by_site, exposure, sites_with_min_treated
 
 __all__ = ["CHECKS", "STATISTICS", "KriMonitor", "KriMonitorConfig"]
@@ -59,7 +57,6 @@ class KriMonitor(RbqmAgentBase):
         study = ctx.study
         cut_id = cut_id_of(trigger, study)
         dm, sv = study.table("dm"), study.table("sv")
-        treated = treated_subjects(dm)["USUBJID"].to_list()
         exp = exposure(dm, sv)
         tested, skipped = sites_with_min_treated(dm, cfg.min_subjects)
         if skipped:
@@ -138,16 +135,10 @@ class KriMonitor(RbqmAgentBase):
                     )
                 )
 
-        lag = (
-            study.table("data_entry")
-            .filter(pl.col("USUBJID").is_in(treated))
-            .group_by("SITEID")
-            .agg(pl.col("entry_lag_days").median().alias("median"), pl.len().alias("n"))
-            .sort("SITEID")
-        )
-        for site, median, n in lag.iter_rows():
-            if median is None or median <= cfg.lag_days:
+        for lag in entry_lag(dm, study.table("data_entry"), cfg.lag_days):
+            if not lag.met or lag.value is None:
                 continue
+            site, median, n = lag.site, lag.value, lag.n
             drafts.append(
                 FindingDraft(
                     dedup_key=key(FindingKind.KRI_BREACH, site, "data_entry_lag"),
@@ -179,16 +170,11 @@ class KriMonitor(RbqmAgentBase):
                 )
             )
 
-        aging = (
-            study.table("queries")
-            .filter(pl.col("USUBJID").is_in(treated) & (pl.col("status") == "open"))
-            .group_by("SITEID")
-            .agg(pl.col("age_days").median().alias("median"), pl.len().alias("n"))
-            .sort("SITEID")
-        )
-        for site, median, n in aging.iter_rows():
-            if n < cfg.min_open_queries or median is None or median <= cfg.query_age_days:
+        aging = query_aging(dm, study.table("queries"), cfg.query_age_days, cfg.min_open_queries)
+        for age in aging:
+            if not age.met or age.value is None:
                 continue
+            site, median, n = age.site, age.value, age.n
             drafts.append(
                 FindingDraft(
                     dedup_key=key(FindingKind.KRI_BREACH, site, "query_aging"),
