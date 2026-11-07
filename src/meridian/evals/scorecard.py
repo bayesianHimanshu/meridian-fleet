@@ -4,7 +4,7 @@ import hashlib
 import json
 import subprocess
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -92,6 +92,35 @@ def git_commit(cwd: Path | None = None) -> str:
     except OSError, subprocess.CalledProcessError:
         return "unknown"
     return done.stdout.strip()
+
+
+def is_ancestor(ancestor: str, commit: str, cwd: Path | None = None) -> bool:
+    """True when `ancestor` is `commit` or one of its ancestors (read-only git)."""
+    try:
+        done = subprocess.run(  # noqa: S603 (fixed argv, read-only git)
+            ["git", "merge-base", "--is-ancestor", ancestor, commit],  # noqa: S607
+            cwd=cwd,
+            capture_output=True,
+            check=False,
+        )
+    except OSError:
+        return False
+    return done.returncode == 0
+
+
+def freeze_order_violations(
+    cards: Sequence[Scorecard],
+    cuts: Sequence[str],
+    freeze_sha: str,
+    ancestry: Callable[[str, str], bool] = is_ancestor,
+) -> list[str]:
+    """run_ids of scorecards that score any of `cuts` at a commit without the freeze."""
+    wanted = set(cuts)
+    return [
+        card.run_id
+        for card in cards
+        if wanted & set(card.cuts) and not ancestry(freeze_sha, card.git_commit)
+    ]
 
 
 def config_hash(agents_config: object) -> str:

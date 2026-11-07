@@ -21,6 +21,7 @@ from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibi
 from meridian.domain.events import DataCut, Event, EventDraft, FindingRaised, RedactedEvent
 from meridian.domain.findings import Evidence, Finding
 from meridian.evals.matching import VersionFilter
+from meridian.evals.rules import condition_truth
 from meridian.evals.scorecard import (
     CutEvaluation,
     ScorecardExistsError,
@@ -473,6 +474,16 @@ def _print_evaluation(e: CutEvaluation) -> None:
         typer.echo(
             f"  {agent_id:<20} findings {am.findings:>3}  false positives {am.false_positives}"
         )
+    if e.detector_metrics is not None:
+        dm = e.detector_metrics
+        d_recall = "n/a" if dm.recall is None else f"{dm.recall:.2f}"
+        typer.echo(f"  detectors: recall {d_recall}, false positives {dm.false_positives}")
+    if e.rules is not None:
+        typer.echo(
+            f"  rules: {e.rules.agreeing} of {e.rules.units} units agree with condition truth"
+        )
+        for o in e.rules.outcomes:
+            typer.echo(f"    {o.check:<26} {o.site:<6} {o.outcome}")
 
 
 def _score(cut: str, version: str | None, null: bool) -> None:
@@ -486,8 +497,13 @@ def _score(cut: str, version: str | None, null: bool) -> None:
                     raise typer.Exit(code=1)
                 faults = list(GroundTruth.load(truth_path).faults)
             versions = _version_filter(c, version)
+            conditions = condition_truth(
+                c.study_reader(cut),
+                c.settings.agents.kri_monitor,
+                c.settings.agents.qtl_detector,
+            )
             evaluation = evaluate_cut(
-                c.ledger, cut, faults, versions, sorted(c.registered_versions())
+                c.ledger, cut, faults, versions, sorted(c.registered_versions()), conditions
             )
             card = new_scorecard(
                 clock=c.clock,
