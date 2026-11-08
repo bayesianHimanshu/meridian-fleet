@@ -32,7 +32,7 @@ FROM ${PYTHON_IMAGE}
 RUN groupadd --gid 1000 sandbox \
  && useradd --uid 1000 --gid sandbox --no-create-home --home-dir /tmp --shell /usr/sbin/nologin sandbox
 COPY --from=build /opt/meridian/venv /opt/meridian/venv
-COPY config/default.toml config/sites.toml /opt/meridian/config/
+COPY config/default.toml config/sites.toml config/safety_terms.toml /opt/meridian/config/
 ENV PATH=/opt/meridian/venv/bin:$PATH \
     MERIDIAN_CONFIG_FILE=/opt/meridian/config/default.toml \
     PYTHONDONTWRITEBYTECODE=1

@@ -15,6 +15,12 @@ export const CHECK_TEXT: Record<string, string> = {
   causality_mismatch: "Causality differs",
   late_sae_report: "Case reported late",
   sae_late_reporting_site: "Site reports late",
+  sae_data_quality: "Record has a missing or unusable field",
+  sae_probable_duplicate: "Two cases are probably one event",
+  sae_partial_date: "Onset date is incomplete",
+  seriousness_criteria_mismatch: "Seriousness criteria differ",
+  sae_subject_mismatch: "Case names the wrong subject",
+  sae_term_mismatch: "Preferred terms differ",
 };
 
 type Item = Schemas["ReconciliationItem"];
