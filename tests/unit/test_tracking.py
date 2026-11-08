@@ -116,6 +116,7 @@ def test_executor_returns_before_the_delete_and_the_pass_waits(tmp_path: Path) -
         clock=FixedClock(NOW),
         study_id=STUDY,
         log=LOG,
+        operational_cuts=("DC-BASE",),
     )
     client.output = ExecOutput(0, _expected_for_ledger(cut_dir, ledger), "")
     timer = threading.Timer(0.3, gate.release.set)

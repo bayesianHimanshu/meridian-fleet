@@ -185,6 +185,8 @@ class Container:
             clock=self.clock,
             study_id=self.settings.study_id,
             log=log,
+            operational_cuts=self.settings.cuts.operational,
+            operational_executor=self.settings.cuts.operational_executor,
         )
 
     def registered_versions(self) -> dict[str, str]:

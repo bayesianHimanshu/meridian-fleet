@@ -302,6 +302,7 @@ def test_runner_records_the_executor_and_retries_a_failed_run(
         clock=FixedClock(NOW),
         study_id=STUDY,
         log=structlog.get_logger(),
+        operational_cuts=("DC-BASE",),
     )
     first = runner.run_pending()
     assert [f[0] for f in first.failed] == ["rbqm.csm"]
