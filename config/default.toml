@@ -132,10 +132,15 @@ min_readings = 50
 parameters = ["SYSBP", "DIABP", "PULSE"]
 
 [agents.sae_reconciler]
-# SAE reconciliation (phase 3 step 3a), deterministic. Set before the evaluation in
-# docs/safety-eval.md and not changed in response to it. Matching rule: docs/safety-notes.md.
+# SAE reconciliation (1.0 in phase 3 step 3a, 1.1 in step 3a2), deterministic. Set before
+# each evaluation in docs/safety-eval.md and not changed in response to it. Matching rule:
+# docs/safety-notes.md. Outcome and causality terms: config/safety_terms.toml.
 onset_tolerance_days = 1   # onsets more than 1 day apart are an onset mismatch
-fallback_window_days = 3   # fallback match: same subject and preferred term, within 3 days
+fallback_window_days = 7   # pairing window (1.1): same subject and term, within 7 days
+cost_per_day = 1           # pairing cost per day between onsets
+cost_outcome = 3           # pairing cost when the outcomes differ
+cost_causality = 1         # pairing cost when the causalities differ
+term_mismatch_days = 1     # recoded term: lone SAE and lone case within 1 day
 late_after_hours = 24.0    # receipt more than 24 hours after site awareness is late
 site_late_min = 2          # a site with 2 or more late cases gets a site-level finding
 # Who may see which finding. Subject-level findings carry the subject id; the site-level

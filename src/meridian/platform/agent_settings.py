@@ -1,6 +1,9 @@
 """Configuration models of the agents. Kept outside meridian.agents so that settings and
 the eval harness can read thresholds without importing any agent code."""
 
+import os
+import tomllib
+from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -38,18 +41,103 @@ class CsmConfig(AgentConfig):
     parameters: tuple[str, ...] = ("SYSBP", "DIABP", "PULSE")
 
 
+# The environment variable that names the config file (meridian.platform.config reads the
+# same one); the safety terminology table sits next to that file.
+CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
+SAFETY_TERMS_FILE = "safety_terms.toml"
+BINARY_CAUSALITY = ("NOT RELATED", "RELATED")
+
+
+def _norm(value: str) -> str:
+    return " ".join(value.split()).upper()
+
+
+class SafetyTerms(BaseModel):
+    """Controlled terminology for outcome and causality (config/safety_terms.toml): each
+    canonical value with its synonyms, and the binary class of each canonical causality."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    outcome: dict[str, tuple[str, ...]]
+    causality: dict[str, tuple[str, ...]]
+    causality_binary: dict[str, tuple[str, ...]]
+
+    @model_validator(mode="after")
+    def _consistent(self) -> SafetyTerms:
+        for name, table in (("outcome", self.outcome), ("causality", self.causality)):
+            seen: dict[str, str] = {}
+            for canonical, synonyms in table.items():
+                for value in (canonical, *synonyms):
+                    key = _norm(value)
+                    if seen.setdefault(key, canonical) != canonical:
+                        raise ValueError(f"{name}: {value!r} maps to two canonical values")
+        if set(self.causality_binary) != set(BINARY_CAUSALITY):
+            raise ValueError(f"causality_binary must have exactly {BINARY_CAUSALITY}")
+        classified = [v for vs in self.causality_binary.values() for v in vs]
+        if sorted(classified) != sorted(self.causality) or len(set(classified)) != len(classified):
+            raise ValueError("each canonical causality needs exactly one binary class")
+        return self
+
+    def outcome_of(self, value: str) -> str | None:
+        """The canonical outcome; "" for not recorded; None for an unknown value."""
+        return _lookup(self.outcome, value)
+
+    def causality_of(self, value: str) -> str | None:
+        """The canonical causality; "" for not recorded; None for an unknown value."""
+        return _lookup(self.causality, value)
+
+    def causality_class(self, canonical: str) -> str:
+        return next(k for k, vs in self.causality_binary.items() if canonical in vs)
+
+
+def _lookup(table: dict[str, tuple[str, ...]], value: str) -> str | None:
+    key = _norm(value)
+    if not key:
+        return ""
+    for canonical, synonyms in table.items():
+        if key == _norm(canonical) or key in {_norm(v) for v in synonyms}:
+            return canonical
+    return None
+
+
+def safety_terms_path() -> Path:
+    """config/safety_terms.toml next to the config file in use (in the agent image:
+    /opt/meridian/config/)."""
+    config = os.environ.get(CONFIG_FILE_ENV)
+    base = Path(config).parent if config else Path("config")
+    return base / SAFETY_TERMS_FILE
+
+
+def load_safety_terms(path: Path | None = None) -> SafetyTerms:
+    with (path or safety_terms_path()).open("rb") as handle:
+        return SafetyTerms.model_validate(tomllib.load(handle))
+
+
 class SaeReconcilerConfig(AgentConfig):
-    """safety.sae_reconciler: the matching rule, the reporting window, and who may see
-    which finding. Visibility lives here, next to the agent, not in the API."""
+    """safety.sae_reconciler: the matching rule, the pairing cost, the reporting window,
+    the terminology, and who may see which finding. Visibility lives here, next to the
+    agent, not in the API."""
 
     # Onsets more than this many days apart are an onset mismatch.
     onset_tolerance_days: int = Field(1, ge=0)
-    # Fallback match: same subject and preferred term, onsets at most this far apart.
-    fallback_window_days: int = Field(3, ge=0)
-    # A case received more than this many hours after site awareness is late.
+    # Pairing: a clinical SAE and a case of the same subject and preferred term may pair
+    # when their onsets are at most this many days apart; within it, the cost decides.
+    fallback_window_days: int = Field(7, ge=0)
+    # Pairing cost (integers, so ties are exact): per day between onsets, and for an
+    # outcome or a causality that differs. Lower is better; see the agent's docstring.
+    cost_per_day: int = Field(1, ge=1)
+    cost_outcome: int = Field(3, ge=0)
+    cost_causality: int = Field(1, ge=0)
+    # Recoded term: a lone unmatched SAE and a lone unmatched case of one subject with
+    # different preferred terms and onsets at most this many days apart.
+    term_mismatch_days: int = Field(1, ge=0)
+    # A case received more than this many hours after site awareness is late (measured on
+    # the case's initial version).
     late_after_hours: float = Field(24.0, gt=0)
     # A site with at least this many late cases gets one site-level finding.
     site_late_min: int = Field(2, ge=1)
+    # Outcome and causality terminology (config/safety_terms.toml).
+    terms: SafetyTerms = Field(default_factory=load_safety_terms)
     # Subject-level findings carry the subject id; the site-level finding does not.
     subject_visible_to: tuple[Role, ...] = (
         Role.CLINICAL_OPS_LEAD,
@@ -67,6 +155,8 @@ class SaeReconcilerConfig(AgentConfig):
     def _windows(self) -> SaeReconcilerConfig:
         if self.fallback_window_days < self.onset_tolerance_days:
             raise ValueError("fallback_window_days must be at least onset_tolerance_days")
+        if self.term_mismatch_days > self.fallback_window_days:
+            raise ValueError("term_mismatch_days may not exceed fallback_window_days")
         if not set(self.subject_visible_to) <= set(self.site_visible_to):
             raise ValueError("subject-level findings may not reach more roles than site-level")
         return self

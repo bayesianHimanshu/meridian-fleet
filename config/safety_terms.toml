@@ -1,0 +1,44 @@
+# Controlled terminology for SAE reconciliation (safety.sae_reconciler 1.1).
+#
+# Outcome and causality are mapped to one canonical value before the clinical database and
+# the safety database are compared. Lookup is on the value in upper case with whitespace
+# collapsed. A value that is in neither list is unknown: the reconciler raises a
+# data-quality finding for it and does not compare that field. An empty value is "not
+# recorded" and is compared as such.
+#
+# Sources: the CDISC OUT codelist (SDTM AEOUT), the ICH E2B(R3) reaction outcome values
+# and codes, the SDTM pilot's AEREL values, and the WHO-UMC causality categories. Built
+# from these vocabularies, not from any test case.
+
+# Canonical outcome = the CDISC OUT submission value; listed: its synonyms.
+[outcome]
+"RECOVERED/RESOLVED" = ["RECOVERED", "RESOLVED", "RECOVERED / RESOLVED", "1"]
+"RECOVERING/RESOLVING" = ["RECOVERING", "RESOLVING", "RECOVERING / RESOLVING", "IMPROVING", "2"]
+"NOT RECOVERED/NOT RESOLVED" = [
+    "NOT RECOVERED", "NOT RESOLVED", "NOT RECOVERED / NOT RESOLVED", "ONGOING",
+    "NOT RECOVERED/NOT RESOLVED/ONGOING", "CONTINUING", "PERSISTING", "3",
+]
+"RECOVERED/RESOLVED WITH SEQUELAE" = [
+    "RECOVERED WITH SEQUELAE", "RESOLVED WITH SEQUELAE", "RECOVERED / RESOLVED WITH SEQUELAE",
+    "SEQUELAE", "4",
+]
+"FATAL" = ["DIED", "DEATH", "FATAL OUTCOME", "5"]
+"UNKNOWN" = ["UNK", "NOT KNOWN", "6"]
+
+# Canonical causality: the pilot's scale (NONE ... DEFINITE) and the two binary values a
+# sponsor assessment may use (RELATED, NOT RELATED); listed: synonyms.
+[causality]
+"NONE" = ["NO", "NOT RELATED (NONE)", "NO RELATIONSHIP"]
+"REMOTE" = ["UNLIKELY", "UNLIKELY RELATED", "REMOTELY RELATED", "DOUBTFUL"]
+"POSSIBLE" = ["POSSIBLY RELATED"]
+"PROBABLE" = ["PROBABLY RELATED", "LIKELY", "LIKELY RELATED"]
+"DEFINITE" = ["DEFINITELY RELATED", "CERTAIN", "CERTAINLY RELATED"]
+"RELATED" = ["SUSPECTED", "YES", "Y", "REASONABLE POSSIBILITY"]
+"NOT RELATED" = ["UNRELATED", "NOT SUSPECTED", "N", "NO REASONABLE POSSIBILITY"]
+
+# The binary class of each canonical causality. When either side is RELATED or NOT
+# RELATED, the two sides are compared by class; otherwise by value. PROBABLE and RELATED
+# agree; PROBABLE and POSSIBLE do not.
+[causality_binary]
+"RELATED" = ["POSSIBLE", "PROBABLE", "DEFINITE", "RELATED"]
+"NOT RELATED" = ["NONE", "REMOTE", "NOT RELATED"]
