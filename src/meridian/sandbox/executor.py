@@ -21,11 +21,18 @@ from pydantic import ValidationError
 from meridian.agents.base import FindingDraft, zone_of
 from meridian.agents.execute import DraftsDocument, run_agent
 from meridian.agents.registry import AgentRegistry
+from meridian.data.cut_writer import BLINDED_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, build_manifest
-from meridian.data.study_store import StudyReader
+from meridian.data.study_store import SAFETY_DB_ZONES, LayeredStudyReader, StudyReader
 from meridian.domain.events import DataCut, Event
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
-from meridian.sandbox.policies import POLICIES, expected_effective, policy_path, sha256_text
+from meridian.sandbox.policies import (
+    ALL_POLICIES,
+    expected_effective,
+    policy_for_agent,
+    policy_path,
+    sha256_text,
+)
 from meridian.sandbox.staging import (
     SANDBOX_CUT_DIR,
     SANDBOX_ROOT,
@@ -80,16 +87,24 @@ class InProcessExecutor:
         registry: AgentRegistry,
         reader_factory: Callable[[str], StudyReader],
         log: structlog.typing.FilteringBoundLogger,
+        safety_reader_factory: Callable[[str], StudyReader] | None = None,
     ) -> None:
         self._registry = registry
         self._reader_factory = reader_factory
+        self._safety_reader_factory = safety_reader_factory
         self._log = log
+
+    def _reader(self, agent_id: str, cut_id: str) -> StudyReader:
+        reader = self._reader_factory(cut_id)
+        if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_reader_factory is not None:
+            return LayeredStudyReader(reader, self._safety_reader_factory(cut_id))
+        return reader
 
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult:
         start = time.perf_counter()
         registered = self._registry.get(agent_id)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, cut_id=cut_id)
-        drafts = run_agent(registered, trigger, self._reader_factory(cut_id), log)
+        drafts = run_agent(registered, trigger, self._reader(agent_id, cut_id), log)
         return ExecutionResult(
             drafts=tuple(drafts),
             executor=self.name,
@@ -153,7 +168,9 @@ class OpenShellExecutor:
         deleter: BackgroundDeleter,
         staging_dir: Path | None = None,
         name_factory: Callable[[str, int], str] = sandbox_name,
+        safety_root: Path | None = None,
     ) -> None:
+        self._safety_root = safety_root  # <safety_root>/<study>: snapshots by cut id
         self._client = client
         self._tracker = tracker
         self._deleter = deleter
@@ -173,13 +190,18 @@ class OpenShellExecutor:
         registered = self._registry.get(agent_id)
         if not isinstance(trigger.payload, DataCut) or trigger.payload.cut_id != cut_id:
             raise ExecutionError(f"trigger {trigger.seq} is not the DataCut of {cut_id}")
-        zone = zone_of(agent_id)
-        policy = POLICIES[zone]
-        policy_file = policy_path(zone, self._policies_dir)
+        policy_name = policy_for_agent(agent_id)
+        policy = ALL_POLICIES[policy_name]
+        policy_file = policy_path(policy_name, self._policies_dir)
+        extra = (
+            [self._safety_root / cut_id / BLINDED_AREA]
+            if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_root is not None
+            else []
+        )
         name = self._name_factory(agent_id, trigger.seq)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, sandbox=name)
         with tempfile.TemporaryDirectory(prefix="meridian-stage-", dir=self._staging_dir) as tmp:
-            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp))
+            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra)
             assert_clean_stage(stage)  # again, right before it leaves the host
             recomputed = build_manifest(stage)
             if (stage / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():

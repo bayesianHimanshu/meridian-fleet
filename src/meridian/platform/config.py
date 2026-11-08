@@ -19,7 +19,12 @@ from pydantic_settings import (
 )
 
 from meridian.data.ops_synth import OpsSynthParams
-from meridian.platform.agent_settings import CsmConfig, KriMonitorConfig, QtlDetectorConfig
+from meridian.platform.agent_settings import (
+    CsmConfig,
+    KriMonitorConfig,
+    QtlDetectorConfig,
+    SaeReconcilerConfig,
+)
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
 DEFAULT_CONFIG_FILE = Path("config/default.toml")
@@ -60,6 +65,7 @@ class AgentsSettings(BaseModel):
     kri_monitor: KriMonitorConfig = Field(default_factory=KriMonitorConfig)
     qtl_detector: QtlDetectorConfig
     csm: CsmConfig = Field(default_factory=CsmConfig)
+    sae_reconciler: SaeReconcilerConfig = Field(default_factory=SaeReconcilerConfig)
 
 
 class RuntimeSettings(BaseModel):
@@ -145,6 +151,8 @@ class Settings(BaseSettings):
     curated_root: Path = Path("data/curated")
     sites_file: Path = Path("config/sites.toml")
     ground_truth_dir: Path = Path("data/ground_truth")
+    # The synthetic safety database: one snapshot per cut (meridian.safetydb).
+    safety_root: Path = Path("data/safety_db")
     evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)

@@ -32,7 +32,16 @@ def _openshell_available() -> None:
         pytest.skip(reason)
 
 
-@pytest.mark.parametrize("zone", sorted(policies.POLICIES))
+# Every zone policy, and the agent policies without a provider (safety.sae_reconciler).
+NO_PROVIDER = sorted(name for name, p in policies.ALL_POLICIES.items() if not p.providers)
+
+
+def test_the_no_provider_list_holds_the_reconciler() -> None:
+    assert "safety.sae_reconciler" in NO_PROVIDER
+    assert "rbqm.narrator" not in NO_PROVIDER
+
+
+@pytest.mark.parametrize("zone", NO_PROVIDER)
 def test_zone_policy_conforms_and_is_recorded(tmp_path: Path, zone: str) -> None:
     client = SubprocessOpenShellClient()
     ref = image.default_image()

@@ -23,9 +23,9 @@ ALLOWED = {
 }
 
 
-def test_every_zone_has_a_policy_and_only_the_narrator_has_its_own() -> None:
+def test_every_zone_has_a_policy_and_two_agents_have_their_own() -> None:
     assert set(policies.POLICIES) == {z.value for z in Zone}
-    assert set(policies.AGENT_POLICIES) == {"rbqm.narrator"}
+    assert set(policies.AGENT_POLICIES) == {"rbqm.narrator", "safety.sae_reconciler"}
     assert sorted(p.name.removesuffix(".yaml") for p in COMMITTED.glob("*.yaml")) == sorted(
         policies.ALL_POLICIES
     )
@@ -126,3 +126,20 @@ def test_expected_effective_drops_comments_and_empty_network() -> None:
     assert "#" not in effective
     assert "network_policies" not in effective
     assert effective.startswith("version: 1\nfilesystem_policy:")
+
+
+def test_the_reconciler_policy_is_the_safety_zone_shape_without_network() -> None:
+    mine = policies.ALL_POLICIES["safety.sae_reconciler"]
+    zone = policies.POLICIES["safety"]
+    assert (mine.zone, mine.network, mine.providers) == ("safety", (), ())
+    assert (mine.read_only, mine.read_write, mine.landlock) == (
+        zone.read_only,
+        zone.read_write,
+        zone.landlock,
+    )
+    assert policies.POLICY_BOUNDARY["safety.sae_reconciler"] == "blinded"
+    text = (COMMITTED / "safety.sae_reconciler.yaml").read_text(encoding="utf-8")
+    assert "network_policies: {}" in text
+    assert "No provider is attached" in text
+    assert policies.policy_for_agent("safety.sae_reconciler") == "safety.sae_reconciler"
+    assert policies.policy_for_agent("rbqm.csm") == "rbqm"

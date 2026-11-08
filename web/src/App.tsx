@@ -7,6 +7,7 @@ import { FindingDetail } from "./views/FindingDetail";
 import { FleetView } from "./views/Fleet";
 import { LedgerView } from "./views/Ledger";
 import { PortfolioView } from "./views/Portfolio";
+import { SafetyView } from "./views/Safety";
 import { RbqmView } from "./views/Rbqm";
 import { ReviewQueue } from "./views/ReviewQueue";
 import { StudyView } from "./views/Study";
@@ -107,7 +108,7 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
     ],
     [
       "Oversight",
-      [{ to: "/rbqm", label: "RBQM" }, { label: "Safety" }, { label: "Quality and audit" }],
+      [{ to: "/rbqm", label: "RBQM" }, { to: "/safety", label: "Safety" }, { label: "Quality and audit" }],
     ],
     ["Decisions", [{ to: "/review", label: "Review queue" }]],
     [
@@ -214,6 +215,7 @@ export function App() {
             <Route path="/review" element={<ReviewQueue />} />
             <Route path="/findings/:findingId" element={<FindingDetail />} />
             <Route path="/rbqm" element={<RbqmView />} />
+            <Route path="/safety" element={<SafetyView />} />
             <Route path="/study" element={<StudyView />} />
             <Route path="/ledger" element={<LedgerView />} />
             <Route path="/fleet" element={<FleetView />} />

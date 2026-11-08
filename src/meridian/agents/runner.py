@@ -1,5 +1,6 @@
 """One runner pass: wake each enabled agent once per DataCut and record what it finds."""
 
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -103,13 +104,25 @@ class AgentRunner:
             )
         )
 
-    def run_pending(self) -> RunReport:
+    def run_pending(
+        self,
+        agents: Collection[str] | None = None,
+        cuts: Collection[str] | None = None,
+    ) -> RunReport:
+        """Every pending (enabled agent, DataCut) pair; optionally only some agents and
+        cuts (the rest stay pending for a later pass)."""
         report = RunReport()
-        triggers = data_cut_events(self._ledger, self._study_id)
+        triggers = [
+            t
+            for t in data_cut_events(self._ledger, self._study_id)
+            if cuts is None or (isinstance(t.payload, DataCut) and t.payload.cut_id in cuts)
+        ]
         done = self._completed()
         for registered in self._registry.enabled():
             agent = registered.agent
             if EventType.DATA_CUT not in agent.subscribes_to:
+                continue
+            if agents is not None and agent.agent_id not in agents:
                 continue
             for trigger in triggers:
                 if (agent.agent_id, agent.version, trigger.seq) in done:
@@ -147,6 +160,13 @@ class AgentRunner:
                     raise ValueError(
                         f"dedup key {draft.dedup_key!r} does not start with {prefix!r}"
                     )
+                # Checked before anything is recorded: no run is half written.
+                extra = set(draft.visible_to or ()) - agent.visible_to
+                if extra:
+                    raise ValueError(
+                        f"draft {draft.dedup_key!r} names roles outside "
+                        f"{agent.agent_id}'s visible_to: {sorted(extra)}"
+                    )
         except Exception as exc:  # an agent failure must never stop the pass
             log.error("agent.run_failed", error=f"{type(exc).__name__}: {exc}")
             report.failed.append((agent.agent_id, trigger.seq, f"{type(exc).__name__}: {exc}"))
@@ -175,6 +195,7 @@ class AgentRunner:
         if self._ledger.find_by_dedup_key(draft.dedup_key) is not None:
             report.findings_skipped.append(draft.dedup_key)
             return
+        visible_to = agent.visible_to if draft.visible_to is None else frozenset(draft.visible_to)
         finding = Finding(
             kind=draft.kind,
             agent_id=agent.agent_id,
@@ -186,7 +207,7 @@ class AgentRunner:
             summary=draft.summary,
             evidence=draft.evidence,
             visibility=agent.visibility,
-            visible_to=agent.visible_to,
+            visible_to=visible_to,
             score=draft.score,
         )
         try:

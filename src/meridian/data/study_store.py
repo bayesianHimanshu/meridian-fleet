@@ -136,3 +136,41 @@ class UnblindedReader(_AreaReader):
     """Unblinded tables only. Not wired into anything in phase 1."""
 
     _areas = (UNBLINDED_AREA,)
+
+
+# Zones whose agents also read the cut's safety database snapshot (its blinded area).
+SAFETY_DB_ZONES = frozenset({"safety"})
+
+
+class LayeredStudyReader:
+    """One cut's blinded and ops tables, plus the blinded tables of a second store for the
+    same cut (the safety database snapshot). Both readers are blinded; a table name may
+    come from only one of them."""
+
+    def __init__(self, primary: StudyReader, extra: StudyReader) -> None:
+        if (primary.cut_id, primary.study_id) != (extra.cut_id, extra.study_id):
+            raise StudyAccessError(
+                f"readers for different cuts: {primary.cut_id} and {extra.cut_id}"
+            )
+        both = set(primary.tables()) & set(extra.tables())
+        if both:
+            raise StudyAccessError(f"table names in both stores: {sorted(both)}")
+        self._primary = primary
+        self._extra = extra
+        self._extra_names = frozenset(extra.tables())
+
+    @property
+    def cut_id(self) -> str:
+        return self._primary.cut_id
+
+    @property
+    def study_id(self) -> str:
+        return self._primary.study_id
+
+    def table(self, name: str) -> pl.DataFrame:
+        if name in self._extra_names:
+            return self._extra.table(name)
+        return self._primary.table(name)
+
+    def tables(self) -> list[str]:
+        return sorted({*self._primary.tables(), *self._extra_names})

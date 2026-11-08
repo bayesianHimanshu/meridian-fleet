@@ -3,7 +3,7 @@
 import sys
 from collections.abc import MutableMapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 import httpx
 import polars as pl
@@ -73,6 +73,10 @@ app.add_typer(policy_app, name="policy")
 app.add_typer(sandbox_app, name="sandbox")
 api_app = typer.Typer(no_args_is_help=True, help="Serve the Fleet API (development identity).")
 app.add_typer(api_app, name="api")
+safety_app = typer.Typer(
+    no_args_is_help=True, help="The synthetic safety database and SAE reconciliation."
+)
+app.add_typer(safety_app, name="safety")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -916,3 +920,132 @@ def api_openapi() -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(openapi_text(settings), encoding="utf-8")
     typer.echo(f"wrote {path}")
+
+
+SetOption = Annotated[str, typer.Option("--set", help="dev, holdout or clean.")]
+
+
+def _set_name(name: str) -> Literal["dev", "holdout", "clean"]:
+    if name not in ("dev", "holdout", "clean"):
+        typer.echo(f"error: unknown set {name!r}; dev, holdout or clean", err=True)
+        raise typer.Exit(code=2)
+    return name  # type: ignore[return-value]
+
+
+@safety_app.command("generate")
+def safety_generate() -> None:
+    """A clean safety database snapshot for every recorded cut that has none yet."""
+    from meridian.data.datacut import data_cut_events
+    from meridian.domain.events import DataCut
+    from meridian.faults.reader import FullCutReader
+    from meridian.safetydb.generate import ensure_clean_snapshot
+
+    with _container() as c:
+        s = c.settings
+        study_dir = s.curated_root / s.study_id
+        written = present = 0
+        for event in data_cut_events(c.ledger, s.study_id):
+            assert isinstance(event.payload, DataCut)
+            cut_id = event.payload.cut_id
+            if (s.safety_root / s.study_id / cut_id / "manifest.json").exists():
+                present += 1
+                continue
+            if not (study_dir / cut_id).is_dir():
+                typer.echo(f"  skipped {cut_id}: no curated cut on disk")
+                continue
+            ensure_clean_snapshot(
+                safety_root=s.safety_root,
+                study_id=s.study_id,
+                cut=FullCutReader(study_dir / cut_id).read(),
+                clock=c.clock,
+            )
+            written += 1
+            typer.echo(f"  wrote clean snapshot for {cut_id}")
+        typer.echo(f"clean snapshots written {written}, already present {present}")
+
+
+@safety_app.command("inject")
+def safety_inject(set_name: SetOption) -> None:
+    """Write one evaluation set: cuts, safety snapshots, ground truth, DataCut events."""
+    name = _set_name(set_name)
+    with _container() as c:
+        results = c.safety_injector().inject_set(name)
+        for r in results:
+            planted = ", ".join(f"{f.kri}:{f.target}" for f in r.ground_truth.faults) or "none"
+            state = "written" if r.cut_created else "present"
+            typer.echo(
+                f"{r.scenario.label} {r.scenario.cut_id} {state} seq {r.event.seq}: {planted}"
+            )
+
+
+@safety_app.command("run")
+def safety_run(
+    executor: ExecutorOption = None,
+    set_name: Annotated[
+        str | None, typer.Option("--set", help="dev, holdout or clean; default DC-BASE.")
+    ] = None,
+) -> None:
+    """Run safety.sae_reconciler on DC-BASE or on one evaluation set only."""
+    from meridian.agents.safety.sae_reconciler import AGENT_ID
+    from meridian.evals.safety import set_cuts
+
+    settings = Settings()
+    if executor is not None:
+        runtime = settings.runtime.model_copy(update={"executor": executor})
+        settings = settings.model_copy(update={"runtime": runtime})
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        cuts = (
+            ["DC-BASE"]
+            if set_name is None
+            else set_cuts(settings.ground_truth_dir, _set_name(set_name))
+        )
+        report = c.agent_runner(log).run_pending(agents={AGENT_ID}, cuts=set(cuts))
+        typer.echo(
+            f"completed {len(report.completed)} run(s) on {len(cuts)} cut(s), failed "
+            f"{len(report.failed)}, findings appended {len(report.findings_appended)}"
+        )
+        for agent_id, seq, error in report.failed:
+            typer.echo(f"  FAILED {agent_id} on DataCut seq {seq}: {error}")
+        if report.failed:
+            raise typer.Exit(code=1)
+
+
+@safety_app.command("eval")
+def safety_eval(
+    set_name: Annotated[str, typer.Option("--set", help="dev, holdout, clean or base (DC-BASE).")],
+) -> None:
+    """Precision and recall per check from the ledger; writes data/evals/safety/<set>.json."""
+    from meridian.agents.safety.sae_reconciler import AGENT_ID, VERSION
+    from meridian.evals.safety import evaluate, set_cuts, table
+
+    with _container() as c:
+        s = c.settings
+        cuts = (
+            ["DC-BASE"] if set_name == "base" else set_cuts(s.ground_truth_dir, _set_name(set_name))
+        )
+        result = evaluate(
+            name=set_name,
+            cuts=cuts,
+            ledger=c.ledger,
+            ground_truth_dir=s.ground_truth_dir,
+            safety_study_root=s.safety_root / s.study_id,
+            agent_id=AGENT_ID,
+            agent_version=VERSION,
+        )
+        # Its own folder: data/evals/*.json are RBQM scorecards.
+        out = s.evals_dir / "safety" / f"{set_name}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(result.to_json(), encoding="utf-8")
+        typer.echo(table([result]))
+        typer.echo(
+            f"cuts {len(cuts)}, without a run {len(result.runs_missing)}, "
+            f"findings {result.findings}"
+        )
+        typer.echo(f"harmless present {dict(result.harmless_present)}")
+        typer.echo(f"harmless flagged {dict(result.harmless_flagged)}")
+        for cut, check, record in result.false:
+            typer.echo(f"  false  {cut} {check} {record}")
+        for cut, check, record in result.missed:
+            typer.echo(f"  missed {cut} {check} {record}")
+        typer.echo(f"written to {out}")

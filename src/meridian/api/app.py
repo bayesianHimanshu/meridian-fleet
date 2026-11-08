@@ -78,6 +78,7 @@ def context_from_settings(
         curated_root=settings.curated_root,
         portfolio=load_portfolio(portfolio_file),
         operational_cuts=tuple(settings.cuts.operational),
+        safety_root=settings.safety_root,
     )
 
 

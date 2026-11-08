@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Annotated, Protocol
 
 import structlog
-from pydantic import BaseModel, ConfigDict, Field, FiniteFloat
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator
 
 from meridian.data.study_store import StudyReader
 from meridian.domain.dedup import STUDY_SCOPE, DedupKeyParts, make_dedup_key, parse_dedup_key
@@ -61,6 +61,15 @@ class FindingDraft(BaseModel):
     summary: Annotated[str, Field(min_length=1)]
     evidence: Annotated[tuple[Evidence, ...], Field(min_length=1)]
     score: FiniteFloat
+    # Who may see this finding, when it differs per finding (safety.sae_reconciler: the
+    # subject-level ones reach fewer roles than the site-level one). None: the agent's
+    # visible_to. The runner refuses a draft that names a role outside the agent's.
+    visible_to: tuple[Role, ...] | None = None
+
+    @field_validator("visible_to")
+    @classmethod
+    def _sorted(cls, value: tuple[Role, ...] | None) -> tuple[Role, ...] | None:
+        return None if value is None else tuple(sorted(set(value)))
 
 
 class Agent[C: AgentConfig](Protocol):

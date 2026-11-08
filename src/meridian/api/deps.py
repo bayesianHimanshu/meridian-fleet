@@ -16,7 +16,8 @@ from fastapi import Depends, Header, HTTPException, Request
 from meridian.agents.registry import AgentRegistry
 from meridian.api.identity import ACTOR_HEADER, ROLE_HEADER, People, Person
 from meridian.api.repository import PortfolioEntry, Repository
-from meridian.data.study_store import ParquetStudyReader, StudyReader
+from meridian.data.study_store import ParquetStudyReader, StudyReader, UnblindedReader
+from meridian.domain.safety import SAFETY_CASES, SAFETY_UNBLINDED
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
@@ -36,9 +37,18 @@ class ApiContext:
     curated_root: Path
     portfolio: tuple[PortfolioEntry, ...]
     operational_cuts: tuple[str, ...] = ("DC-BASE",)
+    safety_root: Path = Path("data/safety_db")
 
     def study_reader(self, cut_id: str) -> StudyReader:
         return ParquetStudyReader(self.curated_root / self.study_id, cut_id)
+
+    def safety_case_counts(self, cut_id: str) -> tuple[int, int]:
+        """(cases, cases with an unblinded treatment field) of one cut's safety database.
+        Reads only row counts; no treatment value leaves this function."""
+        root = self.safety_root / self.study_id
+        cases = ParquetStudyReader(root, cut_id).table(SAFETY_CASES).height
+        with_treatment = UnblindedReader(root, cut_id).table(SAFETY_UNBLINDED).height
+        return cases, with_treatment
 
 
 def context(request: Request) -> ApiContext:

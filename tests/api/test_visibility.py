@@ -40,6 +40,7 @@ from tests.api_support import (
 )
 
 BLINDED_ROLES = [r for r in Role if r is not Role.UNBLINDED_STATISTICIAN]
+RBQM_ROLES_LIST = [Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR, Role.QA_AUDITOR]
 MAX_EXAMPLES = 60
 
 
@@ -85,13 +86,64 @@ def test_the_unblinded_statistician_sees_restricted_findings_in_their_visible_to
     assert r.status_code == 404
 
 
+def _about_hidden_finding(entry: object, role: Role) -> bool:
+    """A FindingRaised, narrative or decision whose finding the role may not see."""
+    if not isinstance(entry, Event):
+        return False
+    p = entry.payload
+    raised = {
+        e.payload.finding.finding_id: e.payload.finding
+        for e in _ALL_EVENTS
+        if isinstance(e, Event) and isinstance(e.payload, FindingRaised)
+    }
+    fid = (
+        p.finding.finding_id
+        if isinstance(p, FindingRaised)
+        else p.finding_id
+        if isinstance(p, FindingNarrative)
+        else p.decision.finding_id
+        if isinstance(p, HumanDecision)
+        else None
+    )
+    if fid is None:
+        return False
+    finding = raised.get(fid)
+    return finding is None or role not in finding.visible_to
+
+
+_ALL_EVENTS: list[object] = []
+
+
 def test_ledger_redaction_through_the_api_matches_the_ledger(fx: Fixture) -> None:
+    """The ledger's own redaction, plus events about findings outside the role's
+    visible_to (phase 3 step 3a: a subject-level finding carries a subject id)."""
     client = fx.client()
     with fx.ledger() as ledger:
+        _ALL_EVENTS[:] = ledger.read(viewer_role=Role.UNBLINDED_STATISTICIAN)  # every finding
         for role in Role:
-            expected = [json.loads(e.model_dump_json()) for e in ledger.read(viewer_role=role)]
+            expected = []
+            for e in ledger.read(viewer_role=role):
+                data = json.loads(e.model_dump_json())
+                if _about_hidden_finding(e, role):
+                    assert isinstance(e, Event)
+                    data = json.loads(
+                        RedactedEvent(
+                            seq=e.seq,
+                            event_type=e.event_type,
+                            recorded_at=e.recorded_at,
+                            hash=e.hash,
+                            prev_hash=e.prev_hash,
+                        ).model_dump_json()
+                    )
+                expected.append(data)
             got = _get(client, role, "/api/v1/ledger?limit=1000")["entries"]
             assert got == expected, role
+        # The roles RBQM findings are for see the ledger exactly as the ledger shows it.
+        for role in RBQM_ROLES_LIST:
+            raw = [json.loads(e.model_dump_json()) for e in ledger.read(viewer_role=role)]
+            assert _get(client, role, "/api/v1/ledger?limit=1000")["entries"] == raw
+    portfolio = _get(client, Role.PORTFOLIO_LEAD, "/api/v1/ledger?limit=1000")["entries"]
+    assert not [e for e in portfolio if "payload" in e and e["payload"]["type"] == "finding_raised"]
     redacted = [
         e for e in _get(client, Role.QA_AUDITOR, "/api/v1/ledger")["entries"] if "marker" in e
     ]
