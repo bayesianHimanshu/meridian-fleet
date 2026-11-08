@@ -23,6 +23,9 @@ OUTCOME = "OUTCOME"
 CAUSALITY = "CAUSALITY"
 AWARE_DTC = "AWARE_DTC"  # when the site became aware (ISO date-time, UTC)
 RECEIPT_DTC = "RECEIPT_DTC"  # when the sponsor received the case (ISO date-time, UTC)
+# Optional: the version number of a case row (initial 1, follow-ups 2, 3, ...). An export
+# may hold several rows per case id; the reconciler takes the latest.
+CASE_VERSION = "CASE_VERSION"
 # Seriousness criteria, Y or N, the same criteria as SDTM AESDTH ... AESMIE.
 CRITERIA: dict[str, str] = {
     "SDTH": "AESDTH",
@@ -58,6 +61,13 @@ OUTCOME_MISMATCH = "outcome_mismatch"
 CAUSALITY_MISMATCH = "causality_mismatch"
 LATE_REPORT = "late_sae_report"
 LATE_SITE = "sae_late_reporting_site"
+# 1.1
+DATA_QUALITY = "sae_data_quality"
+PROBABLE_DUPLICATE = "sae_probable_duplicate"
+PARTIAL_DATE = "sae_partial_date"
+CRITERIA_MISMATCH = "seriousness_criteria_mismatch"
+SUBJECT_MISMATCH = "sae_subject_mismatch"
+TERM_MISMATCH = "sae_term_mismatch"
 RECORD_CHECKS: tuple[str, ...] = (
     SAE_MISSING,
     CASE_WITHOUT_SAE,
@@ -65,11 +75,28 @@ RECORD_CHECKS: tuple[str, ...] = (
     OUTCOME_MISMATCH,
     CAUSALITY_MISMATCH,
     LATE_REPORT,
+    DATA_QUALITY,
+    PROBABLE_DUPLICATE,
+    PARTIAL_DATE,
+    CRITERIA_MISMATCH,
+    SUBJECT_MISMATCH,
+    TERM_MISMATCH,
 )
 CHECKS: tuple[str, ...] = (*RECORD_CHECKS, LATE_SITE)
 # Checks anchored on the clinical record (subject/AESEQ) and on the case (case id).
-CLINICAL_ANCHORED = frozenset({SAE_MISSING, ONSET_MISMATCH, OUTCOME_MISMATCH, CAUSALITY_MISMATCH})
-CASE_ANCHORED = frozenset({CASE_WITHOUT_SAE, LATE_REPORT})
+# (sae_data_quality uses "<record>#<FIELD>", sae_probable_duplicate "<case>+<case>".)
+CLINICAL_ANCHORED = frozenset(
+    {
+        SAE_MISSING,
+        ONSET_MISMATCH,
+        OUTCOME_MISMATCH,
+        CAUSALITY_MISMATCH,
+        PARTIAL_DATE,
+        CRITERIA_MISMATCH,
+        TERM_MISMATCH,
+    }
+)
+CASE_ANCHORED = frozenset({CASE_WITHOUT_SAE, LATE_REPORT, SUBJECT_MISMATCH})
 
 _SPACE = re.compile(r"\s+")
 

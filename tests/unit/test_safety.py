@@ -250,15 +250,17 @@ def test_fallback_matching_gives_a_field_mismatch_not_two_missing_records(base: 
     assert one_day == set()  # within the 1-day tolerance
     three = _run(base, base.blinded["ae"], shift(3))
     assert {c for c, _ in three} == {s.ONSET_MISMATCH}
-    # Beyond the fallback window the same case reads as missing plus orphan: the
-    # documented failure mode.
+    # 1.1: within the 7-day window the cost decides; 4 days is one onset mismatch.
     four = _run(base, base.blinded["ae"], shift(4))
-    assert {c for c, _ in four} == {s.SAE_MISSING, s.CASE_WITHOUT_SAE}
-    wider = _run(base, base.blinded["ae"], shift(4), fallback_window_days=5)
-    assert {c for c, _ in wider} == {s.ONSET_MISMATCH}
+    assert {c for c, _ in four} == {s.ONSET_MISMATCH}
+    # Beyond the window the same case reads as missing plus orphan.
+    eight = _run(base, base.blinded["ae"], shift(8))
+    assert {c for c, _ in eight} == {s.SAE_MISSING, s.CASE_WITHOUT_SAE}
+    narrow = _run(base, base.blinded["ae"], shift(4), fallback_window_days=3)
+    assert {c for c, _ in narrow} == {s.SAE_MISSING, s.CASE_WITHOUT_SAE}
 
 
-def test_a_partial_clinical_onset_cannot_be_matched(base: FullCut) -> None:
+def test_a_partial_clinical_onset_matches_through_a_partial_date_note(base: FullCut) -> None:
     export = generate(base, 5)
     saes = clinical_saes(base.blinded["ae"])
     u, q = saes.row(0)[saes.columns.index("USUBJID")], saes.row(0)[saes.columns.index("AESEQ")]
@@ -269,7 +271,7 @@ def test_a_partial_clinical_onset_cannot_be_matched(base: FullCut) -> None:
         .alias("AESTDTC")
     )
     found = _run(base, ae, export.cases)
-    assert {c for c, _ in found} == {s.SAE_MISSING, s.CASE_WITHOUT_SAE}
+    assert found == {(s.PARTIAL_DATE, f"{u}/{q}")}
 
 
 def _late(cases: pl.DataFrame, ids: list[str], hours: float = 40.0) -> pl.DataFrame:
@@ -336,7 +338,7 @@ def test_subject_visibility_may_not_exceed_site_visibility() -> None:
 
 def test_the_agent_identity() -> None:
     agent = SaeReconciler()
-    assert (agent.agent_id, agent.version, agent.zone.value) == (AGENT_ID, "1.0.0", "safety")
+    assert (agent.agent_id, agent.version, agent.zone.value) == (AGENT_ID, "1.1.0", "safety")
     assert Role.TOXICOLOGIST not in agent.visible_to
     assert Role.UNBLINDED_STATISTICIAN not in agent.visible_to
 
