@@ -365,14 +365,13 @@ def late_finding(case: str, subject: str | None, version: str = "1.1.0") -> Find
 
 def test_late_case_items_carry_the_subject_from_the_evidence(fx: Fixture) -> None:
     case, subject = "SC-0A1B2C3D4E", "201-1018-012"
-    agent = {"agent_id": AGENT, "agent_version": "1.1.0", "trigger_seq": 1}
-    fx.append(ActorWoke(**agent), actor=AGENT)
+    fx.append(ActorWoke(agent_id=AGENT, agent_version="1.1.0", trigger_seq=1), actor=AGENT)
     raised = fx.raise_finding(late_finding(case, subject), check=s.check_id(s.LATE_REPORT, case))
     fx.raise_finding(
         site_finding().model_copy(update={"agent_version": "1.1.0"}),
         check=s.check_id(s.LATE_SITE, "1018"),
     )
-    fx.append(ActorSuspended(**agent), actor=AGENT)
+    fx.append(ActorSuspended(agent_id=AGENT, agent_version="1.1.0", trigger_seq=1), actor=AGENT)
     assert isinstance(raised.payload, FindingRaised)
     late_id = raised.payload.finding.finding_id
     client = fx.client()
