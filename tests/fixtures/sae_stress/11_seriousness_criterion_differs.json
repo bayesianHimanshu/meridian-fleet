@@ -1,14 +1,51 @@
 {
   "case": "seriousness_criterion_differs",
   "description": "Everything matches except a seriousness criterion: the safety database also records the event as life-threatening.",
-  "dm": [{"USUBJID": "201-9011-001", "SITEID": "9011"}],
+  "dm": [
+    {
+      "USUBJID": "201-9011-001",
+      "SITEID": "9011"
+    }
+  ],
   "ae": [
-    {"USUBJID": "201-9011-001", "AESEQ": 1, "AETERM": "partial seizure", "AEDECOD": "PARTIAL SEIZURES", "AESER": "Y", "AESHOSP": "Y", "AESLIFE": "N", "AESTDTC": "2025-08-21", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "PROBABLE"}
+    {
+      "USUBJID": "201-9011-001",
+      "AESEQ": 1,
+      "AETERM": "partial seizure",
+      "AEDECOD": "PARTIAL SEIZURES",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESLIFE": "N",
+      "AESTDTC": "2025-08-21",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "PROBABLE"
+    }
   ],
   "safety_cases": [
-    {"CASEID": "SC-ST11A", "USUBJID": "201-9011-001", "SITEID": "9011", "REPORTED_TERM": "partial seizure", "PREFERRED_TERM": "PARTIAL SEIZURES", "ONSET": "2025-08-21", "SHOSP": "Y", "SLIFE": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "PROBABLE", "AWARE_DTC": "2025-08-21T10:00:00+00:00", "RECEIPT_DTC": "2025-08-21T16:00:00+00:00"}
+    {
+      "CASEID": "SC-ST11A",
+      "USUBJID": "201-9011-001",
+      "SITEID": "9011",
+      "REPORTED_TERM": "partial seizure",
+      "PREFERRED_TERM": "PARTIAL SEIZURES",
+      "ONSET": "2025-08-21",
+      "SHOSP": "Y",
+      "SLIFE": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-08-21T10:00:00+00:00",
+      "RECEIPT_DTC": "2025-08-21T16:00:00+00:00"
+    }
   ],
   "ideal": "One medium finding: seriousness criteria differ (life-threatening in the safety database only).",
   "predicted": [],
-  "actual": []
+  "ideal_findings": [
+    "seriousness_criteria_mismatch:201-9011-001/1"
+  ],
+  "actual": {
+    "1.0.0": [],
+    "1.1.0": [
+      "seriousness_criteria_mismatch:201-9011-001/1"
+    ]
+  }
 }

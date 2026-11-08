@@ -2,8 +2,8 @@
 safety.sae_reconciler as they are.
 
 The tables are built straight from the JSON (no generator, no normalisation of ours). The
-test pins each case's `actual` outcome, recorded after the first run, so a change in
-behaviour shows up here; it does not test against `ideal`. Where ideal and actual differ,
+test pins each case's `actual` outcome for the current agent version, recorded after its
+run, so a change in behaviour shows up here; it does not test against the ideal. Where ideal and actual differ,
 that is the backlog for the next agent version (docs/safety-eval.md, "Stress set").
 """
 
@@ -16,7 +16,7 @@ import pytest
 import structlog
 
 from meridian.agents.base import AgentContext
-from meridian.agents.safety.sae_reconciler import SaeReconciler
+from meridian.agents.safety.sae_reconciler import VERSION, SaeReconciler
 from meridian.domain.events import DataCut, Event
 from meridian.platform.agent_settings import SaeReconcilerConfig
 from meridian.platform.clock import FixedClock
@@ -81,8 +81,8 @@ def outcome(spec: dict[str, Any]) -> list[str]:
 @pytest.mark.parametrize("path", CASES, ids=[p.stem for p in CASES])
 def test_stress_case_outcome_is_the_recorded_actual(path: Path) -> None:
     spec = load(path)
-    assert "actual" in spec, f"{path.name}: run it and record actual"
-    assert outcome(spec) == spec["actual"]
+    assert VERSION in spec["actual"], f"{path.name}: run {VERSION} and record its actual"
+    assert outcome(spec) == spec["actual"][VERSION]
 
 
 def test_the_stress_set_covers_what_was_asked() -> None:

@@ -1,15 +1,68 @@
 {
   "case": "followup_new_case_id",
   "description": "The follow-up report was booked as a new case instead of a new version: the initial case has the old outcome, the follow-up case the current one.",
-  "dm": [{"USUBJID": "201-9006-001", "SITEID": "9006"}],
+  "dm": [
+    {
+      "USUBJID": "201-9006-001",
+      "SITEID": "9006"
+    }
+  ],
   "ae": [
-    {"USUBJID": "201-9006-001", "AESEQ": 1, "AETERM": "pneumonia", "AEDECOD": "PNEUMONIA", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-02-03", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"}
+    {
+      "USUBJID": "201-9006-001",
+      "AESEQ": 1,
+      "AETERM": "pneumonia",
+      "AEDECOD": "PNEUMONIA",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-02-03",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    }
   ],
   "safety_cases": [
-    {"CASEID": "SC-ST06A", "USUBJID": "201-9006-001", "SITEID": "9006", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-02-03", "SHOSP": "Y", "OUTCOME": "NOT RECOVERED/NOT RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-04T08:00:00+00:00", "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"},
-    {"CASEID": "SC-ST06B", "USUBJID": "201-9006-001", "SITEID": "9006", "REPORTED_TERM": "pneumonia, follow-up", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-02-03", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-20T08:00:00+00:00", "RECEIPT_DTC": "2025-02-20T09:00:00+00:00"}
+    {
+      "CASEID": "SC-ST06A",
+      "USUBJID": "201-9006-001",
+      "SITEID": "9006",
+      "REPORTED_TERM": "pneumonia",
+      "PREFERRED_TERM": "PNEUMONIA",
+      "ONSET": "2025-02-03",
+      "SHOSP": "Y",
+      "OUTCOME": "NOT RECOVERED/NOT RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-02-04T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-ST06B",
+      "USUBJID": "201-9006-001",
+      "SITEID": "9006",
+      "REPORTED_TERM": "pneumonia, follow-up",
+      "PREFERRED_TERM": "PNEUMONIA",
+      "ONSET": "2025-02-03",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-02-20T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-20T09:00:00+00:00"
+    }
   ],
   "ideal": "One finding: a probable duplicate case in the safety database (SC-ST06B looks like a follow-up of SC-ST06A); no outcome mismatch.",
-  "predicted": ["case_without_clinical_sae:SC-ST06B", "outcome_mismatch:201-9006-001/1"],
-  "actual": ["case_without_clinical_sae:SC-ST06B", "outcome_mismatch:201-9006-001/1"]
+  "predicted": [
+    "case_without_clinical_sae:SC-ST06B",
+    "outcome_mismatch:201-9006-001/1"
+  ],
+  "ideal_findings": [
+    "sae_probable_duplicate:SC-ST06A+SC-ST06B"
+  ],
+  "actual": {
+    "1.0.0": [
+      "case_without_clinical_sae:SC-ST06B",
+      "outcome_mismatch:201-9006-001/1"
+    ],
+    "1.1.0": [
+      "sae_probable_duplicate:SC-ST06A+SC-ST06B"
+    ]
+  }
 }

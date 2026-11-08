@@ -1,14 +1,55 @@
 {
   "case": "recoded_term",
   "description": "MedDRA version change: the clinical database still codes the event to the old preferred term, the safety database recoded it on upversioning. Same subject, onset, outcome and causality.",
-  "dm": [{"USUBJID": "201-9001-001", "SITEID": "9001"}],
+  "dm": [
+    {
+      "USUBJID": "201-9001-001",
+      "SITEID": "9001"
+    }
+  ],
   "ae": [
-    {"USUBJID": "201-9001-001", "AESEQ": 1, "AETERM": "allergic reaction to infusion", "AEDECOD": "HYPERSENSITIVITY", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-03-14", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "PROBABLE"}
+    {
+      "USUBJID": "201-9001-001",
+      "AESEQ": 1,
+      "AETERM": "allergic reaction to infusion",
+      "AEDECOD": "HYPERSENSITIVITY",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-03-14",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "PROBABLE"
+    }
   ],
   "safety_cases": [
-    {"CASEID": "SC-ST01A", "USUBJID": "201-9001-001", "SITEID": "9001", "REPORTED_TERM": "allergic reaction to infusion", "PREFERRED_TERM": "INFUSION RELATED HYPERSENSITIVITY REACTION", "ONSET": "2025-03-14", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "PROBABLE", "AWARE_DTC": "2025-03-14T09:00:00+00:00", "RECEIPT_DTC": "2025-03-14T15:00:00+00:00"}
+    {
+      "CASEID": "SC-ST01A",
+      "USUBJID": "201-9001-001",
+      "SITEID": "9001",
+      "REPORTED_TERM": "allergic reaction to infusion",
+      "PREFERRED_TERM": "INFUSION RELATED HYPERSENSITIVITY REACTION",
+      "ONSET": "2025-03-14",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-03-14T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-03-14T15:00:00+00:00"
+    }
   ],
   "ideal": "One pair; a low-severity note that the preferred terms differ (coding or MedDRA version), not a missing case.",
-  "predicted": ["case_without_clinical_sae:SC-ST01A", "sae_missing_in_safety_db:201-9001-001/1"],
-  "actual": ["case_without_clinical_sae:SC-ST01A", "sae_missing_in_safety_db:201-9001-001/1"]
+  "predicted": [
+    "case_without_clinical_sae:SC-ST01A",
+    "sae_missing_in_safety_db:201-9001-001/1"
+  ],
+  "ideal_findings": [
+    "sae_term_mismatch:201-9001-001/1"
+  ],
+  "actual": {
+    "1.0.0": [
+      "case_without_clinical_sae:SC-ST01A",
+      "sae_missing_in_safety_db:201-9001-001/1"
+    ],
+    "1.1.0": [
+      "sae_term_mismatch:201-9001-001/1"
+    ]
+  }
 }
