@@ -3,7 +3,7 @@ caller may already see (Repository passes only those), with the two compared val
 
 import re
 from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from meridian.api.models import CheckCount, ReconciliationItem, SiteCount
 from meridian.domain import safety as s
@@ -57,14 +57,25 @@ def subject_of(finding: Finding) -> str | None:
     return None
 
 
-def item(finding_id: str, check: str, finding: Finding, status: str) -> ReconciliationItem:
+def item(
+    finding_id: str,
+    check: str,
+    finding: Finding,
+    status: str,
+    case_subjects: Mapping[str, str] | None = None,
+) -> ReconciliationItem:
+    """case_subjects (CASEID to USUBJID) gives the subject of a finding whose evidence names
+    only its case."""
     name = s.check_name(check)
+    subject = None if name == s.LATE_SITE else subject_of(finding)
+    if subject is None and name != s.LATE_SITE and case_subjects:
+        subject = case_subjects.get(case_of(finding) or "")
     left_stat, left_label, right_stat, right_label = PAIRS.get(name, ("", "", "", ""))
     return ReconciliationItem(
         finding_id=finding_id,
         check=name,
         site_id=finding.site_id,
-        subject_id=None if name == s.LATE_SITE else subject_of(finding),
+        subject_id=subject,
         severity=finding.severity,
         status=status,  # type: ignore[arg-type]
         title=finding.title,
@@ -73,6 +84,27 @@ def item(finding_id: str, check: str, finding: Finding, status: str) -> Reconcil
         right_label=right_label,
         right=_display(finding.evidence, right_stat),
     )
+
+
+_CASE = re.compile(r"CASEID=([^;|\s]+)")
+
+
+def needs_case_subject(check: str, finding: Finding) -> bool:
+    """A subject-level finding whose evidence names a case but no subject (a late report).
+    The site-level check has no subject by design."""
+    return (
+        s.check_name(check) != s.LATE_SITE
+        and subject_of(finding) is None
+        and case_of(finding) is not None
+    )
+
+
+def case_of(finding: Finding) -> str | None:
+    for e in finding.evidence:
+        m = _CASE.search(e.selector)
+        if m:
+            return m.group(1)
+    return None
 
 
 def counts(items: Sequence[ReconciliationItem]) -> tuple[list[CheckCount], list[SiteCount]]:
