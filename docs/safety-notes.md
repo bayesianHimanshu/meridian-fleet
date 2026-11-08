@@ -107,3 +107,56 @@ Known failure modes:
   compared.
 - **Case versions and follow-ups** are not modelled: the safety database here holds one
   version per case.
+
+## The matching rule, 1.1
+
+safety.sae_reconciler 1.1.0 replaces the rule above. It was built from the development
+stress set's misses (docs/safety-eval.md). The full rule is in the agent's docstring; in
+short:
+
+1. **Records.** Every input is sorted by its full content first, so the result never
+   depends on export row order. Safety rows are grouped by case id. The latest version (by
+   receipt, then CASE_VERSION) is the case; earlier versions are history. Timeliness is
+   measured on the initial version, the one the 24-hour rule is about.
+2. **Data quality.** A record missing a field it needs for matching (subject, AESEQ,
+   preferred term, an onset that is not even a year) gets sae_data_quality (medium) and is
+   left out of matching. A field needed by one check only (awareness, receipt, an outcome,
+   causality or criteria flag outside the terminology) gets sae_data_quality, and that one
+   check is skipped. Either way the rest of the cut is reconciled.
+3. **Onsets** are intervals: a day, a month (YYYY-MM) or a year (YYYY). The gap is the
+   number of days between the intervals, 0 when they overlap.
+4. **Pairing**, per subject and preferred term, is an optimal assignment. Pairs are allowed
+   within fallback_window_days (default 7). The total is minimised, where
+   `cost(pair) = 1 x gap days + 3 x [outcome differs] + 1 x [causality differs]` and every
+   unpaired record costs more than any allowed pair. Ties go to the lexicographically
+   smallest assignment.
+5. **Left over**, in order:
+   - **Subject typo:** a case with an unenrolled subject and exactly one enrolled subject at
+     its site within edit distance 1 (a transposition counts as 1) that has an unpaired SAE
+     with the same term within the window gives sae_subject_mismatch (high). Two or more
+     candidates give no guess.
+   - **Recoded term:** a subject's only unpaired SAE and only unpaired case, with different
+     terms and onsets within 1 day, give sae_term_mismatch (medium). This is a
+     deterministic stand-in: whether two terms mean the same event is a judgement for the
+     local model in step 3b, not this step.
+   - **Probable duplicate:** an unpaired case with a same-subject, same-term case within the
+     window gives sae_probable_duplicate (medium).
+   - What is still left is a missing case or a case without an SAE, as before.
+6. **Per pair:**
+   - **Onset:** a gap above 1 day is an onset mismatch. A pair through a partial onset that
+     agrees within the tolerance gives an sae_partial_date note (low) instead.
+   - **Outcome and causality** are compared after mapping through config/safety_terms.toml.
+     When either causality side is binary (RELATED, NOT RELATED), the two are compared by
+     class.
+   - **Seriousness criteria:** the six flags are compared where both sides record them
+     (seriousness_criteria_mismatch, medium). The pilot has no AESMIE, so that flag is
+     never compared on its data.
+7. **Evidence** names the clinical record by USUBJID and AESEQ, and the safety record by
+   case id, version and USUBJID.
+
+Known limits of 1.1:
+
+- An excluded record can leave its counterpart as a missing case or an orphan.
+- Groups of more than 12 cases for one subject and term are paired greedily.
+- A subject typo is only recognised when the term also matches.
+- The recoded-term rule pairs on dates, not meaning.
