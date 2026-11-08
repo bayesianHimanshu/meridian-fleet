@@ -11,5 +11,6 @@
     {"CASEID": "SC-ST16B", "USUBJID": "201-9016-002", "SITEID": "9017", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-03-05", "SHOSP": "Y", "OUTCOME": "FATAL", "CAUSALITY": "NONE", "AWARE_DTC": "2025-03-05T09:00:00+00:00", "RECEIPT_DTC": "2025-03-05T12:00:00+00:00"}
   ],
   "ideal": "A data-quality finding for SC-ST16A (awareness not recorded, timeliness cannot be assessed) and the outcome mismatch for 201-9016-002.",
-  "predicted": ["run fails"]
+  "predicted": ["run fails"],
+  "actual": ["run fails: ValueError"]
 }

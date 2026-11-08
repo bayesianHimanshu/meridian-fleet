@@ -10,5 +10,6 @@
     {"CASEID": "SC-ST05A", "CASE_VERSION": 2, "USUBJID": "201-9005-001", "SITEID": "9005", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-02-03", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-04T08:00:00+00:00", "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"}
   ],
   "ideal": "Compare the latest version only: no finding.",
-  "predicted": ["case_without_clinical_sae:SC-ST05A", "outcome_mismatch:201-9005-001/1?"]
+  "predicted": ["case_without_clinical_sae:SC-ST05A", "outcome_mismatch:201-9005-001/1?"],
+  "actual": ["case_without_clinical_sae:SC-ST05A", "outcome_mismatch:201-9005-001/1"]
 }

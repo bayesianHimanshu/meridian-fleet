@@ -11,5 +11,6 @@
     {"CASEID": "SC-ST15B", "USUBJID": "201-9015-002", "SITEID": "9015", "REPORTED_TERM": "nausea", "PREFERRED_TERM": "NAUSEA", "ONSET": "2025-11-03", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "REMOTE", "AWARE_DTC": "2025-11-03T08:00:00+00:00", "RECEIPT_DTC": "2025-11-04T08:01:00+00:00"}
   ],
   "ideal": "One late report (SC-ST15B); no site-level finding (one late case).",
-  "predicted": ["late_sae_report:SC-ST15B"]
+  "predicted": ["late_sae_report:SC-ST15B"],
+  "actual": ["late_sae_report:SC-ST15B"]
 }

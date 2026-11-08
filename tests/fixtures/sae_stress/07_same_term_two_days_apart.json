@@ -11,5 +11,6 @@
     {"CASEID": "SC-ST07B", "USUBJID": "201-9007-001", "SITEID": "9007", "REPORTED_TERM": "second syncope", "PREFERRED_TERM": "SYNCOPE", "ONSET": "2025-04-03", "SHOSP": "Y", "OUTCOME": "NOT RECOVERED/NOT RESOLVED", "CAUSALITY": "POSSIBLE", "AWARE_DTC": "2025-04-03T12:00:00+00:00", "RECEIPT_DTC": "2025-04-03T18:00:00+00:00"}
   ],
   "ideal": "No finding.",
-  "predicted": []
+  "predicted": [],
+  "actual": []
 }

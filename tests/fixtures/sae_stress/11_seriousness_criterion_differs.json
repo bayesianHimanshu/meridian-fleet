@@ -9,5 +9,6 @@
     {"CASEID": "SC-ST11A", "USUBJID": "201-9011-001", "SITEID": "9011", "REPORTED_TERM": "partial seizure", "PREFERRED_TERM": "PARTIAL SEIZURES", "ONSET": "2025-08-21", "SHOSP": "Y", "SLIFE": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "PROBABLE", "AWARE_DTC": "2025-08-21T10:00:00+00:00", "RECEIPT_DTC": "2025-08-21T16:00:00+00:00"}
   ],
   "ideal": "One medium finding: seriousness criteria differ (life-threatening in the safety database only).",
-  "predicted": []
+  "predicted": [],
+  "actual": []
 }

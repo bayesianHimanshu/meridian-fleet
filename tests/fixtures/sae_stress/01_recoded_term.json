@@ -9,5 +9,6 @@
     {"CASEID": "SC-ST01A", "USUBJID": "201-9001-001", "SITEID": "9001", "REPORTED_TERM": "allergic reaction to infusion", "PREFERRED_TERM": "INFUSION RELATED HYPERSENSITIVITY REACTION", "ONSET": "2025-03-14", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "PROBABLE", "AWARE_DTC": "2025-03-14T09:00:00+00:00", "RECEIPT_DTC": "2025-03-14T15:00:00+00:00"}
   ],
   "ideal": "One pair; a low-severity note that the preferred terms differ (coding or MedDRA version), not a missing case.",
-  "predicted": ["case_without_clinical_sae:SC-ST01A", "sae_missing_in_safety_db:201-9001-001/1"]
+  "predicted": ["case_without_clinical_sae:SC-ST01A", "sae_missing_in_safety_db:201-9001-001/1"],
+  "actual": ["case_without_clinical_sae:SC-ST01A", "sae_missing_in_safety_db:201-9001-001/1"]
 }

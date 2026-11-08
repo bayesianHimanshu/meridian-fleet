@@ -11,5 +11,6 @@
     {"CASEID": "SC-ST08B", "USUBJID": "201-9008-001", "SITEID": "9008", "REPORTED_TERM": "syncope", "PREFERRED_TERM": "SYNCOPE", "ONSET": "2025-04-01", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "POSSIBLE", "AWARE_DTC": "2025-04-01T12:00:00+00:00", "RECEIPT_DTC": "2025-04-01T18:00:00+00:00"}
   ],
   "ideal": "Pair AESEQ 1 with SC-ST08B and AESEQ 2 with SC-ST08A; one onset mismatch (2 days) on AESEQ 2.",
-  "predicted": ["onset_mismatch:201-9008-001/2", "outcome_mismatch:201-9008-001/1", "outcome_mismatch:201-9008-001/2"]
+  "predicted": ["onset_mismatch:201-9008-001/2", "outcome_mismatch:201-9008-001/1", "outcome_mismatch:201-9008-001/2"],
+  "actual": ["onset_mismatch:201-9008-001/2", "outcome_mismatch:201-9008-001/1", "outcome_mismatch:201-9008-001/2"]
 }

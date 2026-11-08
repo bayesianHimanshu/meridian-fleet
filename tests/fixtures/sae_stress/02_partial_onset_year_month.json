@@ -9,5 +9,6 @@
     {"CASEID": "SC-ST02A", "USUBJID": "201-9002-001", "SITEID": "9002", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-04-17", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-04-18T10:00:00+00:00", "RECEIPT_DTC": "2025-04-18T12:00:00+00:00"}
   ],
   "ideal": "One pair (the case date lies in the clinical month); a low note that the clinical onset is incomplete.",
-  "predicted": ["case_without_clinical_sae:SC-ST02A", "sae_missing_in_safety_db:201-9002-001/1"]
+  "predicted": ["case_without_clinical_sae:SC-ST02A", "sae_missing_in_safety_db:201-9002-001/1"],
+  "actual": ["case_without_clinical_sae:SC-ST02A", "sae_missing_in_safety_db:201-9002-001/1"]
 }

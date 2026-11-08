@@ -9,5 +9,6 @@
     {"CASEID": "SC-ST14A", "USUBJID": "201-9014-001", "SITEID": "9014", "REPORTED_TERM": "AFib", "PREFERRED_TERM": "  atrial   fibrillation ", "ONSET": "2025-07-01T23:30:00+00:00", "SHOSP": "Y", "OUTCOME": "Recovered/Resolved", "CAUSALITY": "None", "AWARE_DTC": "2025-07-02T07:00:00+00:00", "RECEIPT_DTC": "2025-07-02T09:00:00+00:00"}
   ],
   "ideal": "No finding.",
-  "predicted": []
+  "predicted": [],
+  "actual": []
 }
