@@ -73,7 +73,9 @@ class RuntimeSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    executor: Literal["inprocess", "openshell"] = "inprocess"
+    # openshell by default; inprocess only when asked for, and only for evaluation cuts
+    # ([cuts] operational_executor).
+    executor: Literal["inprocess", "openshell"] = "openshell"
     # The agent image; empty means meridian-agent:<package version>.
     image: str = ""
     exec_timeout_seconds: int = Field(120, ge=1)

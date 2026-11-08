@@ -51,7 +51,6 @@ class ApiContext:
         return cases, with_treatment
 
 
-
 def context(request: Request) -> ApiContext:
     ctx: ApiContext = request.app.state.context
     return ctx

@@ -49,10 +49,11 @@ deviation_categories = [
 screen_failure_rate_mean = 0.3
 screen_failure_concentration = 20.0
 
-# Where agents run. inprocess: in the runner's process (phase 1). openshell: one
-# OpenShell sandbox per run, from the agent image, with policies/<zone>.yaml.
+# Where agents run. openshell (the default): one OpenShell sandbox per run, from the agent
+# image, with policies/<zone>.yaml. inprocess: in the runner's process; only when asked for
+# (--executor inprocess), and never for an operational cut ([cuts] below).
 [runtime]
-executor = "inprocess"
+executor = "openshell"
 image = ""  # empty: meridian-agent:<package version>
 exec_timeout_seconds = 120
 keep_failed = false

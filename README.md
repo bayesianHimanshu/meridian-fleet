@@ -30,15 +30,17 @@ uv run meridian policy render                # policies/*.yaml and profiles/ (co
 uv run meridian sandbox verify               # in process vs sandbox, byte for byte
 uv run meridian sandbox conformance --zone all   # each zone policy in a real sandbox
 uv run meridian sandbox reap                 # delete tracked sandboxes left behind
-uv run meridian agents run --executor openshell
+uv run meridian agents run                   # openshell by default
 uv run pytest -m openshell                   # needs openshell, a gateway and the image
 ```
 
-`[runtime] executor` in config/default.toml picks the default executor (inprocess).
-Operational cuts (`[cuts] operational`, DC-BASE) are processed only by the executor in
-`[cuts] operational_executor` (openshell): the runner refuses any other one for them
-before it records anything. `meridian agents run --evaluation-only` runs evaluation cuts
-alone in process and leaves operational cuts pending.
+`[runtime] executor` in config/default.toml picks the default executor: openshell, so a
+plain `meridian agents run` runs every agent in a sandbox. The in-process executor is used
+only when asked for (`--executor inprocess`), and only for evaluation cuts. Operational cuts
+(`[cuts] operational`, DC-BASE) are processed only by the executor in
+`[cuts] operational_executor` (openshell): the runner refuses any other one for them before
+it records anything. `meridian agents run --executor inprocess --evaluation-only` runs
+evaluation cuts in process and leaves operational cuts pending.
 
 Step 3: the first LLM use. rbqm.narrator explains a finding in plain language for a
 clinical operations reader; detection stays deterministic, and a reply is recorded only if
