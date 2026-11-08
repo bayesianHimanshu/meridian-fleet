@@ -165,11 +165,11 @@ def rbqm_sites(cut: str, repo: Repo, ctx: Context) -> RbqmSites:
 
 
 @router.get("/safety/{cut}/reconciliation", tags=["safety"])
-def safety_reconciliation(cut: str, repo: Repo) -> Reconciliation:
+def safety_reconciliation(cut: str, repo: Repo, ctx: Context) -> Reconciliation:
     """SAE reconciliation of one cut: counts per check and site, and the discrepancies,
     from the findings the caller may see. Subject-level findings reach only the roles in
     their visible_to; for anyone else they are neither listed nor counted."""
-    return repo.reconciliation(cut)
+    return repo.reconciliation(cut, ctx.safety_case_subjects)
 
 
 @router.get("/safety/unblinded-cases", tags=["safety"])

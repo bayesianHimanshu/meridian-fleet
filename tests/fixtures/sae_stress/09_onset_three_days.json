@@ -1,0 +1,14 @@
+{
+  "case": "onset_three_days",
+  "description": "Fallback edge, inside: the case onset is 3 days after the clinical onset.",
+  "dm": [{"USUBJID": "201-9009-001", "SITEID": "9009"}],
+  "ae": [
+    {"USUBJID": "201-9009-001", "AESEQ": 1, "AETERM": "fall", "AEDECOD": "FALL", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-02-10", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST09A", "USUBJID": "201-9009-001", "SITEID": "9009", "REPORTED_TERM": "fall", "PREFERRED_TERM": "FALL", "ONSET": "2025-02-13", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-13T09:00:00+00:00", "RECEIPT_DTC": "2025-02-13T13:00:00+00:00"}
+  ],
+  "ideal": "One onset mismatch (3 days).",
+  "predicted": ["onset_mismatch:201-9009-001/1"],
+  "actual": ["onset_mismatch:201-9009-001/1"]
+}

@@ -1,0 +1,16 @@
+{
+  "case": "missing_awareness",
+  "description": "One case has no awareness date-time (not recorded on the initial report); a second subject at another site has a real outcome mismatch.",
+  "dm": [{"USUBJID": "201-9016-001", "SITEID": "9016"}, {"USUBJID": "201-9016-002", "SITEID": "9017"}],
+  "ae": [
+    {"USUBJID": "201-9016-001", "AESEQ": 1, "AETERM": "fall", "AEDECOD": "FALL", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-03-01", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"},
+    {"USUBJID": "201-9016-002", "AESEQ": 1, "AETERM": "pneumonia", "AEDECOD": "PNEUMONIA", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-03-05", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST16A", "USUBJID": "201-9016-001", "SITEID": "9016", "REPORTED_TERM": "fall", "PREFERRED_TERM": "FALL", "ONSET": "2025-03-01", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "", "RECEIPT_DTC": "2025-03-02T10:00:00+00:00"},
+    {"CASEID": "SC-ST16B", "USUBJID": "201-9016-002", "SITEID": "9017", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-03-05", "SHOSP": "Y", "OUTCOME": "FATAL", "CAUSALITY": "NONE", "AWARE_DTC": "2025-03-05T09:00:00+00:00", "RECEIPT_DTC": "2025-03-05T12:00:00+00:00"}
+  ],
+  "ideal": "A data-quality finding for SC-ST16A (awareness not recorded, timeliness cannot be assessed) and the outcome mismatch for 201-9016-002.",
+  "predicted": ["run fails"],
+  "actual": ["run fails: ValueError"]
+}

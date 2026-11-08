@@ -1,0 +1,14 @@
+{
+  "case": "harmless_text_and_datetime",
+  "description": "Control: the case's preferred term in lower case with extra spaces, a different reported term, and the onset as a late-evening date-time on the same day.",
+  "dm": [{"USUBJID": "201-9014-001", "SITEID": "9014"}],
+  "ae": [
+    {"USUBJID": "201-9014-001", "AESEQ": 1, "AETERM": "irregular heartbeat", "AEDECOD": "ATRIAL FIBRILLATION", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-07-01", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST14A", "USUBJID": "201-9014-001", "SITEID": "9014", "REPORTED_TERM": "AFib", "PREFERRED_TERM": "  atrial   fibrillation ", "ONSET": "2025-07-01T23:30:00+00:00", "SHOSP": "Y", "OUTCOME": "Recovered/Resolved", "CAUSALITY": "None", "AWARE_DTC": "2025-07-02T07:00:00+00:00", "RECEIPT_DTC": "2025-07-02T09:00:00+00:00"}
+  ],
+  "ideal": "No finding.",
+  "predicted": [],
+  "actual": []
+}

@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 from collections import defaultdict
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
@@ -787,9 +787,13 @@ class Repository:
         except (MissingTableError, StudyAccessError, OSError) as exc:
             raise NotFoundError("cut data not available") from exc
 
-    def reconciliation(self, cut_id: str) -> Reconciliation:
+    def reconciliation(
+        self, cut_id: str, case_subjects: Callable[[str], Mapping[str, str]] | None = None
+    ) -> Reconciliation:
         """Current safety.sae_reconciler findings on one cut, as this role may see them:
-        a hidden finding is neither listed nor counted."""
+        a hidden finding is neither listed nor counted. A subject-level item whose evidence
+        names only a case (a late report) gets its subject from case_subjects(cut), the
+        cut's blinded case table, when that is available."""
         snap = self.snapshot()
         cut = next((c for c in snap.cuts.values() if c.cut_id == cut_id), None)
         if cut is None:
@@ -806,12 +810,24 @@ class Repository:
             },
             key=_version,
         )
-        items = [
-            safety_view.item(r.finding_id, r.check, r.finding, snap.status(r.finding_id))
+        rows = [
+            r
             for r in sorted(snap.raised.values(), key=lambda r: r.event.seq)
             if r.cut_id == cut_id
             and r.finding.agent_id == RECONCILER
             and snap.current(r.finding_id)
+        ]
+        subjects: Mapping[str, str] = {}
+        if case_subjects is not None and any(
+            safety_view.needs_case_subject(r.check, r.finding) for r in rows
+        ):
+            try:
+                subjects = case_subjects(cut_id)
+            except MissingTableError, StudyAccessError, OSError:
+                subjects = {}  # no snapshot: the item keeps subject_id None
+        items = [
+            safety_view.item(r.finding_id, r.check, r.finding, snap.status(r.finding_id), subjects)
+            for r in rows
         ]
         by_check, by_site = safety_view.counts(items)
         return Reconciliation(

@@ -82,6 +82,9 @@ max_calls_per_pass = 20
 # queue shows by default; every other cut (null, faulted, holdout, sweep) is evaluation.
 [cuts]
 operational = ["DC-BASE"]
+# Operational cuts are processed in OpenShell sandboxes only: the runner refuses the
+# in-process executor for them (evaluation cuts may use either).
+operational_executor = "openshell"
 
 # The Fleet API (phase 3): `meridian api serve`. Binds to 127.0.0.1 only; identity is
 # development-only (config/people.toml), not authentication.

@@ -1,5 +1,6 @@
 from collections.abc import Iterator, Sequence
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 import pytest
@@ -13,7 +14,7 @@ from meridian.agents.base import (
     make_dedup_key,
 )
 from meridian.agents.registry import AgentRegistry
-from meridian.agents.runner import AgentRunner
+from meridian.agents.runner import AgentRunner, SandboxRequiredError
 from meridian.data.datacut import record_data_cut
 from meridian.data.study_store import StudyReader
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
@@ -134,6 +135,7 @@ def _runner(ledger: SqliteLedger, *agents: FakeAgent) -> AgentRunner:
         clock=FixedClock(T0),
         study_id=STUDY,
         log=structlog.get_logger(),
+        operational_cuts=("DC-BASE",),
     )
 
 
@@ -349,3 +351,82 @@ def test_run_pending_can_be_limited_to_agents_and_cuts(ledger: SqliteLedger) -> 
     assert report.completed == [("rbqm.a", 2)]
     rest = _runner(ledger, a, b).run_pending()
     assert sorted(rest.completed) == [("rbqm.a", 1), ("rbqm.b", 1), ("rbqm.b", 2)]
+
+
+# ---- operational cuts run in a sandbox only
+
+
+class _NamedExecutor:
+    """InProcessExecutor under another name: stands in for the openshell executor."""
+
+    def __init__(self, inner: InProcessExecutor, name: str) -> None:
+        self._inner = inner
+        self.name = name
+
+    def run(self, agent_id: str, trigger: Event, cut_id: str) -> Any:
+        return self._inner.run(agent_id, trigger, cut_id)
+
+    def drain(self) -> None:
+        self._inner.drain()
+
+
+def test_the_in_process_executor_is_refused_for_an_operational_cut(ledger: SqliteLedger) -> None:
+    _cut(ledger, "DC-A")
+    _cut(ledger, "DC-BASE")
+    before = len(ledger.read())
+    runner = _runner(ledger, FakeAgent(sites=["1001"]))
+    with pytest.raises(SandboxRequiredError) as raised:
+        runner.run_pending()
+    message = str(raised.value)
+    assert "DC-BASE" in message
+    assert "openshell" in message
+    assert "inprocess" in message
+    assert "rbqm.fake on DC-BASE" in message
+    # Refused before anything was recorded: not even the evaluation cut ran.
+    assert len(ledger.read()) == before
+    # Evaluation cuts alone may run in process; DC-BASE stays pending.
+    report = runner.run_pending(cuts={"DC-A"})
+    assert len(report.completed) == 1
+    with pytest.raises(SandboxRequiredError):
+        runner.run_pending()
+
+
+def test_the_required_executor_processes_an_operational_cut(ledger: SqliteLedger) -> None:
+    cut = _cut(ledger, "DC-BASE")
+    registry = AgentRegistry()
+    registry.register(FakeAgent(sites=["1001"]), AgentConfig())
+    inner = InProcessExecutor(
+        registry=registry, reader_factory=StubReader, log=structlog.get_logger()
+    )
+    runner = AgentRunner(
+        ledger=ledger,
+        registry=registry,
+        executor=_NamedExecutor(inner, "openshell"),
+        clock=FixedClock(T0),
+        study_id=STUDY,
+        log=structlog.get_logger(),
+        operational_cuts=("DC-BASE",),
+    )
+    assert runner.run_pending().completed == [("rbqm.fake", cut.seq)]
+    (woke,) = [
+        e for e in ledger.read() if isinstance(e, Event) and isinstance(e.payload, ActorWoke)
+    ]
+    assert isinstance(woke.payload, ActorWoke)
+    assert woke.payload.executor == "openshell"
+
+
+def test_the_runner_the_container_builds_refuses_in_process_for_dc_base(tmp_path: Path) -> None:
+    """The rule as configured ([cuts] in config/default.toml), through the container."""
+    from meridian.platform.config import Settings
+    from meridian.platform.container import Container
+
+    settings = Settings(ledger_path=tmp_path / "l.sqlite3")
+    assert settings.cuts.operational == ("DC-BASE",)
+    assert settings.cuts.operational_executor == "openshell"
+    assert settings.runtime.executor == "inprocess"
+    with Container.build(settings, FixedClock(T0)) as c:
+        c.ledger.initialize()
+        _cut(c.ledger, "DC-BASE", study=settings.study_id)
+        with pytest.raises(SandboxRequiredError, match="DC-BASE"):
+            c.agent_runner(structlog.get_logger()).run_pending()
+        assert c.ledger.read(event_types=[EventType.ACTOR_WOKE]) == []

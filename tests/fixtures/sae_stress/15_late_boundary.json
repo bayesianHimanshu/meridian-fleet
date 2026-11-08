@@ -1,0 +1,16 @@
+{
+  "case": "late_boundary",
+  "description": "Two cases at one site: one received exactly 24 hours after awareness, the other 24 hours and 1 minute after.",
+  "dm": [{"USUBJID": "201-9015-001", "SITEID": "9015"}, {"USUBJID": "201-9015-002", "SITEID": "9015"}],
+  "ae": [
+    {"USUBJID": "201-9015-001", "AESEQ": 1, "AETERM": "nausea", "AEDECOD": "NAUSEA", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-11-02", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "REMOTE"},
+    {"USUBJID": "201-9015-002", "AESEQ": 1, "AETERM": "nausea", "AEDECOD": "NAUSEA", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-11-03", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "REMOTE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST15A", "USUBJID": "201-9015-001", "SITEID": "9015", "REPORTED_TERM": "nausea", "PREFERRED_TERM": "NAUSEA", "ONSET": "2025-11-02", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "REMOTE", "AWARE_DTC": "2025-11-02T08:00:00+00:00", "RECEIPT_DTC": "2025-11-03T08:00:00+00:00"},
+    {"CASEID": "SC-ST15B", "USUBJID": "201-9015-002", "SITEID": "9015", "REPORTED_TERM": "nausea", "PREFERRED_TERM": "NAUSEA", "ONSET": "2025-11-03", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "REMOTE", "AWARE_DTC": "2025-11-03T08:00:00+00:00", "RECEIPT_DTC": "2025-11-04T08:01:00+00:00"}
+  ],
+  "ideal": "One late report (SC-ST15B); no site-level finding (one late case).",
+  "predicted": ["late_sae_report:SC-ST15B"],
+  "actual": ["late_sae_report:SC-ST15B"]
+}

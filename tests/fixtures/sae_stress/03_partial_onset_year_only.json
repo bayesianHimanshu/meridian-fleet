@@ -1,0 +1,14 @@
+{
+  "case": "partial_onset_year_only",
+  "description": "The clinical onset is known to the year only (2025); the case has the full date.",
+  "dm": [{"USUBJID": "201-9003-001", "SITEID": "9003"}],
+  "ae": [
+    {"USUBJID": "201-9003-001", "AESEQ": 1, "AETERM": "fainted", "AEDECOD": "SYNCOPE", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "POSSIBLE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST03A", "USUBJID": "201-9003-001", "SITEID": "9003", "REPORTED_TERM": "fainted at home", "PREFERRED_TERM": "SYNCOPE", "ONSET": "2025-06-02", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "POSSIBLE", "AWARE_DTC": "2025-06-03T08:00:00+00:00", "RECEIPT_DTC": "2025-06-03T09:30:00+00:00"}
+  ],
+  "ideal": "One pair (only one syncope SAE for the subject that year); a low note that the clinical onset is incomplete.",
+  "predicted": ["case_without_clinical_sae:SC-ST03A", "sae_missing_in_safety_db:201-9003-001/1"],
+  "actual": ["case_without_clinical_sae:SC-ST03A", "sae_missing_in_safety_db:201-9003-001/1"]
+}

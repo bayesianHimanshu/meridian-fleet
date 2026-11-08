@@ -1,0 +1,14 @@
+{
+  "case": "partial_onset_in_case",
+  "description": "The other way round: the clinical onset is a full date, the initial case gives year and month only.",
+  "dm": [{"USUBJID": "201-9004-001", "SITEID": "9004"}],
+  "ae": [
+    {"USUBJID": "201-9004-001", "AESEQ": 1, "AETERM": "atrial fibrillation", "AEDECOD": "ATRIAL FIBRILLATION", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-05-09", "AEOUT": "RECOVERING/RESOLVING", "AEREL": "NONE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST04A", "USUBJID": "201-9004-001", "SITEID": "9004", "REPORTED_TERM": "AF", "PREFERRED_TERM": "ATRIAL FIBRILLATION", "ONSET": "2025-05", "SHOSP": "Y", "OUTCOME": "RECOVERING/RESOLVING", "CAUSALITY": "NONE", "AWARE_DTC": "2025-05-10T07:00:00+00:00", "RECEIPT_DTC": "2025-05-10T11:00:00+00:00"}
+  ],
+  "ideal": "One pair; a low note that the case onset is incomplete (ask for the full date at follow-up).",
+  "predicted": ["case_without_clinical_sae:SC-ST04A", "sae_missing_in_safety_db:201-9004-001/1"],
+  "actual": ["case_without_clinical_sae:SC-ST04A", "sae_missing_in_safety_db:201-9004-001/1"]
+}

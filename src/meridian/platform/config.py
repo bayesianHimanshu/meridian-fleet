@@ -123,6 +123,9 @@ class CutsSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operational: tuple[str, ...] = ("DC-BASE",)
+    # The only executor that may process an operational cut: the runner refuses any other
+    # (InProcessExecutor runs agent code in this process, outside any sandbox policy).
+    operational_executor: Literal["openshell"] = "openshell"
 
 
 class ApiSettings(BaseModel):

@@ -11,6 +11,7 @@ import structlog
 import typer
 
 from meridian.agents.registry import RegistrationError
+from meridian.agents.runner import SandboxRequiredError
 from meridian.data.cut_writer import CutExistsError
 from meridian.data.fetch import FetchError, fetch
 from meridian.data.ingest import IngestError
@@ -418,8 +419,20 @@ ExecutorOption = Annotated[
 
 
 @agents_app.command("run")
-def agents_run(executor: ExecutorOption = None) -> None:
+def agents_run(
+    executor: ExecutorOption = None,
+    evaluation_only: Annotated[
+        bool,
+        typer.Option(
+            "--evaluation-only",
+            help="Only evaluation cuts (operational cuts stay pending; they need openshell).",
+        ),
+    ] = False,
+) -> None:
     """One runner pass over every pending (agent, DataCut) pair."""
+    from meridian.data.datacut import data_cut_events
+    from meridian.domain.events import DataCut
+
     settings = Settings()
     if executor is not None:
         if executor not in ("inprocess", "openshell"):
@@ -429,8 +442,19 @@ def agents_run(executor: ExecutorOption = None) -> None:
         settings = settings.model_copy(update={"runtime": runtime})
     with Container.build(settings) as c:
         log = _configure_logging(c.clock)
+        cuts = None
+        if evaluation_only:
+            cuts = {
+                e.payload.cut_id
+                for e in data_cut_events(c.ledger, settings.study_id)
+                if isinstance(e.payload, DataCut)
+                and e.payload.cut_id not in settings.cuts.operational
+            }
         try:
-            report = c.agent_runner(log).run_pending()
+            report = c.agent_runner(log).run_pending(cuts=cuts)
+        except SandboxRequiredError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
         except DATA_ERRORS as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=1) from exc
@@ -1000,7 +1024,11 @@ def safety_run(
             if set_name is None
             else set_cuts(settings.ground_truth_dir, _set_name(set_name))
         )
-        report = c.agent_runner(log).run_pending(agents={AGENT_ID}, cuts=set(cuts))
+        try:
+            report = c.agent_runner(log).run_pending(agents={AGENT_ID}, cuts=set(cuts))
+        except SandboxRequiredError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
         typer.echo(
             f"completed {len(report.completed)} run(s) on {len(cuts)} cut(s), failed "
             f"{len(report.failed)}, findings appended {len(report.findings_appended)}"

@@ -54,6 +54,10 @@ class AgentExecutor(Protocol):
         ...
 
 
+class SandboxRequiredError(RuntimeError):
+    """An operational cut is pending and the executor is not the one config requires."""
+
+
 @dataclass(slots=True)
 class RunReport:
     completed: list[tuple[str, int]] = field(default_factory=list)
@@ -72,7 +76,14 @@ class AgentRunner:
         clock: Clock,
         study_id: str,
         log: structlog.typing.FilteringBoundLogger,
+        operational_cuts: Collection[str],
+        operational_executor: str = "openshell",
     ) -> None:
+        """operational_cuts ([cuts] operational) may only be processed by
+        operational_executor ([cuts] operational_executor): run_pending refuses any other
+        executor for them before it records anything."""
+        self._operational = frozenset(operational_cuts)
+        self._operational_executor = operational_executor
         self._ledger = ledger
         self._registry = registry
         self._executor = executor
@@ -118,18 +129,41 @@ class AgentRunner:
             if cuts is None or (isinstance(t.payload, DataCut) and t.payload.cut_id in cuts)
         ]
         done = self._completed()
-        for registered in self._registry.enabled():
-            agent = registered.agent
-            if EventType.DATA_CUT not in agent.subscribes_to:
-                continue
-            if agents is not None and agent.agent_id not in agents:
-                continue
-            for trigger in triggers:
-                if (agent.agent_id, agent.version, trigger.seq) in done:
-                    continue
-                self._run_one(registered, trigger, report)
+        pending = [
+            (registered, trigger)
+            for registered in self._registry.enabled()
+            if EventType.DATA_CUT in registered.agent.subscribes_to
+            and (agents is None or registered.agent.agent_id in agents)
+            for trigger in triggers
+            if (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
+        ]
+        self._require_sandbox(pending)
+        for registered, trigger in pending:
+            self._run_one(registered, trigger, report)
         self._executor.drain()  # a pass ends only when every sandbox is torn down
         return report
+
+    def _require_sandbox(self, pending: list[tuple[RegisteredAgent, Event]]) -> None:
+        """Refuse the whole pass, before any event, if an operational cut is pending and
+        the executor is not the required one."""
+        if self._executor.name == self._operational_executor:
+            return
+        refused = sorted(
+            {
+                (t.payload.cut_id, r.agent.agent_id)
+                for r, t in pending
+                if isinstance(t.payload, DataCut) and t.payload.cut_id in self._operational
+            }
+        )
+        if refused:
+            cuts = sorted({c for c, _ in refused})
+            pairs = ", ".join(f"{a} on {c}" for c, a in refused)
+            raise SandboxRequiredError(
+                f"operational cut(s) {', '.join(cuts)} may only be processed by the "
+                f"{self._operational_executor} executor, not {self._executor.name} "
+                f"([cuts] operational_executor); pending: {pairs}. Nothing was run. Use "
+                f"--executor {self._operational_executor}, or limit the pass to evaluation cuts."
+            )
 
     def _run_one(self, registered: RegisteredAgent, trigger: Event, report: RunReport) -> None:
         agent = registered.agent

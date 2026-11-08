@@ -1,0 +1,16 @@
+{
+  "case": "same_term_two_days_apart_wrong_date",
+  "description": "Two syncope SAEs two days apart; the case of the second event carries the first event's onset date (copied by the site). Its outcome identifies it as the second event. Case ids sort the second event's case first.",
+  "dm": [{"USUBJID": "201-9008-001", "SITEID": "9008"}],
+  "ae": [
+    {"USUBJID": "201-9008-001", "AESEQ": 1, "AETERM": "syncope", "AEDECOD": "SYNCOPE", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-04-01", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "POSSIBLE"},
+    {"USUBJID": "201-9008-001", "AESEQ": 2, "AETERM": "syncope", "AEDECOD": "SYNCOPE", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-04-03", "AEOUT": "NOT RECOVERED/NOT RESOLVED", "AEREL": "POSSIBLE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST08A", "USUBJID": "201-9008-001", "SITEID": "9008", "REPORTED_TERM": "second syncope", "PREFERRED_TERM": "SYNCOPE", "ONSET": "2025-04-01", "SHOSP": "Y", "OUTCOME": "NOT RECOVERED/NOT RESOLVED", "CAUSALITY": "POSSIBLE", "AWARE_DTC": "2025-04-03T12:00:00+00:00", "RECEIPT_DTC": "2025-04-03T18:00:00+00:00"},
+    {"CASEID": "SC-ST08B", "USUBJID": "201-9008-001", "SITEID": "9008", "REPORTED_TERM": "syncope", "PREFERRED_TERM": "SYNCOPE", "ONSET": "2025-04-01", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "POSSIBLE", "AWARE_DTC": "2025-04-01T12:00:00+00:00", "RECEIPT_DTC": "2025-04-01T18:00:00+00:00"}
+  ],
+  "ideal": "Pair AESEQ 1 with SC-ST08B and AESEQ 2 with SC-ST08A; one onset mismatch (2 days) on AESEQ 2.",
+  "predicted": ["onset_mismatch:201-9008-001/2", "outcome_mismatch:201-9008-001/1", "outcome_mismatch:201-9008-001/2"],
+  "actual": ["onset_mismatch:201-9008-001/2", "outcome_mismatch:201-9008-001/1", "outcome_mismatch:201-9008-001/2"]
+}

@@ -95,3 +95,85 @@ differences of these three kinds are absorbed. It does not show how the rule far
 safety data: recoded terms, partial dates, case follow-ups, or two same-term events of one
 subject close together (docs/safety-notes.md lists these failure modes, and none of them is
 in the set).
+
+## Stress set (written independently of the generator)
+
+The scores above show that the code follows the rule. The stress set asks whether the rule
+is the right one. It has 16 hand-written pairs of clinical AE rows and safety cases in
+`tests/fixtures/sae_stress/`. None was produced by the generator or built with its
+normalisation code. For each pair, the ideal outcome (what a safety reviewer would want)
+and the outcome predicted under the current rule of safety.sae_reconciler 1.0.0 were
+written below and committed before the first run. Record keys are subject/AESEQ or case id.
+`?` marks a finding that may or may not appear.
+
+| # | Case | Ideal | Predicted under 1.0.0 |
+|---|---|---|---|
+| 1 | Recoded preferred term (MedDRA version change) | one pair; low note: terms differ | missing case 201-9001-001/1 + case without SAE SC-ST01A |
+| 2 | Clinical onset year and month only | one pair; low note: clinical onset incomplete | missing case 201-9002-001/1 + case without SAE SC-ST02A |
+| 3 | Clinical onset year only | one pair; low note: clinical onset incomplete | missing case 201-9003-001/1 + case without SAE SC-ST03A |
+| 4 | Case onset year and month only | one pair; low note: case onset incomplete | missing case 201-9004-001/1 + case without SAE SC-ST04A |
+| 5 | Follow-up version of the same case id updates the outcome | latest version only: no finding | case without SAE SC-ST05A; outcome mismatch 201-9005-001/1? (which version pairs is not defined) |
+| 6 | Follow-up booked as a new case id | one finding: probable duplicate case | outcome mismatch 201-9006-001/1 + case without SAE SC-ST06B |
+| 7 | Two syncope SAEs 2 days apart, correct cases (control) | no finding | no finding |
+| 8 | Two syncope SAEs 2 days apart, second case carries the first date | AESEQ 1 with SC-ST08B, AESEQ 2 with SC-ST08A; onset mismatch on AESEQ 2 | wrong pairing: outcome mismatch on AESEQ 1 and 2, onset mismatch on AESEQ 2 |
+| 9 | Onset 3 days apart | onset mismatch | onset mismatch 201-9009-001/1 |
+| 10 | Onset 4 days apart | onset mismatch | missing case 201-9010-001/1 + case without SAE SC-ST10A |
+| 11 | Seriousness criterion differs (life-threatening in the case only) | medium finding: criteria differ | no finding |
+| 12 | Subject id typo in the case (021 for 012) | one finding: case subject not enrolled, probably 201-9012-012 | missing case 201-9012-012/1 + case without SAE SC-ST12A |
+| 13 | Outcome and causality in another vocabulary (RECOVERED, RELATED) | no finding | outcome mismatch + causality mismatch 201-9013-001/1 |
+| 14 | Term case and spaces, reported term, same-day date-time (control) | no finding | no finding |
+| 15 | Receipt exactly 24 h and 24 h 1 min after awareness | late SC-ST15B only; no site finding | late SC-ST15B only |
+| 16 | A case without an awareness date-time, and a real outcome mismatch elsewhere | data-quality finding for SC-ST16A; outcome mismatch 201-9016-002/1 | the run fails (the empty date-time cannot be parsed), so no finding at all for the cut |
+
+### Stress set results
+
+Run on 2026-11-08, after the table above was committed, with safety.sae_reconciler 1.0.0
+unchanged (`tests/unit/test_sae_stress.py`; each fixture now records `actual`, and the test
+pins it). The agent ran in process on in-memory tables: the stress set tests the rule, not
+the sandbox.
+
+| # | Case | Ideal | Predicted | Actual | Ideal met |
+|---|---|---|---|---|---|
+| 1 | Recoded preferred term | one pair; low note | missing + orphan | missing 201-9001-001/1 + orphan SC-ST01A | no |
+| 2 | Clinical onset year and month | one pair; low note | missing + orphan | missing 201-9002-001/1 + orphan SC-ST02A | no |
+| 3 | Clinical onset year only | one pair; low note | missing + orphan | missing 201-9003-001/1 + orphan SC-ST03A | no |
+| 4 | Case onset year and month | one pair; low note | missing + orphan | missing 201-9004-001/1 + orphan SC-ST04A | no |
+| 5 | Follow-up version, same case id | no finding | orphan SC-ST05A; outcome mismatch? | orphan SC-ST05A + outcome mismatch 201-9005-001/1 | no |
+| 6 | Follow-up booked as a new case | probable duplicate | outcome mismatch + orphan | outcome mismatch 201-9006-001/1 + orphan SC-ST06B | no |
+| 7 | Same term 2 days apart (control) | none | none | none | yes |
+| 8 | Same term 2 days apart, copied date | onset mismatch on AESEQ 2 | wrong pairing, 3 findings | onset mismatch /2, outcome mismatch /1 and /2 | no |
+| 9 | Onset 3 days apart | onset mismatch | onset mismatch | onset mismatch 201-9009-001/1 | yes |
+| 10 | Onset 4 days apart | onset mismatch | missing + orphan | missing 201-9010-001/1 + orphan SC-ST10A | no |
+| 11 | Seriousness criterion differs | criteria differ | none | none | no |
+| 12 | Subject id typo | not enrolled, probably 201-9012-012 | missing + orphan | missing 201-9012-012/1 + orphan SC-ST12A | no |
+| 13 | Other outcome and causality vocabulary | none | 2 mismatches | outcome + causality mismatch 201-9013-001/1 | no |
+| 14 | Harmless text and date-time (control) | none | none | none | yes |
+| 15 | Receipt at 24 h and 24 h 1 min | late SC-ST15B only | late SC-ST15B | late SC-ST15B | yes |
+| 16 | Missing awareness date-time | data-quality finding + outcome mismatch | run fails | run fails (ValueError) | no |
+
+Every prediction held: the rule does what it says. The ideal outcome was met in 4 of 16
+cases, three of them controls. For case 5, which version pairs depends on the export's row
+order: version 1 comes first in the file, so it pairs. With the rows reversed, only the
+orphan remains.
+
+Backlog for safety.sae_reconciler 1.1 (from the misses, highest risk first):
+
+1. **A malformed date-time fails the whole run** (16). One empty AWARE_DTC loses every
+   finding of the cut. Parse per case, and raise a data-quality finding instead.
+2. **Case versions** (5, 6). Reconcile the latest version of a case only, and flag probable
+   duplicate cases (same subject, term and onset).
+3. **Pairing by content, not only by date** (8, 10). Within the window, prefer the pairing
+   that agrees on outcome and causality. Beyond the window, pair a lone SAE with its lone
+   case of the same subject and term as an onset mismatch, not two high findings.
+4. **Partial dates** (2, 3, 4). Treat YYYY-MM and YYYY as compatible with any day inside
+   them when the pair is otherwise unique, and add a low "onset incomplete" note.
+5. **Subject id typos** (12). For a case whose subject is not enrolled, look for the same
+   site, term and onset under a near subject id (one transposition or one digit).
+6. **Coding** (1). Use the MedDRA hierarchy (same HLT or LLT) or the verbatim term as a
+   fallback key, with a low "terms differ" note.
+7. **Vocabularies** (13). Map outcome and causality to one controlled vocabulary before
+   comparing; the mapping (for example PROBABLE as related) is a sponsor decision.
+8. **Seriousness criteria** (11). Compare them, as a medium finding.
+
+Each of these is measured again on this set by the next version, with new ideal and
+predicted columns written before its run.
