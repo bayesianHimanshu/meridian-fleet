@@ -105,3 +105,13 @@ use:
   canonical form of its scenario (parsed, sorted, normalised) rather than from the raw file
   bytes or a readable name, and re-issue the sweep cuts under such ids, keeping the old
   names only in ground truth.
+
+## Subjects of late-case reconciliation items
+
+A late report's evidence (safety.sae_reconciler 1.0.0) names its case only. For such an
+item, GET /safety/{cut}/reconciliation takes the subject id from the cut's blinded safety
+case table (CASEID to USUBJID), and only for findings the caller may already see. That
+means the roles in the finding's visible_to: medical_monitor, clinical_ops_lead and
+qa_auditor. Without the snapshot the item is served with subject_id null. The site-level
+finding never has a subject. The next agent version should put USUBJID in the case
+selector, so the ledger record carries it too.

@@ -35,6 +35,10 @@ uv run pytest -m openshell                   # needs openshell, a gateway and th
 ```
 
 `[runtime] executor` in config/default.toml picks the default executor (inprocess).
+Operational cuts (`[cuts] operational`, DC-BASE) are processed only by the executor in
+`[cuts] operational_executor` (openshell): the runner refuses any other one for them
+before it records anything. `meridian agents run --evaluation-only` runs evaluation cuts
+alone in process and leaves operational cuts pending.
 
 Step 3: the first LLM use. rbqm.narrator explains a finding in plain language for a
 clinical operations reader; detection stays deterministic, and a reply is recorded only if
