@@ -39,5 +39,10 @@
   "ideal": [
     "sae_data_quality:SC-HO15A#OUTCOME"
   ],
-  "ideal_note": "One data-quality finding for the outcome; no outcome mismatch."
+  "ideal_note": "One data-quality finding for the outcome; no outcome mismatch.",
+  "actual": {
+    "1.1.0": [
+      "sae_data_quality:SC-HO15A#OUTCOME"
+    ]
+  }
 }

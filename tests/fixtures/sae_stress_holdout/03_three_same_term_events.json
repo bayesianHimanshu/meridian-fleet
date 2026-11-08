@@ -87,5 +87,10 @@
   "ideal": [
     "onset_mismatch:201-9203-005/5"
   ],
-  "ideal_note": "Pair each event with its case by content; one onset mismatch (4 days) on AESEQ 5."
+  "ideal_note": "Pair each event with its case by content; one onset mismatch (4 days) on AESEQ 5.",
+  "actual": {
+    "1.1.0": [
+      "onset_mismatch:201-9203-005/5"
+    ]
+  }
 }

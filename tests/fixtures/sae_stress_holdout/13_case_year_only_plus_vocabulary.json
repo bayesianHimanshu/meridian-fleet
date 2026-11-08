@@ -39,5 +39,10 @@
   "ideal": [
     "sae_partial_date:201-9213-007/1"
   ],
-  "ideal_note": "One partial-date note; no mismatch."
+  "ideal_note": "One partial-date note; no mismatch.",
+  "actual": {
+    "1.1.0": [
+      "sae_partial_date:201-9213-007/1"
+    ]
+  }
 }

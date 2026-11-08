@@ -56,5 +56,12 @@
     "sae_missing_in_safety_db:201-9212-019/1",
     "case_without_clinical_sae:SC-HO12A"
   ],
-  "ideal_note": "No guess: both SAEs without a case and the case without an SAE (its evidence names the unenrolled subject)."
+  "ideal_note": "No guess: both SAEs without a case and the case without an SAE (its evidence names the unenrolled subject).",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO12A",
+      "sae_missing_in_safety_db:201-9212-011/1",
+      "sae_missing_in_safety_db:201-9212-019/1"
+    ]
+  }
 }

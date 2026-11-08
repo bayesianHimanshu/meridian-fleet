@@ -225,3 +225,91 @@ Written before 1.1 is first run on the sealed set. "Ideal met" means the agent's
 The set is run once (`tests/unit/test_sae_stress_holdout.py`, added with the results), and
 the agent is not changed after it. Misses go to the backlog for the local-model step (3b) or
 a later version.
+
+## Results for 1.1.0
+
+Run on 2026-11-08 with safety.sae_reconciler 1.1.0. The sandbox pass ran 101 runs in
+OpenShell sandboxes, none failed, on image sha256:35a8e1f2...: DC-BASE, the 70 generated
+cuts and the 30 earlier cuts. 1.0.0 findings are superseded by the matching 1.1.0 findings
+(same cut and check) or retired.
+
+### Regression on generated cuts (not new evidence)
+
+| Check | dev P / R | dev TP/FP/FN | holdout P / R | holdout TP/FP/FN |
+|---|---|---|---|---|
+| sae_missing_in_safety_db | 1.00 / 1.00 | 8/0/0 | 1.00 / 1.00 | 8/0/0 |
+| case_without_clinical_sae | 1.00 / 1.00 | 8/0/0 | 1.00 / 1.00 | 8/0/0 |
+| onset_mismatch | 1.00 / 1.00 | 8/0/0 | 1.00 / 1.00 | 9/0/0 |
+| outcome_mismatch | 1.00 / 1.00 | 9/0/0 | 1.00 / 1.00 | 8/0/0 |
+| causality_mismatch | 1.00 / 1.00 | 8/0/0 | 1.00 / 1.00 | 8/0/0 |
+| late_sae_report | 1.00 / 1.00 | 28/0/0 | 1.00 / 1.00 | 32/0/0 |
+| sae_late_reporting_site | 1.00 / 1.00 | 8/0/0 | 1.00 / 1.00 | 8/0/0 |
+| the six 1.1 checks | n/a | 0/0/0 | n/a | 0/0/0 |
+
+The clean cuts (10) and DC-BASE have 0 findings each. No harmless difference was flagged.
+None of the 1.1 checks fired on generated data: the generator plants none of those faults.
+
+### Development stress set (16 cases)
+
+1.1.0 meets the ideal on 16 of 16, against 4 of 16 for 1.0.0. These cases shaped 1.1, so
+the result says the backlog was implemented, not that the rule generalises.
+
+| # | Case | Ideal (1.1 vocabulary) | Actual 1.1.0 |
+|---|---|---|---|
+| 1 | Recoded term | term mismatch /1 | same |
+| 2 to 4 | Partial onsets | partial-date note /1 | same |
+| 5 | Follow-up version | none | none, in either row order |
+| 6 | Follow-up as new case | duplicate SC-ST06A+SC-ST06B | same |
+| 7 | Same term 2 days apart (control) | none | none |
+| 8 | Copied date | onset mismatch /2 | same |
+| 9, 10 | Onset 3 and 4 days | onset mismatch | same |
+| 11 | Criteria | criteria mismatch | same |
+| 12 | Subject typo | subject mismatch SC-ST12A | same |
+| 13 | Vocabulary | none | none |
+| 14 | Harmless (control) | none | none |
+| 15 | Late boundary | late SC-ST15B | same |
+| 16 | Missing awareness | data quality SC-ST16A#AWARE_DTC + outcome mismatch | same |
+
+### Sealed holdout: the single run
+
+| # | Case | Control | Ideal | Actual 1.1.0 | Met |
+|---|---|---|---|---|---|
+| 1 | Partial month plus follow-up | | partial date /2 | same | yes |
+| 2 | Typo plus recoded term | | subject mismatch SC-HO02A | missing 201-9202-019/1 + orphan SC-HO02A | no |
+| 3 | Three same-term events | | onset mismatch /5 | same | yes |
+| 4 | Vocabulary plus real outcome change | | outcome mismatch | same | yes |
+| 5 | Vocabulary only | yes | none | none | yes |
+| 6 | Two terms same day | yes | none | none | yes |
+| 7 | Harmless, receipt at 23 h 59 | yes | none | none | yes |
+| 8 | Bad records | | 2 data quality | 2 data quality + orphan SC-HO08A | no |
+| 9 | Duplicate, onset shifted | | duplicate | same | yes |
+| 10 | Onset 6 and 9 days | | 2 onset mismatches | onset mismatch (6 days); missing + orphan (9 days) | no |
+| 11 | Death flag | | criteria mismatch | same | yes |
+| 12 | Typo, two candidates | | missing x2 + orphan | same | yes |
+| 13 | Case year only plus vocabulary | | partial date | same | yes |
+| 14 | Recoded term, second SAE unmatched | | term mismatch /1 + missing /2 | missing /1, /2 + orphan | no |
+| 15 | Unknown outcome | | data quality OUTCOME | same | yes |
+| 16 | Identical follow-up (control) | yes | none | none | yes |
+
+| Target | Result | Met |
+|---|---|---|
+| Controls with the ideal met: 4 of 4 | 4 of 4 | yes |
+| Non-control cases with the ideal met: at least 10 of 12 | 8 of 12 | **no** |
+| Cases where the run raises: 0 | 0 | yes |
+
+The agent was not changed after this run. The four misses are the backlog:
+
+1. **Typo plus recoded term** (2). The subject-typo rule requires the same term, so two
+   faults on one record are not recognised. A candidate for the local model (3b): a
+   near-subject case whose term differs needs a judgement on meaning.
+2. **Excluded record leaves its counterpart orphaned** (8). When a clinical SAE is left out
+   for a bad onset, its only case of the same term is reported as an orphan too. Next
+   version: suppress the orphan when the same subject has an excluded record of the same
+   term, and say so in the data-quality finding.
+3. **Lone pairs beyond the window** (10). A subject's only SAE and only case of one term
+   9 days apart read as missing plus orphan. Next version: pair a lone same-term SAE and
+   case at any distance as an onset mismatch, or widen the window when both sides are
+   alone.
+4. **Recoded term when another SAE is unmatched** (14). The rule needs exactly one
+   unmatched SAE. Next version: pair the closest different-term SAE within a day, if it is
+   unique. Deciding that two terms mean one event is again a local-model candidate.

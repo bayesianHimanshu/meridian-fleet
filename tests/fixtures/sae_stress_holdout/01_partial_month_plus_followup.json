@@ -54,5 +54,10 @@
   "ideal": [
     "sae_partial_date:201-9201-003/2"
   ],
-  "ideal_note": "Pair through the partial date with the latest version; a low partial-date note. No outcome mismatch (version 1 is history), not late (timeliness is the initial report's)."
+  "ideal_note": "Pair through the partial date with the latest version; a low partial-date note. No outcome mismatch (version 1 is history), not late (timeliness is the initial report's).",
+  "actual": {
+    "1.1.0": [
+      "sae_partial_date:201-9201-003/2"
+    ]
+  }
 }

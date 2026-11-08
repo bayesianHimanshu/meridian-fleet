@@ -51,5 +51,12 @@
     "sae_term_mismatch:201-9214-012/1",
     "sae_missing_in_safety_db:201-9214-012/2"
   ],
-  "ideal_note": "A term mismatch for AESEQ 1 and a missing case for AESEQ 2."
+  "ideal_note": "A term mismatch for AESEQ 1 and a missing case for AESEQ 2.",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO14A",
+      "sae_missing_in_safety_db:201-9214-012/1",
+      "sae_missing_in_safety_db:201-9214-012/2"
+    ]
+  }
 }

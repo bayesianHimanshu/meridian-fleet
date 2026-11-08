@@ -41,5 +41,10 @@
   "ideal": [
     "seriousness_criteria_mismatch:201-9211-001/1"
   ],
-  "ideal_note": "One seriousness criteria mismatch."
+  "ideal_note": "One seriousness criteria mismatch.",
+  "actual": {
+    "1.1.0": [
+      "seriousness_criteria_mismatch:201-9211-001/1"
+    ]
+  }
 }

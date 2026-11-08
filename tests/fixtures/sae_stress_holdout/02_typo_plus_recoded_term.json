@@ -43,5 +43,11 @@
   "ideal": [
     "sae_subject_mismatch:SC-HO02A"
   ],
-  "ideal_note": "One finding: the case's subject is not enrolled and is probably 201-9202-019; the term difference belongs in its evidence. Not a missing case plus an orphan."
+  "ideal_note": "One finding: the case's subject is not enrolled and is probably 201-9202-019; the term difference belongs in its evidence. Not a missing case plus an orphan.",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO02A",
+      "sae_missing_in_safety_db:201-9202-019/1"
+    ]
+  }
 }

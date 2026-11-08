@@ -68,5 +68,12 @@
     "onset_mismatch:201-9210-002/1",
     "onset_mismatch:201-9210-003/1"
   ],
-  "ideal_note": "Two onset mismatches: each is the subject's only SAE and only case of that term."
+  "ideal_note": "Two onset mismatches: each is the subject's only SAE and only case of that term.",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO10B",
+      "onset_mismatch:201-9210-002/1",
+      "sae_missing_in_safety_db:201-9210-003/1"
+    ]
+  }
 }

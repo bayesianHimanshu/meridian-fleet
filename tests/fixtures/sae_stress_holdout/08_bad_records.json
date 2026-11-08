@@ -68,5 +68,12 @@
     "sae_data_quality:201-9208-004/1#AESTDTC",
     "sae_data_quality:SC-HO08B#RECEIPT_DTC"
   ],
-  "ideal_note": "Two data-quality findings, one per bad field; nothing else (the cellulitis case is the subject's only one, so it is not an orphan to a reviewer)."
+  "ideal_note": "Two data-quality findings, one per bad field; nothing else (the cellulitis case is the subject's only one, so it is not an orphan to a reviewer).",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO08A",
+      "sae_data_quality:201-9208-004/1#AESTDTC",
+      "sae_data_quality:SC-HO08B#RECEIPT_DTC"
+    ]
+  }
 }

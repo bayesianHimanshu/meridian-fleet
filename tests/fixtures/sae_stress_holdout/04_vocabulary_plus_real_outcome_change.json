@@ -39,5 +39,10 @@
   "ideal": [
     "outcome_mismatch:201-9204-011/1"
   ],
-  "ideal_note": "One outcome mismatch; no causality mismatch."
+  "ideal_note": "One outcome mismatch; no causality mismatch.",
+  "actual": {
+    "1.1.0": [
+      "outcome_mismatch:201-9204-011/1"
+    ]
+  }
 }
