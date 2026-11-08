@@ -1,0 +1,13 @@
+{
+  "case": "vocabulary_differs",
+  "description": "Same outcome and causality in another vocabulary: the safety database stores outcome RECOVERED and causality RELATED (binary sponsor assessment), the clinical database RECOVERED/RESOLVED and PROBABLE.",
+  "dm": [{"USUBJID": "201-9013-001", "SITEID": "9013"}],
+  "ae": [
+    {"USUBJID": "201-9013-001", "AESEQ": 1, "AETERM": "dizziness", "AEDECOD": "DIZZINESS", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-10-01", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "PROBABLE"}
+  ],
+  "safety_cases": [
+    {"CASEID": "SC-ST13A", "USUBJID": "201-9013-001", "SITEID": "9013", "REPORTED_TERM": "dizzy", "PREFERRED_TERM": "DIZZINESS", "ONSET": "2025-10-01", "SHOSP": "Y", "OUTCOME": "RECOVERED", "CAUSALITY": "RELATED", "AWARE_DTC": "2025-10-01T09:00:00+00:00", "RECEIPT_DTC": "2025-10-01T12:00:00+00:00"}
+  ],
+  "ideal": "No finding: the values agree once both vocabularies are mapped (PROBABLE counts as related).",
+  "predicted": ["causality_mismatch:201-9013-001/1", "outcome_mismatch:201-9013-001/1"]
+}
