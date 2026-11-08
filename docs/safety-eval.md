@@ -210,3 +210,18 @@ the end. The ideal outcome is in the 1.1 check vocabulary:
 | 14 | Recoded term for a subject with a second SAE without a case | no | sae_term_mismatch 201-9214-012/1, missing 201-9214-012/2 |
 | 15 | Case outcome outside any terminology | no | sae_data_quality SC-HO15A#OUTCOME |
 | 16 | Stroke with sequelae; identical follow-up version three weeks later | yes | none |
+
+### Targets for 1.1 on the sealed holdout
+
+Written before 1.1 is first run on the sealed set. "Ideal met" means the agent's findings
+(check and record) are exactly the ideal set in the table above.
+
+| Measure | Target |
+|---|---|
+| Controls (4) with the ideal met | 4 of 4 |
+| Non-control cases (12) with the ideal met | at least 10 of 12 |
+| Cases where the run raises | 0 |
+
+The set is run once (`tests/unit/test_sae_stress_holdout.py`, added with the results), and
+the agent is not changed after it. Misses go to the backlog for the local-model step (3b) or
+a later version.
