@@ -1,0 +1,55 @@
+{
+  "case": "recoded_term_two_unmatched",
+  "control": false,
+  "description": "Recoded term (DRUG HYPERSENSITIVITY for HYPERSENSITIVITY, one day apart) for a subject who also has a second serious AE with no case at all.",
+  "dm": [
+    {
+      "USUBJID": "201-9214-012",
+      "SITEID": "9214"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9214-012",
+      "AESEQ": 1,
+      "AETERM": "hypersensitivity",
+      "AEDECOD": "HYPERSENSITIVITY",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-06-01",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "PROBABLE"
+    },
+    {
+      "USUBJID": "201-9214-012",
+      "AESEQ": 2,
+      "AETERM": "nausea",
+      "AEDECOD": "NAUSEA",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-06-20",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO14A",
+      "USUBJID": "201-9214-012",
+      "SITEID": "9214",
+      "REPORTED_TERM": "drug hypersensitivity",
+      "PREFERRED_TERM": "DRUG HYPERSENSITIVITY",
+      "ONSET": "2025-06-02",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-06-02T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-06-02T11:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "sae_term_mismatch:201-9214-012/1",
+    "sae_missing_in_safety_db:201-9214-012/2"
+  ],
+  "ideal_note": "A term mismatch for AESEQ 1 and a missing case for AESEQ 2."
+}

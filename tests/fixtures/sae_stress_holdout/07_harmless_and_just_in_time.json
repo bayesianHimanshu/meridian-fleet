@@ -1,0 +1,41 @@
+{
+  "case": "harmless_and_just_in_time",
+  "control": true,
+  "description": "Control: preferred term in lower case with a trailing space, outcome in lower case, onset as a date-time, receipt 23 hours 59 minutes after awareness.",
+  "dm": [
+    {
+      "USUBJID": "201-9207-001",
+      "SITEID": "9207"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9207-001",
+      "AESEQ": 4,
+      "AETERM": "dehydration",
+      "AEDECOD": "DEHYDRATION",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-09-30",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO07A",
+      "USUBJID": "201-9207-001",
+      "SITEID": "9207",
+      "REPORTED_TERM": "dry, dizzy",
+      "PREFERRED_TERM": "dehydration ",
+      "ONSET": "2025-09-30T06:15:00+00:00",
+      "SHOSP": "Y",
+      "OUTCOME": "recovered/resolved",
+      "CAUSALITY": "none",
+      "AWARE_DTC": "2025-09-30T10:00:00+00:00",
+      "RECEIPT_DTC": "2025-10-01T09:59:00+00:00"
+    }
+  ],
+  "ideal": [],
+  "ideal_note": "No finding."
+}

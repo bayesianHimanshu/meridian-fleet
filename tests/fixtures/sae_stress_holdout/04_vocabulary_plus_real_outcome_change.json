@@ -1,0 +1,43 @@
+{
+  "case": "vocabulary_plus_real_outcome_change",
+  "control": false,
+  "description": "The case uses other words for causality (Possibly related for POSSIBLE) and a different outcome that is a real change (Fatal against RECOVERING/RESOLVING).",
+  "dm": [
+    {
+      "USUBJID": "201-9204-011",
+      "SITEID": "9204"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9204-011",
+      "AESEQ": 1,
+      "AETERM": "chest pain",
+      "AEDECOD": "CHEST PAIN",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-02-17",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "POSSIBLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO04A",
+      "USUBJID": "201-9204-011",
+      "SITEID": "9204",
+      "REPORTED_TERM": "chest pain",
+      "PREFERRED_TERM": "CHEST PAIN",
+      "ONSET": "2025-02-17",
+      "SHOSP": "Y",
+      "OUTCOME": "Fatal",
+      "CAUSALITY": "Possibly related",
+      "AWARE_DTC": "2025-02-17T11:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-17T19:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "outcome_mismatch:201-9204-011/1"
+  ],
+  "ideal_note": "One outcome mismatch; no causality mismatch."
+}

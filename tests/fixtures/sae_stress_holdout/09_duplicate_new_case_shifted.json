@@ -1,0 +1,56 @@
+{
+  "case": "duplicate_new_case_shifted",
+  "control": false,
+  "description": "A follow-up booked as a new case, with an onset one day later and the reporter's words changed; its outcome is newer.",
+  "dm": [
+    {
+      "USUBJID": "201-9209-008",
+      "SITEID": "9209"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9209-008",
+      "AESEQ": 1,
+      "AETERM": "deep vein thrombosis",
+      "AEDECOD": "DEEP VEIN THROMBOSIS",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-04-20",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "POSSIBLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO09A",
+      "USUBJID": "201-9209-008",
+      "SITEID": "9209",
+      "REPORTED_TERM": "DVT",
+      "PREFERRED_TERM": "DEEP VEIN THROMBOSIS",
+      "ONSET": "2025-04-20",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-04-20T12:00:00+00:00",
+      "RECEIPT_DTC": "2025-04-21T08:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-HO09B",
+      "USUBJID": "201-9209-008",
+      "SITEID": "9209",
+      "REPORTED_TERM": "DVT left leg, follow-up",
+      "PREFERRED_TERM": "DEEP VEIN THROMBOSIS",
+      "ONSET": "2025-04-21",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-05-02T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-05-02T10:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "sae_probable_duplicate:SC-HO09A+SC-HO09B"
+  ],
+  "ideal_note": "One probable duplicate; no outcome mismatch and no orphan."
+}

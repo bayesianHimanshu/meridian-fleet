@@ -177,3 +177,36 @@ Backlog for safety.sae_reconciler 1.1 (from the misses, highest risk first):
 
 Each of these is measured again on this set by the next version, with new ideal and
 predicted columns written before its run.
+
+## Sealed holdout stress set (for 1.1)
+
+The 16 cases above are now development data: they shaped the 1.1 backlog. A second set of
+16 hand-written cases is in `tests/fixtures/sae_stress_holdout/`. It covers the same
+failure families with different values and in combinations, and 4 of its cases are clean
+controls. It was written and committed before any 1.1 code, and 1.1 is run on it once, at
+the end. The ideal outcome is in the 1.1 check vocabulary:
+
+- sae_data_quality: record `<record>#<FIELD>`;
+- sae_probable_duplicate: record `<case>+<case>`;
+- sae_partial_date, seriousness_criteria_mismatch and sae_term_mismatch: the clinical
+  record;
+- sae_subject_mismatch: the case.
+
+| # | Case | Control | Ideal |
+|---|---|---|---|
+| 1 | Clinical onset year-month; follow-up version (listed first) updates outcome | no | sae_partial_date 201-9201-003/2 |
+| 2 | Subject typo (one digit) plus recoded term | no | sae_subject_mismatch SC-HO02A |
+| 3 | Three seizure SAEs; one case dated 4 days late, next to another event | no | onset_mismatch 201-9203-005/5 |
+| 4 | Causality in other words plus a real outcome change | no | outcome_mismatch 201-9204-011/1 |
+| 5 | Outcome and causality in other words only | yes | none |
+| 6 | Two different SAEs of one subject on the same day | yes | none |
+| 7 | Term case and space, date-time onset, receipt at 23 h 59 min | yes | none |
+| 8 | Clinical onset empty; another case's receipt in a non-ISO format | no | sae_data_quality 201-9208-004/1#AESTDTC, SC-HO08B#RECEIPT_DTC |
+| 9 | Follow-up booked as a new case, onset one day later | no | sae_probable_duplicate SC-HO09A+SC-HO09B |
+| 10 | Onset 6 days apart; onset 9 days apart (lone pairs) | no | onset_mismatch 201-9210-002/1, 201-9210-003/1 |
+| 11 | Death flag set in the clinical database only | no | seriousness_criteria_mismatch 201-9211-001/1 |
+| 12 | Subject typo with two candidate subjects | no | missing 201-9212-011/1, missing 201-9212-019/1, case without SAE SC-HO12A |
+| 13 | Case onset year only, plus causality and outcome in other words | no | sae_partial_date 201-9213-007/1 |
+| 14 | Recoded term for a subject with a second SAE without a case | no | sae_term_mismatch 201-9214-012/1, missing 201-9214-012/2 |
+| 15 | Case outcome outside any terminology | no | sae_data_quality SC-HO15A#OUTCOME |
+| 16 | Stroke with sequelae; identical follow-up version three weeks later | yes | none |

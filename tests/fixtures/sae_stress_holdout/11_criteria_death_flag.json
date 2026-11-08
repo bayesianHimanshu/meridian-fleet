@@ -1,0 +1,45 @@
+{
+  "case": "criteria_death_flag",
+  "control": false,
+  "description": "Fatal myocardial infarction: the clinical database sets AESDTH = Y, the case leaves SDTH = N; outcomes agree.",
+  "dm": [
+    {
+      "USUBJID": "201-9211-001",
+      "SITEID": "9211"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9211-001",
+      "AESEQ": 1,
+      "AETERM": "myocardial infarction",
+      "AEDECOD": "MYOCARDIAL INFARCTION",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-12-01",
+      "AEOUT": "FATAL",
+      "AEREL": "POSSIBLE",
+      "AESDTH": "Y"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO11A",
+      "USUBJID": "201-9211-001",
+      "SITEID": "9211",
+      "REPORTED_TERM": "myocardial infarction",
+      "PREFERRED_TERM": "MYOCARDIAL INFARCTION",
+      "ONSET": "2025-12-01",
+      "SHOSP": "Y",
+      "OUTCOME": "FATAL",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-12-01T20:00:00+00:00",
+      "RECEIPT_DTC": "2025-12-02T08:00:00+00:00",
+      "SDTH": "N"
+    }
+  ],
+  "ideal": [
+    "seriousness_criteria_mismatch:201-9211-001/1"
+  ],
+  "ideal_note": "One seriousness criteria mismatch."
+}
