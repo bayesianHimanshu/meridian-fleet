@@ -88,3 +88,24 @@ def test_agent_error_exits_4(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "agent bug" in captured.err
+
+
+def test_the_worker_reads_the_safety_terms_next_to_its_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In the sandbox the working directory is not the repo: the terms table is found next
+    to the config file, not under ./config."""
+    import shutil
+
+    from meridian.platform.agent_settings import SAFETY_TERMS_FILE
+
+    config_dir = tmp_path / "opt" / "config"
+    config_dir.mkdir(parents=True)
+    shutil.copy(CONFIG, config_dir / "default.toml")
+    shutil.copy(CONFIG.parent / SAFETY_TERMS_FILE, config_dir / SAFETY_TERMS_FILE)
+    elsewhere = tmp_path / "work"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("MERIDIAN_CONFIG_FILE", raising=False)
+    agents = worker.load_agents_settings(config_dir / "default.toml")
+    assert agents.sae_reconciler.terms.outcome_of("Recovered") == "RECOVERED/RESOLVED"
