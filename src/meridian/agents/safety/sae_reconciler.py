@@ -274,6 +274,8 @@ def _flag(value: object) -> str | None:
 def clinical_saes(
     ae: pl.DataFrame, sites: dict[str, str], cfg: SaeReconcilerConfig
 ) -> tuple[list[ClinicalSae], list[Problem]]:
+    if "AESER" not in ae.columns:  # an empty export has no columns: no serious AE
+        return [], []
     serious = ae.filter(pl.col("AESER").cast(pl.String).str.strip_chars().str.to_uppercase() == "Y")
     out: list[ClinicalSae] = []
     problems: list[Problem] = []

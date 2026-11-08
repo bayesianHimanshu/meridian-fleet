@@ -33,7 +33,17 @@ from meridian.domain.findings import Decision, Evidence, Finding
 from tests.api_support import STUDY, Fixture, build, headers
 
 ROLES = list(Role)
-KINDS = ("rbqm", "safety_subject", "safety_site", "restricted")
+KINDS = ("rbqm", "safety_subject", "safety_v11", "safety_site", "restricted")
+# safety.sae_reconciler 1.1 checks, with 1.1 evidence (case id, version and subject).
+V11_CHECKS = (
+    s.DATA_QUALITY,
+    s.PROBABLE_DUPLICATE,
+    s.PARTIAL_DATE,
+    s.CRITERIA_MISMATCH,
+    s.SUBJECT_MISMATCH,
+    s.TERM_MISMATCH,
+    s.LATE_REPORT,
+)
 
 PATHS = [
     "/api/v1/whoami",
@@ -79,9 +89,12 @@ def _finding(i: int, sp: dict[str, Any]) -> tuple[Finding, str, str | None]:
         direction="high",
         display=display,
     )
-    subject = f"201-10{i:02d}-0{i:02d}" if kind == "safety_subject" else None
+    subject = f"201-10{i:02d}-0{i:02d}" if kind in ("safety_subject", "safety_v11") else None
     if kind == "safety_subject":
         ev = ev.model_copy(update={"selector": f"USUBJID={subject}; AESEQ=1"})
+    v11 = V11_CHECKS[i % len(V11_CHECKS)]
+    if kind == "safety_v11":
+        ev = ev.model_copy(update={"selector": f"CASEID=SC-V{i:02d}; VERSION=2; USUBJID={subject}"})
     agent, version, fkind, check = {
         "rbqm": ("rbqm.kri_monitor", "2.2.0", FindingKind.KRI_BREACH, f"c{i}"),
         "restricted": ("unblinded.efficacy_watch", "0.1.0", FindingKind.KRI_BREACH, f"e{i}"),
@@ -90,6 +103,12 @@ def _finding(i: int, sp: dict[str, Any]) -> tuple[Finding, str, str | None]:
             "1.0.0",
             FindingKind.SAE_RECONCILIATION,
             s.check_id(s.OUTCOME_MISMATCH, f"{subject}/1"),
+        ),
+        "safety_v11": (
+            "safety.sae_reconciler",
+            "1.1.0",
+            FindingKind.SAE_RECONCILIATION,
+            s.check_id(v11, f"SC-V{i:02d}"),
         ),
         "safety_site": (
             "safety.sae_reconciler",
