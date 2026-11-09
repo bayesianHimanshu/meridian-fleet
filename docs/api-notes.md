@@ -64,13 +64,51 @@ writes them in that order). The ActorSuspended carries:
 
 * `executor` (`openshell` for a sandboxed run),
 * `image_digest`, the content digest of the agent image the sandbox ran,
-* `policy_sha256`, the hash of the policy the sandbox reported as effective,
+* `policy_sha256`, the hash of the policy the sandbox reported as effective (the API
+  serves it as `applied_policy_sha256`),
+* `policy_file` and `policy_file_sha256`, the committed file passed to
+  `openshell sandbox create` and the hash of its bytes (runs from step 3a polish on; null
+  on earlier runs),
 * `inputs_manifest_sha256`, the hash of the staged inputs the worker verified.
 
-To check: `docker image inspect` the image and compare digests; recompute the effective
-policy hash with `meridian sandbox` tooling (`policies.expected_effective`); compare the
-policy file's own hash with `GET /fleet`; and confirm every event in between with
-`GET /ledger?since=` and `GET /ledger/verify`.
+To check: `docker image inspect` the image and compare digests; compare the run's policy
+pair with the same pair on `GET /fleet` (both labelled "policy file sha256" and "applied
+policy sha256" in the UI); and confirm every event in between with `GET /ledger?since=`
+and `GET /ledger/verify`.
+
+### What each policy hash is computed over
+
+* **policy file sha256** (`GET /fleet` `policy_file_sha256`, a run's
+  `policy_file_sha256`): sha256 of the bytes of `policies/<name>.yaml`, the file
+  `meridian policy render` writes and the executor hands to `openshell sandbox create`.
+  It includes the header comment, which names the zone or agent.
+* **applied policy sha256** (`GET /fleet` `applied_policy_sha256`, a run's
+  `applied_policy_sha256`, a containment check's `applied_policy_sha256`): sha256 of what
+  `openshell sandbox get --policy-only` reports for the live sandbox. OpenShell 0.1.7 drops
+  comments and an empty `network_policies`, so this is the policy in effect, not the file.
+  The executor refuses a run whose reported policy differs from
+  `policies.expected_effective` for its file; the fleet page's value is that expected text's
+  hash, so a run's value equals the fleet's when the sandbox applied the committed policy.
+
+Every policy without network rules (the seven zone policies and safety.sae_reconciler)
+renders the same rules and differs only in its comment, so all eight have different file
+hashes and one applied hash, 01637db6...b0805d. rbqm.narrator differs in effect (egress to
+the Messages API and the network baseline paths) and has its own applied hash. A test
+(`tests/unit/test_executor.py`) checks that a run records the hash of the exact file passed
+to create and the hash the sandbox reported, that a comment-only change moves only the file
+hash, and that a rule change moves both.
+
+## Run counts on the fleet page
+
+`GET /fleet` gives each agent `runs_7d`, `failed_7d` and `last_failure_at`, over every
+version of the agent. A detector run is an ActorWoke; it failed when no ActorSuspended for
+the same agent, version and trigger follows it before that key's next ActorWoke (so a
+retry's success never closes the failed attempt before it). A narrator run is a
+FindingNarrative; it failed when its status is `error`. A run still in progress counts as
+failed until it ends. `run_event_types` and `GET /ledger?agent=<id>&type=...` give the
+filtered ledger the fleet page links to. The agent filter matches only events the caller
+reads in full, so it never tells which agent a redacted event belongs to. Failed events are
+not changed or hidden: they are the ActorWoke events with no ActorSuspended after them.
 
 ## Before this could use real authentication
 
@@ -114,3 +152,13 @@ clinical record (USUBJID, AESEQ) and the safety record (case id, version, USUBJI
 subject-level item has its subject, late reports included. Late-report findings of 1.0.0
 named only the case, so they have subject_id null; 1.1.0 supersedes them. The site-level
 finding never has a subject. (Step 3a's lookup in the cut's safety case table is removed.)
+From 1.1.1 a late report's evidence also names the case (id, version, subject) as its own
+line and, when the case pairs with a clinical SAE, that record (USUBJID, AESEQ).
+
+## Display of times and origins
+
+Titles, summaries and evidence displays keep ISO 8601 in the ledger and the API. The web
+client shows each instant in them as "20 Jan 2013, 22:02 UTC", with the ISO value in the
+element's title attribute. A finding opened from the Safety, RBQM, ledger or review queue
+page links back there (the origin travels in the link's history state); otherwise it links
+to the review queue.

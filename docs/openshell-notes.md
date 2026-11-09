@@ -55,6 +55,20 @@ On DC-BASE, DC-RBQM-CORE, DC-NULL-S6 and DC-d5ada06c all 12 runs matched.
 Filesystem, Landlock and process settings apply when the sandbox starts and cannot
 change afterwards. That is one more reason to create a fresh sandbox for every run.
 
+### The zones are separate in name only
+
+The seven zone policies (portfolio, preclinical, study_ops, rbqm, safety, quality,
+unblinded) and safety.sae_reconciler.yaml render from the same `ZonePolicy` defaults and
+differ only in their header comment. In effect they are one policy: the same read-only and
+read-write paths, Landlock, user and no network. Their files hash differently; the policy
+the sandbox applies hashes the same for all eight (applied policy sha256
+01637db6...b0805d). So an rbqm run and a safety run are contained by identical rules, and
+the zone name says which data is staged, not what the sandbox may do. What keeps a zone's
+data apart is staging (only that cut's blinded files, plus the safety snapshot for the
+safety zone), not the policy. rbqm.narrator is the only policy that differs in effect.
+Zones get distinct rules when one needs them, for example the unblinded zone once it may
+read the unblinded staging path. docs/api-notes.md explains the two hashes.
+
 ## Landlock
 
 Landlock is a Linux security module. A process can lock itself into a list of allowed

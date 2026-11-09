@@ -110,6 +110,12 @@ Known failure modes:
 
 ## The matching rule, 1.1
 
+(1.1.1, phase 3 step 3a polish, changes text and evidence only: a late report gives its
+delay as "126 hours (5.2 days)" in title, summary and evidence, and its evidence names the
+case and, when the case pairs with a clinical SAE, that record by USUBJID and AESEQ. It
+raises the same findings as 1.1.0 on every record; `MATCHING_VERSION` stays 1.1.0, and the
+stress sets' recorded outcomes are keyed by it.)
+
 safety.sae_reconciler 1.1.0 replaces the rule above. It was built from the development
 stress set's misses (docs/safety-eval.md). The full rule is in the agent's docstring; in
 short:
