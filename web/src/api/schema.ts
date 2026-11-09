@@ -111,7 +111,8 @@ export interface paths {
          * Ledger
          * @description Events as the caller may see them (restricted ones redacted). order=asc (default):
          *     after seq `since`, oldest first, continue with next_since. order=desc: newest first,
-         *     before seq `before` if given, continue with next_before.
+         *     before seq `before` if given, continue with next_before. agent: only events the caller
+         *     may read in full whose payload names that agent (redacted events never match).
          */
         get: operations["ledger_api_v1_ledger_get"];
         put?: never;
@@ -348,6 +349,10 @@ export interface components {
             image_digest?: string | null;
             /** Inputs Manifest Sha256 */
             inputs_manifest_sha256?: string | null;
+            /** Policy File */
+            policy_file?: string | null;
+            /** Policy File Sha256 */
+            policy_file_sha256?: string | null;
             /** Policy Sha256 */
             policy_sha256?: string | null;
             /** Trigger Seq */
@@ -540,6 +545,8 @@ export interface components {
         ContainmentView: {
             /** All Refused */
             all_refused: boolean;
+            /** Applied Policy Sha256 */
+            applied_policy_sha256: string | null;
             /** Checks */
             checks: components["schemas"]["ContainmentCheckView"][];
             /** Credential Value Visible */
@@ -552,8 +559,6 @@ export interface components {
             passed: boolean;
             /** Policy */
             policy: string;
-            /** Policy Sha256 */
-            policy_sha256: string | null;
             /**
              * Recorded At
              * Format: date-time
@@ -965,23 +970,35 @@ export interface components {
         FleetAgent: {
             /** Agent Id */
             agent_id: string;
+            /** Applied Policy Sha256 */
+            applied_policy_sha256: string;
             /** Enabled */
             enabled: boolean;
+            /** Failed 7D */
+            failed_7d: number;
+            /** Last Failure At */
+            last_failure_at: string | null;
             /** Last Outcome */
             last_outcome: ("completed" | "not_completed" | "accepted" | "rejected" | "refused" | "error") | null;
             /** Last Run At */
             last_run_at: string | null;
             /** Last Trigger Seq */
             last_trigger_seq: number | null;
+            /** Policy */
+            policy: string;
             /** Policy File */
             policy_file: string;
-            /** Policy Sha256 */
-            policy_sha256: string;
+            /** Policy File Sha256 */
+            policy_file_sha256: string;
             /**
              * Role
              * @enum {string}
              */
             role: "detector" | "narrator";
+            /** Run Event Types */
+            run_event_types: components["schemas"]["EventType"][];
+            /** Runs 7D */
+            runs_7d: number;
             /** Version */
             version: string;
             /** Zone */
@@ -1244,6 +1261,8 @@ export interface components {
         Role: "portfolio_lead" | "toxicologist" | "clinical_ops_lead" | "medical_monitor" | "qa_auditor" | "unblinded_statistician";
         /** RunEvent */
         RunEvent: {
+            /** Applied Policy Sha256 */
+            applied_policy_sha256?: string | null;
             /** Executor */
             executor: string | null;
             /** Hash */
@@ -1252,8 +1271,10 @@ export interface components {
             image_digest?: string | null;
             /** Inputs Manifest Sha256 */
             inputs_manifest_sha256?: string | null;
-            /** Policy Sha256 */
-            policy_sha256?: string | null;
+            /** Policy File */
+            policy_file?: string | null;
+            /** Policy File Sha256 */
+            policy_file_sha256?: string | null;
             /**
              * Recorded At
              * Format: date-time
@@ -1606,6 +1627,7 @@ export interface operations {
                 limit?: number;
                 order?: "asc" | "desc";
                 before?: number | null;
+                agent?: string | null;
             };
             header?: {
                 /** @description Person id from config/people.toml (development only). */

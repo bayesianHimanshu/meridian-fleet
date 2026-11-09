@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from meridian.domain.enums import DecisionAction, FindingKind, Role, Severity, Visibility
+from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Severity, Visibility
 from meridian.domain.events import Event, NarrativeStatus, RedactedEvent
 from meridian.domain.findings import Evidence
 
@@ -153,7 +153,12 @@ class RunEvent(BaseModel):
     recorded_at: datetime
     executor: str | None
     image_digest: str | None = None
-    policy_sha256: str | None = None
+    # sha256 of the policy the sandbox reported as effective (comments dropped by
+    # OpenShell), and the committed file passed to `openshell sandbox create` with the
+    # sha256 of its bytes. The file pair is null on runs recorded before step 3a polish.
+    applied_policy_sha256: str | None = None
+    policy_file: str | None = None
+    policy_file_sha256: str | None = None
     inputs_manifest_sha256: str | None = None
 
 
@@ -230,13 +235,24 @@ class FleetAgent(BaseModel):
     zone: str
     role: Literal["detector", "narrator"]
     enabled: bool
+    policy: str  # the committed policy's name, e.g. rbqm or safety.sae_reconciler
     policy_file: str
-    policy_sha256: str
+    # sha256 of the committed file's bytes (comments included), and of what OpenShell
+    # reports as effective for it (comments dropped): the value a run records.
+    policy_file_sha256: str
+    applied_policy_sha256: str
     last_run_at: datetime | None
     last_outcome: (
         Literal["completed", "not_completed", "accepted", "rejected", "refused", "error"] | None
     )
     last_trigger_seq: int | None
+    # Every version of the agent. A detector run failed when its ActorWoke has no
+    # ActorSuspended; a narrator run failed when it recorded status "error".
+    runs_7d: int
+    failed_7d: int
+    last_failure_at: datetime | None
+    # The ledger event types that record this agent's runs (for a filtered ledger link).
+    run_event_types: list[EventType]
 
 
 class ContainmentCheckView(BaseModel):
@@ -258,7 +274,7 @@ class ContainmentView(BaseModel):
     recorded_at: datetime
     sandbox: str
     image_digest: str
-    policy_sha256: str | None
+    applied_policy_sha256: str | None  # what the conformance sandbox reported as effective
     passed: bool
     all_refused: bool
     log_line_found: bool

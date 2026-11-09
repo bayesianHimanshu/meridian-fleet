@@ -13,6 +13,7 @@ import re
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, field
+from datetime import timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -80,6 +81,7 @@ from meridian.platform.config import AgentsSettings
 from meridian.sandbox.policies import (
     ALL_POLICIES,
     NARRATOR_POLICY,
+    applied_sha256,
     policy_for_agent,
     policy_path,
 )
@@ -87,6 +89,7 @@ from meridian.sandbox.policies import (
 OPAQUE_CUT = re.compile(r"^DC-[0-9a-f]{8}$")
 CLOSED: frozenset[DecisionAction] = frozenset({DecisionAction.ACCEPTED, DecisionAction.DISMISSED})
 LEDGER_PAGE_MAX = 1000
+RUN_WINDOW = timedelta(days=7)  # the fleet page's "last 7 days"
 
 
 class NotFoundError(Exception):
@@ -248,11 +251,43 @@ def _run_event(e: Event | None) -> RunEvent | None:
             recorded_at=e.recorded_at,
             executor=p.executor,
             image_digest=p.image_digest,
-            policy_sha256=p.policy_sha256,
+            applied_policy_sha256=p.policy_sha256,
+            policy_file=p.policy_file,
+            policy_file_sha256=p.policy_file_sha256,
             inputs_manifest_sha256=p.inputs_manifest_sha256,
         )
     assert isinstance(p, ActorWoke)
     return RunEvent(seq=e.seq, hash=e.hash, recorded_at=e.recorded_at, executor=p.executor)
+
+
+@dataclass(frozen=True, slots=True)
+class _Run:
+    woke: Event
+    suspended: Event | None  # None: the run never finished (it failed or was stopped)
+
+
+def _runs(woke: Iterable[Event], suspended: Iterable[Event]) -> list[_Run]:
+    """Each ActorWoke with the ActorSuspended that closed it: the first one for the same
+    (agent, version, trigger) after it and before that key's next ActorWoke. A retry's
+    ActorSuspended therefore never closes the failed attempt before it."""
+
+    def key(e: Event) -> tuple[str, str | None, int]:
+        p = e.payload
+        assert isinstance(p, ActorWoke | ActorSuspended)
+        return (p.agent_id, p.agent_version, p.trigger_seq)
+
+    events = sorted([*woke, *suspended], key=lambda e: e.seq)
+    open_runs: dict[tuple[str, str | None, int], int] = {}
+    runs: list[_Run] = []
+    for e in events:
+        if isinstance(e.payload, ActorWoke):
+            open_runs[key(e)] = len(runs)
+            runs.append(_Run(e, None))
+        elif isinstance(e.payload, ActorSuspended):
+            index = open_runs.pop(key(e), None)
+            if index is not None:
+                runs[index] = _Run(runs[index].woke, e)
+    return runs
 
 
 def _version(v: str) -> tuple[int, ...]:
@@ -585,9 +620,12 @@ class Repository:
         limit: int,
         order: Literal["asc", "desc"] = "asc",
         before: int | None = None,
+        agent: str | None = None,
     ) -> LedgerPage:
         """asc: events after since, oldest first. desc: the newest events before `before`
-        (or the newest of all), newest first, for a reader paging back in time."""
+        (or the newest of all), newest first, for a reader paging back in time. agent:
+        only events shown in full whose payload names it; it filters after redaction, so it
+        never reveals which agent a redacted event belongs to."""
         entries = self._ledger.read(
             since_seq=since, event_types=types, viewer_role=visibility.ledger_viewer(self.role)
         )
@@ -595,6 +633,9 @@ class Repository:
 
         def shown_as(e: LedgerEntry) -> LedgerEntry:
             return visibility.redact_with_findings(self.role, e, visible)
+
+        if agent is not None:
+            entries = [e for e in entries if _agent_of(shown_as(e)) == agent]
 
         if order == "desc":
             older = [e for e in entries if before is None or e.seq < before]
@@ -621,29 +662,18 @@ class Repository:
 
     def fleet(self) -> Fleet:
         snap = self.snapshot()
+        since = self._clock.now() - RUN_WINDOW
+        runs = _runs(snap.woke, snap.suspended)
         agents: list[FleetAgent] = []
         for registered in self._registry.all():
             a = registered.agent
-            policy = policy_path(policy_for_agent(a.agent_id), self._policies_dir)
-            woke = [
-                e
-                for e in snap.woke
-                if isinstance(e.payload, ActorWoke)
-                and (e.payload.agent_id, e.payload.agent_version) == (a.agent_id, a.version)
-            ]
-            last = woke[-1] if woke else None
-            outcome: Literal["completed", "not_completed"] | None = None
-            if last is not None:
-                assert isinstance(last.payload, ActorWoke)
-                lw = last.payload
-                done = any(
-                    isinstance(e.payload, ActorSuspended)
-                    and e.seq > last.seq
-                    and (e.payload.agent_id, e.payload.agent_version, e.payload.trigger_seq)
-                    == (lw.agent_id, lw.agent_version, lw.trigger_seq)
-                    for e in snap.suspended
-                )
-                outcome = "completed" if done else "not_completed"
+            policy_name = policy_for_agent(a.agent_id)
+            policy = policy_path(policy_name, self._policies_dir)
+            mine = [r for r in runs if _woke(r).agent_id == a.agent_id]
+            current = [r for r in mine if _woke(r).agent_version == a.version]
+            last = current[-1] if current else None
+            recent = [r for r in mine if r.woke.recorded_at >= since]
+            failures = [r for r in mine if r.suspended is None]
             agents.append(
                 FleetAgent(
                     agent_id=a.agent_id,
@@ -651,24 +681,38 @@ class Repository:
                     zone=a.zone.value,
                     role="detector",
                     enabled=registered.enabled,
+                    policy=policy_name,
                     policy_file=policy.as_posix(),
-                    policy_sha256=_file_sha256(policy),
-                    last_run_at=None if last is None else last.recorded_at,
-                    last_outcome=outcome,
-                    last_trigger_seq=None if last is None else _trigger(last),
+                    policy_file_sha256=_file_sha256(policy),
+                    applied_policy_sha256=applied_sha256(policy_name),
+                    last_run_at=None if last is None else last.woke.recorded_at,
+                    last_outcome=None
+                    if last is None
+                    else ("completed" if last.suspended is not None else "not_completed"),
+                    last_trigger_seq=None if last is None else _trigger(last.woke),
+                    runs_7d=len(recent),
+                    failed_7d=sum(1 for r in recent if r.suspended is None),
+                    last_failure_at=failures[-1].woke.recorded_at if failures else None,
+                    run_event_types=[EventType.ACTOR_WOKE, EventType.ACTOR_SUSPENDED],
                 )
             )
         narratives = sorted(
-            (
-                e
-                for es in snap.narratives.values()
-                for e in es
-                if isinstance(e.payload, FindingNarrative)
-                and e.payload.agent_version == narrator.VERSION
-            ),
+            (e for es in snap.narratives.values() for e in es),
             key=lambda e: e.seq,
         )
-        last_n = narratives[-1] if narratives else None
+        current_n = [
+            e
+            for e in narratives
+            if isinstance(e.payload, FindingNarrative)
+            and e.payload.agent_version == narrator.VERSION
+        ]
+        recent_n = [e for e in narratives if e.recorded_at >= since]
+        errors_n = [
+            e
+            for e in narratives
+            if isinstance(e.payload, FindingNarrative) and e.payload.status == "error"
+        ]
+        last_n = current_n[-1] if current_n else None
         narrator_policy = policy_path(NARRATOR_POLICY, self._policies_dir)
         agents.append(
             FleetAgent(
@@ -677,8 +721,10 @@ class Repository:
                 zone=ALL_POLICIES[NARRATOR_POLICY].zone,
                 role="narrator",
                 enabled=True,
+                policy=NARRATOR_POLICY,
                 policy_file=narrator_policy.as_posix(),
-                policy_sha256=_file_sha256(narrator_policy),
+                policy_file_sha256=_file_sha256(narrator_policy),
+                applied_policy_sha256=applied_sha256(NARRATOR_POLICY),
                 last_run_at=None if last_n is None else last_n.recorded_at,
                 last_outcome=None
                 if last_n is None or not isinstance(last_n.payload, FindingNarrative)
@@ -686,6 +732,10 @@ class Repository:
                 last_trigger_seq=None
                 if last_n is None or not isinstance(last_n.payload, FindingNarrative)
                 else last_n.payload.finding_seq,
+                runs_7d=len(recent_n),
+                failed_7d=sum(1 for e in recent_n if e in errors_n),
+                last_failure_at=errors_n[-1].recorded_at if errors_n else None,
+                run_event_types=[EventType.FINDING_NARRATIVE],
             )
         )
         latest: dict[str, Event] = {}
@@ -705,7 +755,7 @@ class Repository:
                     recorded_at=e.recorded_at,
                     sandbox=p.sandbox,
                     image_digest=p.image_digest,
-                    policy_sha256=p.policy_sha256,
+                    applied_policy_sha256=p.policy_sha256,
                     passed=p.passed,
                     all_refused=p.all_refused,
                     log_line_found=p.log_line_found,
@@ -915,6 +965,24 @@ class Repository:
         return DecisionResponse(
             finding_id=finding_id, status=action.value, decision=_decision_view(event)
         )
+
+
+def _agent_of(e: LedgerEntry) -> str | None:
+    """The agent an event is about, for the ledger's agent filter."""
+    if not isinstance(e, Event):
+        return None
+    p = e.payload
+    if isinstance(p, ActorWoke | ActorSuspended | FindingNarrative):
+        return p.agent_id
+    if isinstance(p, FindingRaised):
+        return p.finding.agent_id
+    return None
+
+
+def _woke(run: _Run) -> ActorWoke:
+    p = run.woke.payload
+    assert isinstance(p, ActorWoke)
+    return p
 
 
 def _trigger(e: Event) -> int | None:
