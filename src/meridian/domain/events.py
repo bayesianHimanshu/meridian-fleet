@@ -206,6 +206,60 @@ class FindingNarrative(BaseModel):
 AssessmentStatus = Literal["accepted", "rejected", "error"]
 Verdict = Literal["yes", "no", "unsure"]
 AssessmentCandidate = Literal["term_mismatch", "unpaired_pair"]
+MAX_ANSWER_TEXT = 4000
+
+
+def agreed_verdict(verdicts: tuple[Verdict | None, ...]) -> Verdict:
+    """The agreement rule of safety.term_adjudicator 1.1.0: "yes" only if every model said
+    yes, "no" only if every model said no, otherwise "unsure". A missing verdict (an
+    answer that failed validation) agrees with nothing."""
+    if verdicts and all(v == "yes" for v in verdicts):
+        return "yes"
+    if verdicts and all(v == "no" for v in verdicts):
+        return "no"
+    return "unsure"
+
+
+class ModelAnswer(BaseModel):
+    """One model's answer inside a FindingAssessment of the agreement rule (1.1.0).
+
+    text is the raw response content as received (never a reasoning trace), recorded
+    whether or not it passed validation; verdict and reason only when it did. An error
+    answer has no text (the call failed, or the served digest was not the pinned one).
+    """
+
+    model_config = _FROZEN
+
+    model: Annotated[str, Field(min_length=1)]
+    model_digest: Sha256Hex | None = None
+    status: AssessmentStatus
+    verdict: Verdict | None = None
+    reason: str | None = None
+    text: Annotated[str, Field(max_length=MAX_ANSWER_TEXT)] | None = None
+    rejection_reasons: tuple[str, ...] = ()
+    error: str | None = None
+    request_sha256: Sha256Hex
+    response_sha256: Sha256Hex | None = None
+    input_tokens: Annotated[int, Field(ge=0)] | None = None
+    output_tokens: Annotated[int, Field(ge=0)] | None = None
+    latency_ms: Annotated[int, Field(ge=0)] | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.status == "accepted":
+            if self.verdict is None or not self.reason or self.model_digest is None:
+                raise ValueError("an accepted answer needs a verdict, a reason and a digest")
+            if self.rejection_reasons:
+                raise ValueError("an accepted answer has no rejection reasons")
+        elif self.verdict is not None or self.reason is not None:
+            raise ValueError(f"a {self.status} answer records no verdict or reason")
+        if self.status == "rejected" and not self.rejection_reasons:
+            raise ValueError("a rejected answer needs its reasons")
+        if self.status == "error" and (not self.error or self.text is not None):
+            raise ValueError("an error answer needs the error and has no text")
+        if self.status != "error" and (self.text is None or self.response_sha256 is None):
+            raise ValueError("an answer that was received keeps its text and hash")
+        return self
 
 
 class FindingAssessment(BaseModel):
@@ -221,6 +275,12 @@ class FindingAssessment(BaseModel):
     was not the pinned one (retried on the next pass). Hashes are of the canonical
     request body sent and of the raw response body received; model_digest is the digest
     Ollama served.
+
+    Agreement (1.1.0): answers holds one ModelAnswer per model asked, each with its raw
+    text, model and digest; model names the models joined by "+", and model_digest and
+    request_sha256 are left out (each answer has its own). Then the status is error if
+    any answer is an error, rejected if every answer was rejected, and accepted
+    otherwise, with the verdict of agreed_verdict and a reason the host writes.
     """
 
     model_config = _FROZEN
@@ -236,7 +296,8 @@ class FindingAssessment(BaseModel):
     reason: str | None = None
     model: Annotated[str, Field(min_length=1)]
     model_digest: Sha256Hex | None = None
-    request_sha256: Sha256Hex
+    # Required for a single-model assessment (1.0.0); left out with answers.
+    request_sha256: Sha256Hex | None = None
     response_sha256: Sha256Hex | None = None
     rejection_reasons: tuple[str, ...] = ()
     error: str | None = None
@@ -246,9 +307,37 @@ class FindingAssessment(BaseModel):
     executor: str | None = None
     sandbox: str | None = None
     policy_sha256: Sha256Hex | None = None
+    # Agreement (1.1.0): one answer per model asked, in the order asked.
+    answers: tuple[ModelAnswer, ...] = ()
+
+    def _check_answers(self) -> None:
+        if len(self.answers) < 2 or len({a.model for a in self.answers}) != len(self.answers):
+            raise ValueError("an agreement assessment has two or more answers, one per model")
+        if self.model != "+".join(a.model for a in self.answers):
+            raise ValueError("an agreement assessment's model names its answers' models")
+        if self.model_digest is not None or self.request_sha256 is not None:
+            raise ValueError("an agreement assessment keeps digests and hashes per answer")
+        statuses = {a.status for a in self.answers}
+        expected = (
+            "error"
+            if "error" in statuses
+            else "rejected"
+            if statuses == {"rejected"}
+            else "accepted"
+        )
+        if self.status != expected:
+            raise ValueError(f"answers {sorted(statuses)} make the assessment {expected}")
+        if self.status == "accepted" and self.verdict != agreed_verdict(
+            tuple(a.verdict for a in self.answers)
+        ):
+            raise ValueError("the verdict of an agreement assessment is the agreed verdict")
 
     @model_validator(mode="after")
     def _check(self) -> Self:
+        if self.answers:
+            self._check_answers()
+        elif self.request_sha256 is None:
+            raise ValueError("a single-model assessment needs the request sha256")
         if len(self.finding_ids) != len(self.finding_seqs):
             raise ValueError("one finding seq per finding id")
         if len(set(self.finding_ids)) != len(self.finding_ids):
@@ -258,7 +347,7 @@ class FindingAssessment(BaseModel):
         if self.status == "accepted":
             if self.verdict is None or not self.reason:
                 raise ValueError("an accepted assessment needs a verdict and a reason")
-            if self.rejection_reasons or self.model_digest is None:
+            if self.rejection_reasons or (self.model_digest is None and not self.answers):
                 raise ValueError("an accepted assessment has a digest and no rejection reasons")
         elif self.verdict is not None or self.reason is not None:
             raise ValueError(f"a {self.status} assessment records no verdict or reason")

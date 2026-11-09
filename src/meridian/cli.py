@@ -562,6 +562,9 @@ def agents_adjudicate(
             else ", ".join(p.rejection_reasons) or p.error
         )
         typer.echo(f"  seq {event.seq} {'+'.join(p.finding_ids)} {p.status:<8} {detail}")
+        for a in p.answers:
+            said = a.verdict or ",".join(a.rejection_reasons) or a.error
+            typer.echo(f"    {a.model} ({(a.model_digest or '')[:12]}) {a.status}: {said}")
 
 
 @agents_app.command("narrate-local")

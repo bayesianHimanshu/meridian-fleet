@@ -119,7 +119,10 @@ class LocalModelSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     base_url: str = "http://172.17.0.1:11434"
+    # The local narrator's model (and the single model of the term pair evaluation).
     model: str = "phi4-mini:3.8b-q4_K_M"
+    # safety.term_adjudicator 1.1.0 asks each of these the same question (agreement rule).
+    adjudicator_models: tuple[str, ...] = ("phi4-mini:3.8b-q4_K_M", "qwen3.5:4b-q4_K_M")
     # Model name to the digest /api/tags reports for it.
     digests: dict[str, str] = Field(default_factory=dict)
     num_ctx: int = Field(4096, ge=256)
@@ -136,8 +139,11 @@ class LocalModelSettings(BaseModel):
 
     @model_validator(mode="after")
     def _pinned(self) -> LocalModelSettings:
-        if self.model not in self.digests:
-            raise ValueError(f"local model {self.model} has no pinned digest")
+        for model in (self.model, *self.adjudicator_models):
+            if model not in self.digests:
+                raise ValueError(f"local model {model} has no pinned digest")
+        if len(set(self.adjudicator_models)) < 2:
+            raise ValueError("the agreement rule needs two or more different models")
         for name, digest in self.digests.items():
             if not _SHA256.fullmatch(digest):
                 raise ValueError(f"digest of {name} is not 64 hex characters")

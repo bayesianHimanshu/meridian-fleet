@@ -26,6 +26,7 @@ from meridian.api import safety as safety_view
 from meridian.api import visibility
 from meridian.api.identity import Person
 from meridian.api.models import (
+    AnswerView,
     AssessmentView,
     AssetLive,
     AssetStatic,
@@ -596,6 +597,20 @@ class Repository:
                 error=a.error,
                 executor=a.executor,
                 sandbox=a.sandbox,
+                answers=[
+                    AnswerView(
+                        model=x.model,
+                        model_digest=x.model_digest,
+                        status=x.status,
+                        verdict=x.verdict,
+                        reason=x.reason,
+                        text=x.text,
+                        rejection_reasons=list(x.rejection_reasons),
+                        error=x.error,
+                        latency_ms=x.latency_ms,
+                    )
+                    for x in a.answers
+                ],
             )
             for e in snap.assessments.get(finding_id, [])
             if isinstance((a := e.payload), FindingAssessment)

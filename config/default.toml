@@ -80,6 +80,8 @@ timeout_seconds = 30.0
 [local_model]
 base_url = "http://172.17.0.1:11434"
 model = "phi4-mini:3.8b-q4_K_M"  # chosen on the dev term pairs (docs/local-model-eval.md)
+# safety.term_adjudicator 1.1.0: "yes" or "no" only when every model says so, else "unsure".
+adjudicator_models = ["phi4-mini:3.8b-q4_K_M", "qwen3.5:4b-q4_K_M"]
 num_ctx = 4096
 seed = 20261109
 temperature = 0.0

@@ -308,3 +308,82 @@ def test_a_narrative_written_before_model_digest_verifies_and_assessments_append
         assert isinstance(assessment, Event)
         assert isinstance(assessment.payload, FindingAssessment)
         assert assessment.payload.rejection_reasons == ("bad_json",)
+
+
+def test_a_step_3b_assessment_without_answers_verifies(tmp_path: Path) -> None:
+    """A FindingAssessment of term adjudicator 1.0.0, written before ModelAnswer existed
+    (no answers key), verifies and reads with no answers; a 1.1.0 one appends after it."""
+    from meridian.domain.events import ModelAnswer
+
+    path = tmp_path / "ledger.sqlite3"
+    clock = FixedClock(T0)
+    with make_ledger(path, clock) as ledger:
+        cut = ledger.append(data_cut_draft(1))
+    old: dict[str, object] = {
+        "type": "finding_assessment",
+        "finding_ids": ["SAF-0001"],
+        "finding_seqs": [1],
+        "candidate": "term_mismatch",
+        "agent_id": "safety.term_adjudicator",
+        "agent_version": "1.0.0",
+        "status": "accepted",
+        "verdict": "yes",
+        "reason": "Both name the same allergic reaction.",
+        "model": "phi4-mini:3.8b-q4_K_M",
+        "model_digest": "d" * 64,
+        "request_sha256": "e" * 64,
+        "response_sha256": "f" * 64,
+        "rejection_reasons": [],
+        "error": None,
+        "input_tokens": 120,
+        "output_tokens": 30,
+        "latency_ms": 900,
+        "executor": "openshell",
+        "sandbox": "mer-lm-00000000",
+        "policy_sha256": "a" * 64,
+    }
+    _insert_legacy(path, 2, cut.hash, old)
+    answer = {
+        "status": "accepted",
+        "verdict": "no",
+        "reason": "Different.",
+        "text": '{"same_event": "no", "reason": "Different."}',
+        "request_sha256": "1" * 64,
+        "response_sha256": "2" * 64,
+    }
+    with make_ledger(path, clock) as ledger:
+        assert verify(ledger).ok
+        (legacy,) = ledger.read(event_types=[EventType.FINDING_ASSESSMENT])
+        assert isinstance(legacy, Event)
+        assert isinstance(legacy.payload, FindingAssessment)
+        assert legacy.payload.answers == ()
+        assert legacy.payload.request_sha256 == "e" * 64
+        ledger.append(
+            EventDraft(
+                occurred_at=T0,
+                actor="safety.term_adjudicator",
+                visibility=Visibility.BLINDED,
+                payload=FindingAssessment(
+                    finding_ids=("SAF-0001",),
+                    finding_seqs=(1,),
+                    candidate="term_mismatch",
+                    agent_id="safety.term_adjudicator",
+                    agent_version="1.1.0",
+                    status="accepted",
+                    verdict="no",
+                    reason="Every model said the terms describe different events.",
+                    model="a:1b+b:1b",
+                    answers=(
+                        ModelAnswer.model_validate(
+                            {"model": "a:1b", "model_digest": "3" * 64, **answer}
+                        ),
+                        ModelAnswer.model_validate(
+                            {"model": "b:1b", "model_digest": "4" * 64, **answer}
+                        ),
+                    ),
+                ),
+            )
+        )
+        report = verify(ledger)
+        assert report.ok, report
+        assert report.events_checked == 3

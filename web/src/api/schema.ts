@@ -380,16 +380,51 @@ export interface components {
             type: "actor_woke";
         };
         /**
+         * AnswerView
+         * @description One model's answer inside an agreement assessment (term adjudicator 1.1.0): its raw
+         *     text as received, and its verdict and reason only if it passed validation.
+         */
+        AnswerView: {
+            /** Error */
+            error: string | null;
+            /** Latency Ms */
+            latency_ms: number | null;
+            /** Model */
+            model: string;
+            /** Model Digest */
+            model_digest: string | null;
+            /** Reason */
+            reason: string | null;
+            /** Rejection Reasons */
+            rejection_reasons: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected" | "error";
+            /** Text */
+            text: string | null;
+            /** Verdict */
+            verdict: ("yes" | "no" | "unsure") | null;
+        };
+        /**
          * AssessmentView
          * @description A local model's judgement about this finding (and, for a pair, one other). Shown
-         *     only when the role may see every finding it names. A rejected or failed answer shows
-         *     its status and reason codes, never the model's text.
+         *     only when the role may see every finding it names. For 1.0.0 (one model) a rejected or
+         *     failed answer shows its status and reason codes, never the model's text; for 1.1.0
+         *     (agreement) answers holds each model's raw answer, and verdict and reason are the
+         *     agreement rule's.
          */
         AssessmentView: {
             /** Agent Id */
             agent_id: string;
             /** Agent Version */
             agent_version: string;
+            /**
+             * Answers
+             * @default []
+             */
+            answers: components["schemas"]["AnswerView"][];
             /**
              * Candidate
              * @enum {string}
@@ -861,12 +896,23 @@ export interface components {
          *     was not the pinned one (retried on the next pass). Hashes are of the canonical
          *     request body sent and of the raw response body received; model_digest is the digest
          *     Ollama served.
+         *
+         *     Agreement (1.1.0): answers holds one ModelAnswer per model asked, each with its raw
+         *     text, model and digest; model names the models joined by "+", and model_digest and
+         *     request_sha256 are left out (each answer has its own). Then the status is error if
+         *     any answer is an error, rejected if every answer was rejected, and accepted
+         *     otherwise, with the verdict of agreed_verdict and a reason the host writes.
          */
         FindingAssessment: {
             /** Agent Id */
             agent_id: string;
             /** Agent Version */
             agent_version: string;
+            /**
+             * Answers
+             * @default []
+             */
+            answers: components["schemas"]["ModelAnswer"][];
             /**
              * Candidate
              * @enum {string}
@@ -900,7 +946,7 @@ export interface components {
              */
             rejection_reasons: string[];
             /** Request Sha256 */
-            request_sha256: string;
+            request_sha256?: string | null;
             /** Response Sha256 */
             response_sha256?: string | null;
             /** Sandbox */
@@ -1187,6 +1233,48 @@ export interface components {
             next_before?: number | null;
             /** Next Since */
             next_since: number | null;
+        };
+        /**
+         * ModelAnswer
+         * @description One model's answer inside a FindingAssessment of the agreement rule (1.1.0).
+         *
+         *     text is the raw response content as received (never a reasoning trace), recorded
+         *     whether or not it passed validation; verdict and reason only when it did. An error
+         *     answer has no text (the call failed, or the served digest was not the pinned one).
+         */
+        ModelAnswer: {
+            /** Error */
+            error?: string | null;
+            /** Input Tokens */
+            input_tokens?: number | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Model */
+            model: string;
+            /** Model Digest */
+            model_digest?: string | null;
+            /** Output Tokens */
+            output_tokens?: number | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Rejection Reasons
+             * @default []
+             */
+            rejection_reasons: string[];
+            /** Request Sha256 */
+            request_sha256: string;
+            /** Response Sha256 */
+            response_sha256?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected" | "error";
+            /** Text */
+            text?: string | null;
+            /** Verdict */
+            verdict?: ("yes" | "no" | "unsure") | null;
         };
         /** NarrativeView */
         NarrativeView: {

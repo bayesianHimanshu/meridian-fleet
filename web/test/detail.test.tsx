@@ -116,6 +116,7 @@ describe("finding detail, step 3a polish", () => {
           error: null,
           executor: "openshell",
           sandbox: "mer-lm-1a2b3c4d",
+          answers: [],
         };
         return HttpResponse.json({
           ...d,
@@ -167,5 +168,65 @@ describe("finding detail, step 3a polish", () => {
     expect(screen.getByRole("link", { name: "SAF-0501" })).toBeTruthy();
     expect(screen.getByTestId("assessment-not-shown").textContent).toBe("1 answer not shown: rejected (bad_json).");
     expect(screen.getByText(/the finding is unchanged/)).toBeTruthy();
+    expect(screen.queryAllByTestId("assessment-answer")).toHaveLength(0);
+  });
+
+  it("shows both raw answers of an agreement assessment", async () => {
+    const digest = "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753";
+    const digest2 = "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04";
+    const textA = '{"same_event": "yes", "reason": "Both name high blood sugar."}';
+    const textB = '{"same_event": "no", "reason": "One is high and one is low blood sugar."}';
+    server.use(
+      http.get(`${BASE}/findings/:id`, () => {
+        const d = detail("SAF-0600", {
+          agent_id: "safety.sae_reconciler",
+          agent_version: "1.1.1",
+          kind: "sae_reconciliation",
+          title: "Preferred term differs between the clinical database and the safety case",
+        });
+        const answer = {
+          status: "accepted" as const,
+          reason: "r.",
+          rejection_reasons: [],
+          error: null,
+          latency_ms: 900,
+        };
+        return HttpResponse.json({
+          ...d,
+          assessments: [
+            {
+              seq: 950,
+              recorded_at: "2026-11-09T12:00:00Z",
+              agent_id: "safety.term_adjudicator",
+              agent_version: "1.1.0",
+              candidate: "term_mismatch" as const,
+              finding_ids: ["SAF-0600"],
+              status: "accepted" as const,
+              verdict: "unsure" as const,
+              reason: "The models do not agree that the terms are one event or two (phi4-mini yes; qwen3.5 no).",
+              model: "phi4-mini:3.8b-q4_K_M+qwen3.5:4b-q4_K_M",
+              model_digest: null,
+              rejection_reasons: [],
+              error: null,
+              executor: "openshell",
+              sandbox: "mer-lm-1a2b3c4d",
+              answers: [
+                { ...answer, model: "phi4-mini:3.8b-q4_K_M", model_digest: digest, verdict: "yes" as const, text: textA },
+                { ...answer, model: "qwen3.5:4b-q4_K_M", model_digest: digest2, verdict: "no" as const, text: textB },
+              ],
+            },
+          ],
+        });
+      }),
+    );
+    renderApp("/findings/SAF-0600", "karan.mehta");
+    const shown = await screen.findAllByTestId("assessment");
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.textContent).toContain("unsure");
+    const answers = screen.getAllByTestId("assessment-answer");
+    expect(answers).toHaveLength(2);
+    expect(answers[0]?.textContent).toContain("phi4-mini:3.8b-q4_K_M");
+    expect(answers[1]?.textContent).toContain("qwen3.5:4b-q4_K_M");
+    expect(screen.getAllByTestId("raw-answer").map((e) => e.textContent)).toEqual([textA, textB]);
   });
 });
