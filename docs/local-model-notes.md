@@ -90,18 +90,19 @@ listed, so each file is uploaded straight into its area (a folder upload lands i
 subfolder and needs a writable parent). That costs about 1.4 s per run for 14 files.
 Every policy's conformance opens each area: allowed where listed, refused elsewhere.
 
-## The model choice
+## The model choice, and abstaining on disagreement (step 3b2)
 
-On the 61 dev pairs (docs/local-model-eval.md), with the rule fixed before the run:
-
-| Model | Accuracy | "no" recall, look-alikes | Wrong "yes", look-alikes | Rejected | Median latency | At num_ctx 4096 |
-|---|---|---|---|---|---|---|
-| granite4:3b | 0.951 | 0.923 | 2 | 0 | 458 ms | 100% GPU, 2.5 GB |
-| phi4-mini:3.8b-q4_K_M | 0.967 | 0.962 | 1 | 0 | 1000 ms | 16% CPU, 3.2 GB |
-| qwen3.5:4b-q4_K_M | 0.934 | 0.962 | 0 | 3 | 2589 ms | 42% CPU, 3.7 GB |
-
-* granite4 is not eligible: it said "yes" to two look-alikes (gastritis and gastric
-  ulcer; atrial fibrillation and atrial flutter).
-* Of the two eligible models, the more accurate wins: phi4-mini. Its one wrong "yes" is
-  atrial fibrillation and atrial flutter.
-* No model ever said "unsure".
+* Step 3b chose phi4-mini on 61 dev pairs (docs/local-model-eval.md): granite4 said "yes"
+  to two look-alikes; phi4-mini to one (atrial fibrillation and atrial flutter). No model
+  ever said "unsure", and every sealed error was a pair labelled "unsure".
+* 1.1.0 asks phi4-mini and qwen3.5 (think false) the same question: "yes" or "no" only
+  when both say it, otherwise "unsure". Both raw answers, models and digests are in the
+  FindingAssessment and on the finding page. On 75 dev pairs it made no wrong "yes" and
+  cost 4 correct answers (3 of them qwen3.5 answers the validator rejects). An explicit
+  "unsure" instruction changed no answer to "unsure", so it did not ship.
+* Neither way makes a model abstain on cause, symptom or complication pairs: all 14
+  such dev pairs got "no". Abstention comes only from disagreement.
+* End to end on 10 fault cuts: 0 wrong "yes" in 15 assessments; the agreement turned 4
+  PRURITUS / PRURIGO "yes" answers of phi4-mini into "unsure".
+* safety.local_narrator 1.0.1: the host writes the opening (site, subject, check), dates
+  are readable, filler sentences are rejected. 135 of 158 accepted (1.0.0: 16 of 77).

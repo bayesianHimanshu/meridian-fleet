@@ -250,3 +250,73 @@ Decision, by the rule written above: the agreement rule meets the target (0 wron
 "yes"); the unsure prompt also meets it (1) but has more wrong "yes" than the agreement
 rule, so **1.1.0 agreement ships**, with the 1.0.0 prompt. Its cost: 4 correct answers
 of 75 turned "unsure", and calls take both models' time (about 3.7 s per pair).
+
+### Step 3b2: safety.local_narrator 1.0.1 (2026-11-09)
+
+`meridian agents narrate-local` on every current safety finding (reconciler 1.1.1): 158
+findings, now including the holdout and clean cuts. One job of 16 failed on a gateway
+HTTP/2 error ("stream closed because of a broken pipe") and was retried on the next
+pass. Final outcomes, with 1.0.0 on the 77 findings it saw in step 3b:
+
+| | Findings | Accepted | Rejected | Rejection reasons (a narrative can have several) |
+|---|---|---|---|---|
+| 1.0.0 (step 3b) | 77 | 16 | 61 | missing_site 60, number_not_displayed 4, supporting_as_headline 4, date_not_displayed 3, bad_json 1 |
+| 1.0.1, the same 77 | 77 | 66 | 11 | filler_sentence_severity 9, too_many_sentences 2, filler_sentence_discrepancy 2 |
+| 1.0.1, all | 158 | 135 | 23 | filler_sentence_severity 16, filler_sentence_discrepancy 5, too_many_sentences 4 |
+
+On the same 77: 59 went from rejected to accepted, 9 from accepted to rejected, 7 stayed
+accepted, 2 stayed rejected. Accepted by check, all 158: sae_missing_in_safety_db 16/16,
+late_sae_report 57/60, causality_mismatch 15/16, onset_mismatch 16/17,
+outcome_mismatch 16/17, case_without_clinical_sae 14/16, sae_late_reporting_site 1/16.
+
+* missing_site is gone: the opening carries the site.
+* The site-level check went from 8/8 to 1/16. Re-sent through the sandbox (nothing
+  recorded), its answers end "This is considered a high severity finding.", which the
+  new rule rejects as intended. The prompt says not to; phi4-mini does it anyway.
+* The other filler rejections read "This discrepancy was identified through a
+  reconciliation process." and "This discrepancy is supported by the recorded date of
+  the AE.": filler, rightly rejected.
+* Temperature 0 and a fixed seed do not make answers repeatable: re-sending 7 rejected
+  requests gave different text for 2 (both then passed). The ledger keeps what was
+  validated at the time.
+
+What the validator does not catch (in accepted texts): a date given the wrong meaning
+("This discrepancy was noted on 25 May 2013", the onset), a raw evidence selector copied
+into prose ("CASEID=SC-A4C2754345; VERSION=1; ..."), and the template summary copied
+whole.
+
+### Step 3b2: the term path end to end (2026-11-09)
+
+`meridian safety inject --set terms` wrote 10 cuts with 15 term faults (7 recoded_term,
+8 lookalike_term); `meridian safety run --set terms` ran safety.sae_reconciler 1.1.1 in
+OpenShell sandboxes; `meridian agents adjudicate` ran safety.term_adjudicator 1.1.0 in
+the safety.local_model sandbox (both models, one job each).
+
+* Findings: 15 sae_term_mismatch, precision 1.00 and recall 1.00 against the ground truth
+  (`meridian safety eval --set terms`), nothing else raised.
+* Assessments: 15, all accepted.
+
+| Fault | Pair (clinical / case) | n | phi4-mini | qwen3.5 | Verdict |
+|---|---|---|---|---|---|
+| recoded_term | PRURITUS / PRURITUS GENERALISED | 2 | yes | yes | yes |
+| recoded_term | PRURITUS / PRURITUS GENERALISED | 1 | no | yes | unsure |
+| recoded_term | HEADACHE / TENSION HEADACHE | 1 | yes | yes | yes |
+| recoded_term | APPLICATION SITE PRURITUS / ADMINISTRATION SITE PRURITUS | 1 | no | yes | unsure |
+| recoded_term | APPLICATION SITE DERMATITIS / ADMINISTRATION SITE DERMATITIS | 1 | no | yes | unsure |
+| recoded_term | APPLICATION SITE ERYTHEMA / ADMINISTRATION SITE ERYTHEMA | 1 | no | no | **no** |
+| lookalike_term | PRURITUS / PRURIGO | 4 | yes | no | unsure |
+| lookalike_term | ERYTHEMA / ERYTHEMA NODOSUM | 2 | no | no | no |
+| lookalike_term | HYPERHIDROSIS / HYPOHIDROSIS | 1 | no | no | no |
+| lookalike_term | NASOPHARYNGITIS / LARYNGITIS | 1 | no | no | no |
+
+* recoded_term (expected yes): yes 3, unsure 3, no 1. lookalike_term (expected no): no 4,
+  unsure 4, yes 0. Wrong "yes": 0. phi4-mini alone (1.0.0) would have said "yes" to all
+  4 PRURITUS / PRURIGO look-alikes.
+* The one wrong "no": both models read ADMINISTRATION SITE ERYTHEMA as another event.
+  That is the safe direction (the finding stays open for a person), but it is wrong.
+* PRURITUS is the commonest serious AE term after augmentation, so the seeded draw
+  picked PRURITUS pairs for 7 of the 15 faults.
+* Who sees it: the medical monitor and the clinical operations lead see the assessment
+  on each finding page, with both raw answers, models and digests; the toxicologist
+  gets 404 for these findings and so never sees their assessments (unchanged rule: an
+  assessment is shown only when every finding it names is).

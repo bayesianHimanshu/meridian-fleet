@@ -175,3 +175,9 @@ narrative carries `narrator_id` (rbqm.narrator or safety.local_narrator) and
 `model_digest` (the local model's served digest; null for the cloud narrator). The fleet
 lists safety.term_adjudicator (role adjudicator) and safety.local_narrator under policy
 safety.local_model, each counted from its own events.
+
+Step 3b2: an assessment of term adjudicator 1.1.0 (the agreement rule) also carries
+`answers`, one per model asked: model, digest, status, verdict and reason (only when that
+answer passed validation) and `text`, the raw answer as received. The page shows both raw
+answers under the agreed verdict. `model` is the two models joined by "+" and
+`model_digest` is null; each answer has its own digest. 1.0.0 assessments have no answers.
