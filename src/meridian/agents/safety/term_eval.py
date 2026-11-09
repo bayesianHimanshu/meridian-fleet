@@ -22,7 +22,7 @@ from pydantic import BaseModel, ConfigDict
 
 from meridian.agents.local_model import LocalBatch, LocalModelExecutor
 from meridian.agents.safety import term_adjudicator as ta
-from meridian.llm.local_job import LocalModelJob
+from meridian.llm.local_job import LocalCallResult, LocalModelJob
 from meridian.platform.config import LocalModelSettings
 
 LOOKALIKE = frozenset({"opposite", "same_organ"})
@@ -221,13 +221,19 @@ def run_model(
     settings: LocalModelSettings,
     executor: LocalModelExecutor,
 ) -> ModelReport:
+    results: list[LocalCallResult] = []
+    served: str | None = None
     try:
-        batch = executor.call(build_job(pairs, settings), settings.timeout_seconds)
+        for start in range(0, len(pairs), settings.max_per_job):
+            chunk = pairs[start : start + settings.max_per_job]
+            batch = executor.call(build_job(chunk, settings), settings.timeout_seconds)
+            results.extend(batch.results)
+            served = served or batch.served_digest
     except Exception as exc:  # the report says so; nothing else is run for the model
         return ModelReport(model=settings.model, digest=None, results=[], batch_error=str(exc))
     finally:
         executor.drain()
-    return score(pairs, batch, settings.model)
+    return score(pairs, LocalBatch(tuple(results), served, executor.name), settings.model)
 
 
 def placement(base_url: str, model: str, timeout: float = 10.0) -> Placement | None:

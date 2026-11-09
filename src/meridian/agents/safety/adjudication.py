@@ -169,6 +169,12 @@ class AdjudicatorRunner:
         )
 
     def _send(self, queue: list[_Pending], report: AdjudicatorReport) -> None:
+        """One job (and one sandbox) per max_per_job requests."""
+        size = self._settings.max_per_job
+        for start in range(0, len(queue), size):
+            self._send_job(queue[start : start + size], report)
+
+    def _send_job(self, queue: list[_Pending], report: AdjudicatorReport) -> None:
         job = LocalModelJob(
             model=self._settings.model,
             pinned_digest=self._settings.pinned(),

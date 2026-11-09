@@ -87,6 +87,7 @@ num_predict = 256
 think = false
 timeout_seconds = 120.0
 max_calls_per_pass = 200
+max_per_job = 16  # requests per sandbox: a long silent exec is cut by the gateway
 
 [local_model.digests]
 "granite4:3b" = "89962fcc75239ac434cdebceb6b7e0669397f92eaef9c487774b718bc36a3e5f"

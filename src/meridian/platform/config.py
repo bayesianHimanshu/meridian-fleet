@@ -129,6 +129,10 @@ class LocalModelSettings(BaseModel):
     think: bool = False
     timeout_seconds: float = Field(120.0, gt=0)
     max_calls_per_pass: int = Field(200, ge=1)
+    # Requests per sandbox. One exec of 77 calls (about 12 minutes, nothing on stdout until
+    # the end) was cut by the gateway: "exec relay closed before the command reported an
+    # exit status". A pass is split into jobs of at most this many, one sandbox each.
+    max_per_job: int = Field(16, ge=1)
 
     @model_validator(mode="after")
     def _pinned(self) -> LocalModelSettings:

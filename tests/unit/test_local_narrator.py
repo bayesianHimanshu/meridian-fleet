@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 import structlog
 
-from meridian.agents.local_model import InProcessLocalModelExecutor
+from meridian.agents.local_model import InProcessLocalModelExecutor, LocalBatch
 from meridian.agents.rbqm import narrator
 from meridian.agents.safety import local_narrator as ln
 from meridian.agents.safety.local_narration import LocalNarratorRunner
@@ -16,8 +16,9 @@ from meridian.domain.findings import Finding
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
 from meridian.llm.local import FakeLocalModelClient, LocalModelResponse
+from meridian.llm.local_job import LocalModelJob
 from meridian.platform.clock import FixedClock
-from tests.local_model_support import DIGEST, MODEL, RECODED, SETTINGS, raise_spec
+from tests.local_model_support import DIGEST, MODEL, RECODED, SETTINGS, raise_spec, unpaired_spec
 from tests.support import T0, make_ledger
 
 EM_DASH = chr(0x2014)
@@ -140,3 +141,30 @@ def test_a_pass_records_the_narrative_with_model_and_digest(
     assert "201-9001-001" in request.user
     assert verify(ledger).ok
     assert runner.run_pass().counts == {}
+
+
+class _Counting(InProcessLocalModelExecutor):
+    def __init__(self, client: FakeLocalModelClient) -> None:
+        super().__init__(client)
+        self.jobs: list[int] = []
+
+    def call(self, job: LocalModelJob, timeout_seconds: float) -> LocalBatch:
+        self.jobs.append(len(job.requests))
+        return super().call(job, timeout_seconds)
+
+
+def test_a_pass_is_split_into_jobs_of_max_per_job(ledger: SqliteLedger) -> None:
+    """One exec of 77 calls was cut by the gateway, so each job holds at most max_per_job."""
+    raise_spec(ledger, unpaired_spec(3))  # two findings to narrate
+    raise_spec(ledger, RECODED)  # and a third
+    executor = _Counting(FakeLocalModelClient(script=["x"] * 3, digests={MODEL: DIGEST}))
+    runner = LocalNarratorRunner(
+        ledger=ledger,
+        executor=executor,
+        clock=FixedClock(T0),
+        settings=SETTINGS.model_copy(update={"max_per_job": 2}),
+        log=structlog.get_logger(),
+    )
+    report = runner.run_pass()
+    assert executor.jobs == [2, 1]
+    assert report.counts == {"rejected": 3}
