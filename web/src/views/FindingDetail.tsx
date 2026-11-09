@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react";
-import { Link, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
 import { ErrorNote, Loading, SeverityChip, StatusChip, Time, isStatus } from "../components/common";
 import { ROLE_LABELS, useIdentity } from "../identity";
+import { FALLBACK_FROM, FindingLink, WithTimes, isFrom } from "../components/text";
 import { useApi } from "../queries";
+import { PolicyPair } from "./Fleet";
 
 type Detail = Schemas["FindingDetail"];
 type Action = Schemas["DecisionAction"];
@@ -167,9 +169,20 @@ function Traceability({ detail }: { detail: Detail }) {
         <dd>
           <Hash value={suspended?.image_digest} label="image digest" />
         </dd>
-        <dt>Policy sha256</dt>
+        <dt>Policy</dt>
         <dd>
-          <Hash value={suspended?.policy_sha256} label="policy sha256" />
+          <PolicyPair
+            file={suspended?.policy_file}
+            fileSha={suspended?.policy_file_sha256}
+            appliedSha={suspended?.applied_policy_sha256}
+            of="this run"
+          />
+          {suspended?.applied_policy_sha256 && !suspended.policy_file_sha256 ? (
+            <span className="muted" data-testid="policy-file-note">
+              Recorded before runs named their policy file: match the applied policy sha256 on the Agent fleet
+              page.
+            </span>
+          ) : null}
         </dd>
         <dt>Inputs manifest sha256</dt>
         <dd>
@@ -192,6 +205,10 @@ function Traceability({ detail }: { detail: Detail }) {
 
 export function FindingDetail() {
   const { findingId = "" } = useParams();
+  const location = useLocation();
+  const state: unknown = location.state;
+  const carried = typeof state === "object" && state !== null ? (state as { from?: unknown }).from : undefined;
+  const from = isFrom(carried) ? carried : FALLBACK_FROM;
   const detail = useApi(["finding", findingId], () =>
     unwrap(api.GET("/api/v1/findings/{finding_id}", { params: { path: { finding_id: findingId } } })),
   );
@@ -211,7 +228,7 @@ export function FindingDetail() {
   return (
     <article className="stack" aria-labelledby="finding-title">
       <p>
-        <Link to="/review">Back to the review queue</Link>
+        <Link to={from.path}>{from.label}</Link>
       </p>
       <div className="view-head">
         <div>
@@ -224,8 +241,12 @@ export function FindingDetail() {
             <span className="chip">{f.scope} cut</span>
             {f.visibility === "restricted" ? <span className="chip restricted">restricted</span> : null}
           </div>
-          <h1 id="finding-title">{f.title}</h1>
-          <p>{f.summary}</p>
+          <h1 id="finding-title">
+            <WithTimes text={f.title} />
+          </h1>
+          <p>
+            <WithTimes text={f.summary} />
+          </p>
           {f.retired ? (
             <p className="message">
               Retired: version <span className="mono">{f.retired_by_version}</span> of this agent ran on
@@ -235,7 +256,7 @@ export function FindingDetail() {
           {f.superseded ? (
             <p className="message">
               A newer version of this agent replaced this finding:{" "}
-              <Link to={`/findings/${f.superseded_by ?? ""}`}>{f.superseded_by}</Link>.
+              <FindingLink id={f.superseded_by ?? ""} />.
             </p>
           ) : null}
         </div>
@@ -252,6 +273,11 @@ export function FindingDetail() {
               <h3>{accepted.headline}</h3>
               <p>{accepted.explanation}</p>
             </>
+          ) : f.agent_id.startsWith("safety.") ? (
+            <p className="muted" data-testid="safety-summary-note">
+              Safety findings are not sent to the cloud language model. A summary from a local model arrives in a
+              later step.
+            </p>
           ) : (
             <p className="muted">No accepted narrative for this finding.</p>
           )}
@@ -279,10 +305,13 @@ export function FindingDetail() {
                   <span className={`chip ${e.role === "primary" ? "outline" : ""}`}>{e.role ?? "not stated"}</span>
                 </td>
                 <td className="ev-value">
-                  {e.display ?? <span className="mono">{e.value}</span>}
+                  {e.display ? <WithTimes text={e.display} /> : <span className="mono">{e.value}</span>}
                   <span className="ev-key mono">{e.statistic}</span>
                 </td>
-                <td className="ev-source mono">{e.source}</td>
+                <td className="ev-source mono">
+                  {e.source}
+                  <span className="ev-key">{e.selector}</span>
+                </td>
               </tr>
             ))}
           </tbody>
