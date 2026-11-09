@@ -810,7 +810,7 @@ def eval_terms(
     ] = False,
 ) -> None:
     """safety.term_adjudicator on labelled term pairs, per model, in the local model sandbox."""
-    from meridian.evals import term_pairs as tp
+    from meridian.agents.safety import term_eval as tp
 
     settings = _local_settings(None)
     local = settings.local_model

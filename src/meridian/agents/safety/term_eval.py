@@ -4,7 +4,9 @@ Each pair is sent exactly as the adjudicator sends a finding's terms: the same p
 options and validator, one job per model through the safety.local_model sandbox. The
 metrics are the ones the doc fixed before any run. VRAM is read on the host from
 Ollama's /api/ps right after the job (the sandbox may call only /api/tags and
-/api/chat).
+/api/chat). It sits with the agent, not in meridian.evals: the evaluation code there
+never imports agent code, and this is the agent's own harness, with labels written for
+it, not ground truth of a cut.
 """
 
 import json

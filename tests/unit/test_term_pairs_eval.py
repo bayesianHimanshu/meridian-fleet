@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from meridian.agents.local_model import InProcessLocalModelExecutor
-from meridian.evals import term_pairs as tp
+from meridian.agents.safety import term_eval as tp
 from meridian.llm.local import FakeLocalModelClient
 from meridian.platform.config import LocalModelSettings
 
