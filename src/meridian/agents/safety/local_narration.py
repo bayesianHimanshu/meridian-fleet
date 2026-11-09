@@ -2,10 +2,10 @@
 
 One pass reads every FindingRaised of the detector versions safety.local_narrator
 narrates that has no final FindingNarrative from it yet (accepted or rejected; an error
-is retried), oldest first, sends the first max_calls_per_pass as one job to the
-safety.local_model sandbox, validates every answer here and records a FindingNarrative
-with the finding's visibility, the model and the digest it was served with. The finding
-itself is never changed.
+is retried), oldest first, sends the first max_calls_per_pass in jobs of at most
+max_per_job to the safety.local_model sandbox, validates every answer here and records a
+FindingNarrative with the finding's visibility, the model and the digest it was served with.
+The finding itself is never changed.
 """
 
 from collections.abc import Collection
@@ -17,6 +17,7 @@ import structlog
 from meridian.agents.local_model import LocalModelExecutor
 from meridian.agents.safety import local_narrator as ln
 from meridian.data.datacut import Ledger
+from meridian.domain import safety as s
 from meridian.domain.dedup import parse_dedup_key
 from meridian.domain.enums import EventType
 from meridian.domain.events import Event, EventDraft, FindingNarrative, FindingRaised
@@ -99,7 +100,8 @@ class LocalNarratorRunner:
             if len(queue) >= self._settings.max_calls_per_pass:
                 report.deferred.append(event.payload.finding.finding_id or "")
                 continue
-            inp = ln.narrator_input(event.payload.finding)
+            check = s.check_name(parse_dedup_key(event.payload.dedup_key).check)
+            inp = ln.narrator_input(event.payload.finding, check)
             request = ln.build_request(
                 inp,
                 model=self._settings.model,
