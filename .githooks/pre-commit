@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Runs scripts/check.sh before every commit; a failing check stops the commit.
+# Enabled per clone with: git config core.hooksPath .githooks (never --global).
+# It checks the working tree, so stage everything you changed or stash the rest.
+# Skip once, knowingly, with: git commit --no-verify
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh"
