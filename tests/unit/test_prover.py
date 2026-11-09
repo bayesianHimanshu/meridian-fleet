@@ -147,5 +147,19 @@ def test_narrator_egress_for_another_binary_exceeds_its_boundary(tmp_path: Path)
 
 
 @needs_prover
-def test_a_zone_policy_is_within_the_narrator_boundary_but_not_vice_versa() -> None:
-    assert check(ROOT / "rbqm.yaml", NARRATOR_BOUNDARY).passed
+def test_the_staged_areas_separate_the_zones() -> None:
+    """Each boundary lists only the staged areas its policies may read, so a policy that
+    reads another area is outside it, whichever way round."""
+    boundary = policies.boundary_path
+    outside = [
+        ("rbqm.yaml", "narrator"),  # the cut areas; the narrator reads only its job
+        ("rbqm.narrator.yaml", "blinded"),  # egress
+        ("unblinded.yaml", "blinded"),  # /stage/unblinded
+        ("rbqm.yaml", "local_model"),
+        ("safety.local_model.yaml", "blinded"),  # egress to the local model
+        ("safety.local_model.yaml", "narrator"),  # a different endpoint
+    ]
+    for policy, name in outside:
+        result = check(ROOT / policy, boundary(name, ROOT))
+        assert result.result != "within_boundary", f"{policy} vs {name}: {result.explain()}"
+    assert check(ROOT / "safety.yaml", boundary("blinded", ROOT)).passed

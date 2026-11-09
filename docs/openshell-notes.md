@@ -10,15 +10,20 @@ the docker compute driver.
    temporary folder named `cut`, and writes the DataCut event as `cut/trigger.json`. Never
    `unblinded/`, never the manifest (it lists the unblinded files), never ground truth.
    The folder is checked twice, once after copying and once just before upload. Last,
-   the host writes `cut/inputs_manifest.json`: path, size and sha256 of every staged file.
+   the host writes `cut/meta/inputs_manifest.json`: path, size and sha256 of every staged
+   file. Since phase 3 step 3b only the cut areas the zone's policy reads are staged
+   (blinded/ and ops/, or blinded/ alone for the safety zone), with meta/trigger.json.
 2. **Create.** `openshell sandbox create --name mer-km-7n-1a2b3c4d --from
-   meridian-agent:0.1.0 --policy policies/rbqm.yaml --detach --upload <stage>/cut:/tmp`.
+   meridian-agent:0.1.0 --policy policies/rbqm.yaml --detach --upload
+   <stage>/cut/blinded/dm.parquet:/stage/blinded ...`: each staged file straight into its
+   area's folder under /stage (step 3b; "The zones differ in what they may read").
    One sandbox per agent run, from the agent image, with the zone's policy.
 3. **Run.** `openshell sandbox exec ... --timeout 120 -- meridian-worker run --agent ...
-   --trigger /tmp/cut/trigger.json --cut-dir /tmp/cut`. Before reading any data the worker
-   checks every file against the inputs manifest and exits 3 on a missing, extra or
-   changed file (the cut sits in writable /tmp, and a failed upload can leave a partial
-   one). It prints one canonical JSON document on stdout, and logs go to stderr.
+   --trigger /stage/meta/trigger.json --cut-dir /stage`. Before reading any data the
+   worker checks every file against the inputs manifest (listing only the areas it names:
+   /stage itself cannot be listed) and exits 3 on a missing, extra or changed file (the
+   areas are writable, and a failed upload can leave a partial one). It prints one
+   canonical JSON document on stdout, and logs go to stderr.
 4. **Check the policy.** `openshell sandbox get <name> --policy-only` returns the policy
    the sandbox enforces. The host checks it matches the committed file and stores its
    sha256 on the ActorSuspended event, next to the image digest and the inputs manifest
@@ -45,7 +50,8 @@ On DC-BASE, DC-RBQM-CORE, DC-NULL-S6 and DC-d5ada06c all 12 runs matched.
   The sandbox's main process is bash, and an upload is extracted with cat, mkdir and tar.
   I found the list by removing entries until something broke. `/usr`, `/etc` and `/lib64`
   are not needed.
-* `read_write: /tmp` only. The cut lands in `/tmp/cut`, because an upload is extracted by
+* `read_write: /tmp` and the zone's stage areas (step 3b). Until step 3b the cut landed in
+  `/tmp/cut`, because an upload is extracted by
   the sandboxed process itself and can only go somewhere writable.
 * `landlock: hard_requirement`. If the kernel cannot enforce the rules, the sandbox does
   not start. `best_effort` would silently run an agent with full file access.
@@ -55,19 +61,33 @@ On DC-BASE, DC-RBQM-CORE, DC-NULL-S6 and DC-d5ada06c all 12 runs matched.
 Filesystem, Landlock and process settings apply when the sandbox starts and cannot
 change afterwards. That is one more reason to create a fresh sandbox for every run.
 
-### The zones are separate in name only
+### The zones differ in what they may read (phase 3 step 3b)
 
-The seven zone policies (portfolio, preclinical, study_ops, rbqm, safety, quality,
-unblinded) and safety.sae_reconciler.yaml render from the same `ZonePolicy` defaults and
-differ only in their header comment. In effect they are one policy: the same read-only and
-read-write paths, Landlock, user and no network. Their files hash differently; the policy
-the sandbox applies hashes the same for all eight (applied policy sha256
-01637db6...b0805d). So an rbqm run and a safety run are contained by identical rules, and
-the zone name says which data is staged, not what the sandbox may do. What keeps a zone's
-data apart is staging (only that cut's blinded files, plus the safety snapshot for the
-safety zone), not the policy. rbqm.narrator is the only policy that differs in effect.
-Zones get distinct rules when one needs them, for example the unblinded zone once it may
-read the unblinded staging path. docs/api-notes.md explains the two hashes.
+Until step 3b the seven zone policies and safety.sae_reconciler.yaml applied one policy
+(applied sha256 01637db6...b0805d for all eight): they differed only in their header
+comment, and only staging kept a zone's data apart. Now staged inputs land in /stage, one
+folder per area (meta, blinded, ops, unblinded, narr, lm), which the image creates owned by
+the sandbox user, and each policy's read_write lists only the areas its zone may use:
+
+* blinded zones (portfolio, preclinical, study_ops, rbqm, quality): meta, blinded, ops;
+* safety and safety.sae_reconciler: meta, blinded (the reconciler reads no ops table);
+* unblinded: meta, blinded, ops and unblinded, the only policy that lists it;
+* rbqm.narrator: narr; safety.local_model: lm.
+
+Findings, measured on 0.1.7:
+
+* Landlock grants each listed folder on its own: /stage/blinded opens while /stage and
+  /stage/unblinded give EACCES. Rules name paths that exist at start, hence the folders
+  in the image.
+* A folder upload `DIR:/stage/blinded` lands at /stage/blinded/blinded, and uploading
+  into /stage fails (`tar: /stage: Cannot open: Permission denied`). So every file is
+  uploaded on its own into its area: 14 uploads add about 1.4 s to create (2.95 s against
+  1.55 s for one folder).
+* An upload into an area the policy does not list fails, so a staging bug fails closed.
+
+The applied hashes now differ where the rules differ (docs/local-model-notes.md has the
+table). Conformance opens every area for every policy: allowed where listed, refused
+elsewhere.
 
 ## Landlock
 
@@ -154,7 +174,8 @@ paths, no network) stays the primary filesystem check; the prover is a second on
    `mer-<2-letter agent>-<seq base 36>-<8 hex>`.
 2. **Uploads need writable targets.** The extraction runs inside the sandbox, under its
    own Landlock rules, through bash, cat, mkdir and tar. A read-only `/cut` cannot receive
-   an upload, and the tools must be readable. So the cut is at `/tmp/cut`.
+   an upload, and the tools must be readable. So the cut was at `/tmp/cut`; since step 3b
+   each area is its own writable folder under /stage.
 3. **A directory upload `DIR:DEST` lands at `DEST/<basename of DIR>`**, not at DEST.
 4. **A failed upload leaves the sandbox behind.** The CLI says "was created and still
    exists".

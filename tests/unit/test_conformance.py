@@ -18,6 +18,7 @@ from meridian.sandbox.conformance import (
     KEY_PREFIX_COMMAND,
     NARRATOR_CHECKS,
     ConformanceResult,
+    checks_for,
     conformance_name,
     ledger_drafts,
     parse_key_prefix,
@@ -72,6 +73,7 @@ class FakeClient:
     providers: list[tuple[str, ...]] = field(default_factory=list)
     deleted: list[str] = field(default_factory=list)
     log_calls: int = 0
+    reads: tuple[str, ...] = ()
 
     def create(
         self,
@@ -82,6 +84,7 @@ class FakeClient:
         providers: Sequence[str] = (),
     ) -> None:
         assert uploads == []
+        self.reads = policies.ALL_POLICIES[policy.name.removesuffix(".yaml")].reads
         self.created.append(name)
         self.providers.append(tuple(providers))
         self.live.add(name)
@@ -90,7 +93,17 @@ class FakeClient:
         assert list(argv[:2]) == ["/usr/bin/bash", "-c"]
         if argv[2] == self.raise_on:
             raise ExecTimeoutError("openshell sandbox exec timed out")
-        return self.outputs[argv[2]]
+        if argv[2] in self.outputs:
+            return self.outputs[argv[2]]
+        return self._stage(argv[2])
+
+    def _stage(self, command: str) -> ExecOutput:
+        """Landlock as the policy says: an area it lists opens, any other is refused."""
+        path = command.removeprefix("exec 3< ").split(" ", 1)[0]
+        assert path.startswith("/stage/"), command
+        if path.removeprefix("/stage/") in self.reads:
+            return ExecOutput(0, "readable\n" if "echo readable" in command else "", "")
+        return ExecOutput(1, "", f"/usr/bin/bash: line 1: {path}: Permission denied\n")
 
     def policy(self, name: str) -> str:
         return self.effective
@@ -137,7 +150,12 @@ def test_all_refused_control_ok_and_log_line_found_passes(tmp_path: Path) -> Non
     assert result.control_ok
     assert [r.raw for r in result.log_records] == [DENIAL]
     assert result.policy_sha256 == policies.sha256_text(client.effective)
-    assert [c.name for c in result.checks] == [s.name for s in CHECKS]
+    assert [c.name for c in result.checks] == [s.name for s in CHECKS] + [
+        f"read_stage_{a}" for a in policies.STAGE_AREAS
+    ]
+    expected = {f"read_stage_{a}": a in ("meta", "blinded", "ops") for a in policies.STAGE_AREAS}
+    stage = {c.name: c.expect == "allowed" for c in result.checks if c.name.startswith("read_")}
+    assert {k: v for k, v in stage.items() if k.startswith("read_stage_")} == expected
     assert client.deleted == client.created
     assert result.malformed_lines == ()
 
@@ -237,6 +255,10 @@ def test_ledger_records_harness_and_openshell_log_denials(tmp_path: Path) -> Non
         ("read_outside_allow_list", "harness"),
         ("write_var_tmp", "harness"),
         ("write_opt_meridian", "harness"),
+        # rbqm may not open the areas it does not list.
+        ("read_stage_unblinded", "harness"),
+        ("read_stage_narr", "harness"),
+        ("read_stage_lm", "harness"),
         ("egress_test_net", "openshell_log"),
     ]
     network = denials[-1]
@@ -259,7 +281,13 @@ def test_a_failed_check_is_still_recorded(tmp_path: Path) -> None:
     result = _run(client, tmp_path, timeout=0.02)
     events = _drafts_in_a_ledger(result, tmp_path)
     denials = [e.payload for e in events if isinstance(e.payload, PolicyDenied)]
-    assert [d.check for d in denials] == ["read_outside_allow_list", "write_opt_meridian"]
+    assert [d.check for d in denials] == [
+        "read_outside_allow_list",
+        "write_opt_meridian",
+        "read_stage_unblinded",
+        "read_stage_narr",
+        "read_stage_lm",
+    ]
     done = events[-1].payload
     assert isinstance(done, ContainmentCheckCompleted)
     assert (done.all_refused, done.log_line_found, done.passed) == (False, False, False)
@@ -295,7 +323,10 @@ def test_the_narrator_policy_passes_with_its_provider_attached(tmp_path: Path) -
     result = _run(client, tmp_path, zone="rbqm.narrator")
     assert result.passed, result.failures()
     assert client.providers == [("meridian-anthropic",)]
-    assert [c.name for c in result.checks] == [s.name for s in NARRATOR_CHECKS]
+    assert [c.name for c in result.checks] == [s.name for s in checks_for("rbqm.narrator")]
+    assert [c.name for c in result.checks][: len(NARRATOR_CHECKS)] == [
+        s.name for s in NARRATOR_CHECKS
+    ]
     assert result.credential_value_visible is False
     assert [r.destination for r in result.log_records] == ["example.com:443", "192.0.2.1:443"]
     assert [r.policy for r in result.allowed_records] == ["_provider_meridian_anthropic"]
@@ -356,10 +387,16 @@ def test_narrator_ledger_records(tmp_path: Path) -> None:
     assert [(d.check, d.source) for d in denials] == [
         ("write_var_tmp", "harness"),
         ("write_opt_meridian", "harness"),
+        # The narrator may open only its job folder.
+        ("read_stage_meta", "harness"),
+        ("read_stage_blinded", "harness"),
+        ("read_stage_ops", "harness"),
+        ("read_stage_unblinded", "harness"),
+        ("read_stage_lm", "harness"),
         ("egress_example_com", "openshell_log"),
         ("egress_test_net", "openshell_log"),
     ]
-    assert denials[2].raw_line == EXAMPLE_DENIAL
+    assert denials[-2].raw_line == EXAMPLE_DENIAL
     assert all(d.zone == "rbqm" for d in denials)
     assert all(d.policy == "policies/rbqm.narrator.yaml" for d in denials) or all(
         d.policy.endswith("rbqm.narrator.yaml") for d in denials

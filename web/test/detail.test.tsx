@@ -89,8 +89,83 @@ describe("finding detail, step 3a polish", () => {
     expect(screen.queryByText(new RegExp(iso.replace(/[+]/g, "\\+")))).toBeNull();
     expect(screen.getByText("CASEID=SC-1; VERSION=1; USUBJID=201-1001-001")).toBeTruthy();
     expect(screen.getByTestId("safety-summary-note").textContent).toBe(
-      "Safety findings are not sent to the cloud language model. A summary from a local model arrives in a later step.",
+      "Safety findings are never sent to the cloud language model. They are summarised by a local model on this machine, and no local summary of this finding has been accepted yet.",
     );
     expect(screen.queryByText("No accepted narrative for this finding.")).toBeNull();
+  });
+
+  it("labels a local model summary and shows the same-event assessment, never a rejected answer", async () => {
+    const digest = "89962fcc75239ac434cdebceb6b7e0669397f92eaef9c487774b718bc36a3e5f";
+    server.use(
+      http.get(`${BASE}/findings/:id`, () => {
+        const d = detail("SAF-0500", {
+          agent_id: "safety.sae_reconciler",
+          agent_version: "1.1.1",
+          kind: "sae_reconciliation",
+          title: "Serious AE of 201-1001-001 has no case in the safety database",
+        });
+        const assessment = {
+          seq: 900,
+          recorded_at: "2026-11-09T12:00:00Z",
+          agent_id: "safety.term_adjudicator",
+          agent_version: "1.0.0",
+          candidate: "unpaired_pair" as const,
+          model: "granite4:3b",
+          model_digest: digest,
+          rejection_reasons: [],
+          error: null,
+          executor: "openshell",
+          sandbox: "mer-lm-1a2b3c4d",
+        };
+        return HttpResponse.json({
+          ...d,
+          narratives: [
+            {
+              seq: 899,
+              recorded_at: "2026-11-09T11:59:00Z",
+              narrator_version: "1.0.0",
+              narrator_id: "safety.local_narrator",
+              status: "accepted" as const,
+              headline: "Site 1001: a serious AE has no safety case",
+              explanation: "Subject 201-1001-001 has a serious AE with onset 2013-01-20 and no case.",
+              model: "granite4:3b",
+              model_digest: digest,
+              rejection_reasons: [],
+              executor: "openshell",
+              sandbox: "mer-lm-1a2b3c4d",
+            },
+          ],
+          assessments: [
+            {
+              ...assessment,
+              finding_ids: ["SAF-0500", "SAF-0501"],
+              status: "accepted" as const,
+              verdict: "yes" as const,
+              reason: "Both terms name a fainting episode.",
+            },
+            {
+              ...assessment,
+              seq: 901,
+              finding_ids: ["SAF-0500", "SAF-0501"],
+              status: "rejected" as const,
+              verdict: null,
+              reason: null,
+              rejection_reasons: ["bad_json"],
+            },
+          ],
+        });
+      }),
+    );
+    renderApp("/findings/SAF-0500", "karan.mehta");
+    await screen.findByRole("heading", { name: "Site 1001: a serious AE has no safety case" });
+    expect(screen.getByTestId("narrator-source").textContent).toBe("local model granite4:3b, narrator 1.0.0");
+    expect(screen.queryByTestId("safety-summary-note")).toBeNull();
+    const shown = screen.getAllByTestId("assessment");
+    expect(shown).toHaveLength(1);
+    expect(shown[0]?.textContent).toContain("yes: probably the same event Both terms name a fainting episode.");
+    expect(shown[0]?.textContent).toContain("Together with SAF-0501");
+    expect(screen.getByRole("link", { name: "SAF-0501" })).toBeTruthy();
+    expect(screen.getByTestId("assessment-not-shown").textContent).toBe("1 answer not shown: rejected (bad_json).");
+    expect(screen.getByText(/the finding is unchanged/)).toBeTruthy();
   });
 });

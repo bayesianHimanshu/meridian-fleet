@@ -72,7 +72,8 @@ narrator's subscription excludes the safety zone outright (not just by agent ver
 the exclusion is checked again before each request is built, and a test shows that a
 safety finding is never pending, never narrated and never sent, even if someone adds the
 agent to the narrator's subscriptions. The reconciler's own sandbox policy has no network
-rule and no provider. Narration of patient-level findings waits for a local model.
+rule and no provider. Patient-level findings are narrated by safety.local_narrator with
+the local model (phase 3 step 3b, docs/local-model-notes.md).
 
 Visibility is also per finding. Subject-level findings reach medical_monitor,
 clinical_ops_lead and qa_auditor only; the site-level late reporting finding carries no

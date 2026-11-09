@@ -123,7 +123,9 @@ def test_fleet_and_runs_show_the_same_policy_pair(fx: Fixture) -> None:
             policies.expected_effective(policies.ALL_POLICIES[name])
         )
     rbqm, safety = by_id["rbqm.qtl_detector"], by_id["safety.sae_reconciler"]
+    # The safety zone reads no operational data, so its rules differ from rbqm's.
+    assert rbqm["applied_policy_sha256"] != safety["applied_policy_sha256"]
     # Two files that differ only in their header comment apply the same policy.
-    assert rbqm["policy_file_sha256"] != safety["policy_file_sha256"]
-    assert rbqm["applied_policy_sha256"] == safety["applied_policy_sha256"]
+    assert safety["policy_file_sha256"] != policies.file_sha256("safety", REPO_ROOT / "policies")
+    assert safety["applied_policy_sha256"] == policies.applied_sha256("safety")
     assert by_id["rbqm.narrator"]["applied_policy_sha256"] != rbqm["applied_policy_sha256"]

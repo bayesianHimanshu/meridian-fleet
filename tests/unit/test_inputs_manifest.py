@@ -33,7 +33,7 @@ def _run(stage: Path) -> int:
             "--agent",
             "rbqm.csm",
             "--trigger",
-            str(stage / "trigger.json"),
+            str(stage / "meta" / "trigger.json"),
             "--cut-dir",
             str(stage),
             "--config",
@@ -43,7 +43,7 @@ def _run(stage: Path) -> int:
 
 
 def test_staging_writes_a_manifest_of_every_other_file(staged: Path) -> None:
-    manifest = InputsManifest.model_validate_json((staged / MANIFEST_FILE).read_text())
+    manifest = InputsManifest.model_validate_json((staged / "meta" / MANIFEST_FILE).read_text())
     listed = {e.path for e in manifest.files}
     on_disk = {
         p.relative_to(staged).as_posix()
@@ -51,14 +51,14 @@ def test_staging_writes_a_manifest_of_every_other_file(staged: Path) -> None:
         if p.is_file() and p.name != MANIFEST_FILE
     }
     assert listed == on_disk
-    assert "trigger.json" in listed
-    assert all(path.startswith(("blinded/", "ops/")) for path in listed - {"trigger.json"})
+    assert "meta/trigger.json" in listed
+    assert all(path.startswith(("blinded/", "ops/")) for path in listed - {"meta/trigger.json"})
 
 
 def test_runner_and_worker_agree_on_every_hash(staged: Path) -> None:
     """The manifest the host wrote is the manifest the worker recomputes and accepts."""
-    written = (staged / MANIFEST_FILE).read_text()
-    assert verify_manifest(staged).dumps() == written
+    written = (staged / "meta" / MANIFEST_FILE).read_text()
+    assert verify_manifest(staged, at=staged / "meta" / MANIFEST_FILE).dumps() == written
     assert build_manifest(staged).dumps() == written
     for entry in json.loads(written)["files"]:
         data = (staged / entry["path"]).read_bytes()
@@ -99,9 +99,9 @@ def test_worker_refuses_an_extra_file(staged: Path, capsys: pytest.CaptureFixtur
 def test_worker_refuses_a_missing_or_broken_manifest(
     staged: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    (staged / MANIFEST_FILE).write_text("{")
+    (staged / "meta" / MANIFEST_FILE).write_text("{")
     assert _run(staged) == worker.EXIT_DATA
-    (staged / MANIFEST_FILE).unlink()
+    (staged / "meta" / MANIFEST_FILE).unlink()
     assert _run(staged) == worker.EXIT_DATA
     assert capsys.readouterr().out == ""
 
@@ -110,7 +110,7 @@ def test_verify_refuses_a_symlink(staged: Path) -> None:
     (staged / "ops" / "queries.parquet").unlink()
     (staged / "ops" / "queries.parquet").symlink_to(staged / "ops" / "data_entry.parquet")
     with pytest.raises(InputsManifestError, match="symlink"):
-        verify_manifest(staged)
+        verify_manifest(staged, at=staged / "meta" / MANIFEST_FILE)
 
 
 def test_actor_suspended_round_trips_the_manifest_hash() -> None:

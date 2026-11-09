@@ -1,9 +1,17 @@
-"""Stage exactly what an agent may see: <cut>/blinded, <cut>/ops and trigger.json.
+"""Stage exactly what an agent may see: meta/trigger.json and the zone's cut areas.
 
-The staged folder is called "cut" and is uploaded to SANDBOX_ROOT, so the worker sees
-/tmp/cut/blinded, /tmp/cut/ops and /tmp/cut/trigger.json. It never holds unblinded/,
-the cut's manifest (which lists the unblinded files) or any ground truth.
-inputs_manifest.json (size and sha256 of every staged file) is written last.
+The staged folder holds one folder per area, uploaded file by file into the sandbox's
+folder for that area (/stage/<area>, created in the image; meridian.sandbox.policies):
+
+* meta/trigger.json and meta/inputs_manifest.json (size and sha256 of every other staged
+  file, written last), and
+* the cut areas the zone may read: blinded/ and ops/ for a blinded zone, blinded/ only
+  for the safety zone (with the safety database snapshot's blinded area).
+
+It never holds unblinded/, the cut's manifest (which lists the unblinded files) or any
+ground truth. A file is uploaded to its area's folder, not as a folder, because a folder
+upload lands in a subfolder named after it and needs the parent to be writable; the
+sandbox cannot even list /stage.
 """
 
 import shutil
@@ -14,13 +22,14 @@ from meridian.data.cut_writer import BLINDED_AREA, OPS_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, write_manifest
 from meridian.domain.events import Event
 from meridian.ledger.hashing import canonical_json
+from meridian.sandbox.policies import META, STAGE_ROOT, stage_path
 
 STAGE_NAME = "cut"
 TRIGGER_FILE = "trigger.json"
-AREAS = (BLINDED_AREA, OPS_AREA)
-SANDBOX_ROOT = "/tmp"  # noqa: S108 (a path inside the sandbox, not on the host)
-SANDBOX_CUT_DIR = f"{SANDBOX_ROOT}/{STAGE_NAME}"
-SANDBOX_TRIGGER = f"{SANDBOX_CUT_DIR}/{TRIGGER_FILE}"
+CUT_AREAS = (BLINDED_AREA, OPS_AREA)
+SANDBOX_CUT_DIR = STAGE_ROOT
+SANDBOX_TRIGGER = f"{stage_path(META)}/{TRIGGER_FILE}"
+SANDBOX_MANIFEST = f"{stage_path(META)}/{MANIFEST_FILE}"
 
 
 class StagingError(Exception):
@@ -38,32 +47,47 @@ def _copy_area(source: Path, target: Path, area: str) -> None:
         shutil.copyfile(entry, target / entry.name)
 
 
+def cut_areas_for(reads: Sequence[str]) -> tuple[str, ...]:
+    """The cut areas a policy's reads allow, in staging order."""
+    areas = tuple(a for a in CUT_AREAS if a in reads)
+    if BLINDED_AREA not in areas:
+        raise StagingError(f"a cut is staged only for a zone that reads {BLINDED_AREA}/")
+    return areas
+
+
 def stage_cut(
-    cut_dir: Path, trigger: Event, dest_root: Path, extra_blinded: Sequence[Path] = ()
+    cut_dir: Path,
+    trigger: Event,
+    dest_root: Path,
+    extra_blinded: Sequence[Path] = (),
+    areas: Sequence[str] = CUT_AREAS,
 ) -> Path:
-    """Copy the blinded and ops parquet files and write the trigger. Returns the stage.
+    """Copy the given cut areas' parquet files and write the trigger. Returns the stage.
 
     extra_blinded: further blinded areas staged into blinded/ (a safety agent gets the
     blinded area of the cut's safety database snapshot; never an unblinded/ folder)."""
+    if not set(areas) <= set(CUT_AREAS) or BLINDED_AREA not in areas:
+        raise StagingError(f"cannot stage areas {sorted(areas)}")
     stage = dest_root / STAGE_NAME
     stage.mkdir(parents=True, exist_ok=False)
-    for area in AREAS:
+    for area in areas:
         (stage / area).mkdir()
         _copy_area(cut_dir / area, stage / area, area)
     for extra in extra_blinded:
         if extra.name != BLINDED_AREA:
             raise StagingError(f"only a blinded area may be staged, not {extra}")
         _copy_area(extra, stage / BLINDED_AREA, BLINDED_AREA)
-    (stage / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
-    write_manifest(stage)  # last, so it covers every other staged file
-    assert_clean_stage(stage)
+    (stage / META).mkdir()
+    (stage / META / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
+    write_manifest(stage, at=stage / META / MANIFEST_FILE)  # last: it covers the rest
+    assert_clean_stage(stage, areas)
     return stage
 
 
-def assert_clean_stage(stage: Path) -> None:
-    """Raise unless the stage holds only blinded/*.parquet, ops/*.parquet, trigger.json
-    and inputs_manifest.json."""
-    allowed = {*AREAS, TRIGGER_FILE, MANIFEST_FILE}
+def assert_clean_stage(stage: Path, areas: Sequence[str] = CUT_AREAS) -> None:
+    """Raise unless the stage holds only the given areas' *.parquet and meta/ with the
+    trigger and the inputs manifest."""
+    allowed = {*areas, META}
     top = {p.name for p in stage.iterdir()}
     if top != allowed:
         raise StagingError(f"stage holds {sorted(top)}; only {sorted(allowed)}")
@@ -77,7 +101,20 @@ def assert_clean_stage(stage: Path) -> None:
             if len(rel.parts) != 1:
                 raise StagingError(f"nested directory in stage: {rel}")
             continue
-        if rel.as_posix() in (TRIGGER_FILE, MANIFEST_FILE):
-            continue
-        if len(rel.parts) != 2 or rel.parts[0] not in AREAS or path.suffix != ".parquet":
+        if len(rel.parts) != 2:
             raise StagingError(f"unexpected file in stage: {rel}")
+        area, name = rel.parts
+        if area == META:
+            if name not in (TRIGGER_FILE, MANIFEST_FILE):
+                raise StagingError(f"unexpected file in stage: {rel}")
+        elif area not in areas or path.suffix != ".parquet":
+            raise StagingError(f"unexpected file in stage: {rel}")
+
+
+def uploads(stage: Path) -> list[tuple[Path, str]]:
+    """(file, /stage/<area>) for every staged file: each lands directly in its area."""
+    return [
+        (path, stage_path(path.parent.name))
+        for path in sorted(stage.rglob("*"))
+        if path.is_file() and path.parent.parent == stage
+    ]

@@ -1,5 +1,6 @@
 """Command line interface: `meridian ledger ...`."""
 
+import json
 import sys
 from collections.abc import MutableMapping
 from pathlib import Path
@@ -23,6 +24,7 @@ from meridian.domain.events import (
     DataCut,
     Event,
     EventDraft,
+    FindingAssessment,
     FindingNarrative,
     FindingRaised,
     RedactedEvent,
@@ -477,9 +479,9 @@ def agents_run(
             raise typer.Exit(code=1)
 
 
-def _narrator_policy_conforms(c: Container) -> str | None:
-    """None if the latest conformance run of rbqm.narrator passed with the committed
-    policy; otherwise why the narrator may not run."""
+def _policy_conforms(c: Container, name: str) -> str | None:
+    """None if the latest conformance run of the agent policy passed with the committed
+    policy; otherwise why its agents may not run."""
     from meridian.domain.events import ContainmentCheckCompleted
 
     latest = None
@@ -487,19 +489,112 @@ def _narrator_policy_conforms(c: Container) -> str | None:
         if (
             isinstance(entry, Event)
             and isinstance(entry.payload, ContainmentCheckCompleted)
-            and entry.payload.policy_name == policies.NARRATOR_POLICY
+            and entry.payload.policy_name == name
         ):
             latest = entry.payload
     if latest is None:
-        return "no conformance run of rbqm.narrator in the ledger"
-    if not latest.passed or latest.credential_value_visible is not False:
-        return f"the latest conformance run of rbqm.narrator ({latest.sandbox}) did not pass"
-    expected = policies.sha256_text(
-        policies.expected_effective(policies.ALL_POLICIES[policies.NARRATOR_POLICY])
-    )
-    if latest.policy_sha256 != expected:
-        return "rbqm.narrator changed since its latest conformance run"
+        return f"no conformance run of {name} in the ledger"
+    policy = policies.ALL_POLICIES[name]
+    if not latest.passed or (policy.providers and latest.credential_value_visible is not False):
+        return f"the latest conformance run of {name} ({latest.sandbox}) did not pass"
+    if latest.policy_sha256 != policies.sha256_text(policies.expected_effective(policy)):
+        return f"{name} changed since its latest conformance run"
     return None
+
+
+def _narrator_policy_conforms(c: Container) -> str | None:
+    return _policy_conforms(c, policies.NARRATOR_POLICY)
+
+
+def _require_local_model_policy(c: Container) -> None:
+    problem = _policy_conforms(c, policies.LOCAL_MODEL_POLICY)
+    if problem:
+        typer.echo(
+            f"error: {problem}; run meridian sandbox conformance --policy "
+            f"{policies.LOCAL_MODEL_POLICY}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+def _local_settings(max_calls: int | None) -> Settings:
+    settings = Settings()
+    if settings.local_model is None:
+        typer.echo("error: no [local_model] in the configuration", err=True)
+        raise typer.Exit(code=1)
+    if max_calls is not None:
+        local = settings.local_model.model_copy(update={"max_calls_per_pass": max_calls})
+        settings = settings.model_copy(update={"local_model": local})
+    return settings
+
+
+@agents_app.command("adjudicate")
+def agents_adjudicate(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only findings of these cuts; repeatable.")
+    ] = None,
+    max_calls: Annotated[
+        int | None,
+        typer.Option("--max-calls", help="Default: [local_model] max_calls_per_pass.", min=1),
+    ] = None,
+) -> None:
+    """One safety.term_adjudicator pass in the safety.local_model sandbox."""
+    with Container.build(_local_settings(max_calls)) as c:
+        log = _configure_logging(c.clock)
+        _require_local_model_policy(c)
+        try:
+            report = c.adjudicator_runner(log).run_pass(cuts)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    counts = ", ".join(f"{k} {v}" for k, v in sorted(report.counts.items())) or "nothing"
+    typer.echo(
+        f"assessed: {counts}; over budget: {len(report.deferred)}; not sent: {len(report.skipped)}"
+    )
+    if report.batch_error:
+        typer.echo(f"  batch failed: {report.batch_error}")
+    for event in report.events:
+        p = event.payload
+        assert isinstance(p, FindingAssessment)
+        detail = (
+            f"{p.verdict}: {p.reason}"
+            if p.status == "accepted"
+            else ", ".join(p.rejection_reasons) or p.error
+        )
+        typer.echo(f"  seq {event.seq} {'+'.join(p.finding_ids)} {p.status:<8} {detail}")
+
+
+@agents_app.command("narrate-local")
+def agents_narrate_local(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only findings of these cuts; repeatable.")
+    ] = None,
+    max_calls: Annotated[
+        int | None,
+        typer.Option("--max-calls", help="Default: [local_model] max_calls_per_pass.", min=1),
+    ] = None,
+) -> None:
+    """One safety.local_narrator pass in the safety.local_model sandbox."""
+    with Container.build(_local_settings(max_calls)) as c:
+        log = _configure_logging(c.clock)
+        _require_local_model_policy(c)
+        try:
+            report = c.local_narrator_runner(log).run_pass(cuts)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    counts = ", ".join(f"{k} {v}" for k, v in sorted(report.counts.items())) or "nothing"
+    reasons = ", ".join(f"{k} {v}" for k, v in sorted(report.reasons.items())) or "none"
+    typer.echo(
+        f"narrated: {counts}; rejection reasons: {reasons}; over budget: {len(report.deferred)}"
+    )
+    if report.batch_error:
+        typer.echo(f"  batch failed: {report.batch_error}")
+    for event in report.events:
+        p = event.payload
+        assert isinstance(p, FindingNarrative)
+        detail = p.headline if p.status == "accepted" else ", ".join(p.rejection_reasons)
+        typer.echo(f"  seq {event.seq} {p.finding_id} {p.status:<8} {detail or p.error}")
 
 
 @agents_app.command("narrate")
@@ -695,6 +790,94 @@ def eval_suite() -> None:
         typer.echo(f"report {result.report_path}")
         if result.agent_failures:
             raise typer.Exit(code=1)
+
+
+@eval_app.command("terms")
+def eval_terms(
+    file: Annotated[
+        Path, typer.Option("--file", help="Term pairs, JSON lines (docs/local-model-eval.md).")
+    ] = Path("data/term_pairs/dev.jsonl"),
+    models: Annotated[
+        list[str] | None,
+        typer.Option("--model", help="Pinned model to run; repeatable. Default: every one."),
+    ] = None,
+    out: Annotated[
+        Path, typer.Option("--out", help="Where to write the per-pair results (JSON).")
+    ] = Path("var/evals/term_pairs.json"),
+    sealed: Annotated[
+        bool,
+        typer.Option("--sealed", help="A sealed set: print the metrics and errors, write nothing."),
+    ] = False,
+) -> None:
+    """safety.term_adjudicator on labelled term pairs, per model, in the local model sandbox."""
+    from meridian.agents.safety import term_eval as tp
+
+    settings = _local_settings(None)
+    local = settings.local_model
+    assert local is not None
+    pairs = tp.load_pairs(file)
+    names = models or sorted(local.digests)
+    unknown = sorted(set(names) - set(local.digests))
+    if unknown:
+        typer.echo(f"error: not pinned in [local_model.digests]: {unknown}", err=True)
+        raise typer.Exit(code=1)
+    reports = []
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        _require_local_model_policy(c)
+        for name in names:
+            cfg = local.model_copy(update={"model": name, "max_calls_per_pass": len(pairs)})
+            report = tp.run_model(pairs, cfg, c.local_model_executor(log))
+            report.placement = tp.placement(cfg.base_url, name)
+            reports.append(report)
+            typer.echo(json.dumps(report.summary(), sort_keys=True))
+            for r in report.results:
+                if not r.correct:
+                    typer.echo(
+                        f"  {r.pair.id} {r.pair.category} label {r.pair.label}: "
+                        f"{r.status} {r.verdict or ','.join(r.rejection_reasons) or r.error}"
+                        + (
+                            f" ({r.pair.record_a.preferred_term} / "
+                            f"{r.pair.record_b.preferred_term})"
+                            if sealed
+                            else ""
+                        )
+                    )
+    chosen = tp.choose(reports)
+    typer.echo(f"chosen by the rule: {chosen.model if chosen else 'none'}")
+    if sealed:
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(
+            {
+                "file": file.as_posix(),
+                "models": [r.summary() for r in reports],
+                "chosen": chosen.model if chosen else None,
+                "results": {
+                    r.model: [
+                        {
+                            "id": x.pair.id,
+                            "category": x.pair.category,
+                            "label": x.pair.label,
+                            "status": x.status,
+                            "verdict": x.verdict,
+                            "reason": x.reason,
+                            "rejection_reasons": list(x.rejection_reasons),
+                            "latency_ms": x.latency_ms,
+                        }
+                        for x in r.results
+                    ]
+                    for r in reports
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(f"wrote {out}")
 
 
 @eval_app.command("report")

@@ -178,6 +178,9 @@ class FindingNarrative(BaseModel):
     executor: str | None = None
     sandbox: str | None = None
     policy_sha256: Sha256Hex | None = None
+    # The digest Ollama served the model with, for a local model (phase 3 step 3b:
+    # safety.local_narrator). Null for the cloud narrator and on older events.
+    model_digest: Sha256Hex | None = None
 
     @model_validator(mode="after")
     def _check(self) -> Self:
@@ -200,6 +203,72 @@ class FindingNarrative(BaseModel):
         return self
 
 
+AssessmentStatus = Literal["accepted", "rejected", "error"]
+Verdict = Literal["yes", "no", "unsure"]
+AssessmentCandidate = Literal["term_mismatch", "unpaired_pair"]
+
+
+class FindingAssessment(BaseModel):
+    """A model's judgement about one or two findings, by safety.term_adjudicator (phase 3
+    step 3b): do two event terms describe the same event?
+
+    It never changes, closes or supersedes a finding; a person reads it next to them.
+    candidate: term_mismatch (one sae_term_mismatch finding) or unpaired_pair (an
+    sae_missing_in_safety_db and a case_without_clinical_sae finding of the same subject
+    with onsets within the reconciler's window). accepted: the output passed validation,
+    and only then are verdict and reason recorded. rejected: it failed validation
+    (reasons say why); nothing of it is shown. error: the call failed or the served model
+    was not the pinned one (retried on the next pass). Hashes are of the canonical
+    request body sent and of the raw response body received; model_digest is the digest
+    Ollama served.
+    """
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.FINDING_ASSESSMENT] = EventType.FINDING_ASSESSMENT
+    finding_ids: Annotated[tuple[FindingId, ...], Field(min_length=1, max_length=2)]
+    finding_seqs: Annotated[tuple[PositiveInt, ...], Field(min_length=1, max_length=2)]
+    candidate: AssessmentCandidate
+    agent_id: AgentId
+    agent_version: Annotated[str, Field(min_length=1)]
+    status: AssessmentStatus
+    verdict: Verdict | None = None
+    reason: str | None = None
+    model: Annotated[str, Field(min_length=1)]
+    model_digest: Sha256Hex | None = None
+    request_sha256: Sha256Hex
+    response_sha256: Sha256Hex | None = None
+    rejection_reasons: tuple[str, ...] = ()
+    error: str | None = None
+    input_tokens: Annotated[int, Field(ge=0)] | None = None
+    output_tokens: Annotated[int, Field(ge=0)] | None = None
+    latency_ms: Annotated[int, Field(ge=0)] | None = None
+    executor: str | None = None
+    sandbox: str | None = None
+    policy_sha256: Sha256Hex | None = None
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if len(self.finding_ids) != len(self.finding_seqs):
+            raise ValueError("one finding seq per finding id")
+        if len(set(self.finding_ids)) != len(self.finding_ids):
+            raise ValueError("an assessment names each finding once")
+        if len(self.finding_ids) != (1 if self.candidate == "term_mismatch" else 2):
+            raise ValueError(f"a {self.candidate} assessment has the wrong number of findings")
+        if self.status == "accepted":
+            if self.verdict is None or not self.reason:
+                raise ValueError("an accepted assessment needs a verdict and a reason")
+            if self.rejection_reasons or self.model_digest is None:
+                raise ValueError("an accepted assessment has a digest and no rejection reasons")
+        elif self.verdict is not None or self.reason is not None:
+            raise ValueError(f"a {self.status} assessment records no verdict or reason")
+        if self.status == "rejected" and not self.rejection_reasons:
+            raise ValueError("a rejected assessment needs its reasons")
+        if self.status == "error" and not self.error:
+            raise ValueError("an error assessment needs the error")
+        return self
+
+
 class HumanDecision(BaseModel):
     model_config = _FROZEN
 
@@ -216,6 +285,7 @@ EventPayload = Annotated[
     | PolicyDenied
     | ContainmentCheckCompleted
     | FindingNarrative
+    | FindingAssessment
     | HumanDecision,
     Field(discriminator="type"),
 ]

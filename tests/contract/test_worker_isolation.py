@@ -3,6 +3,8 @@
 meridian-worker: no ledger store, faults, evals, ingest or network.
 meridian-narrator-worker: none of those either, no study data and no detection code; it
 reaches the network only through meridian.llm.client.
+meridian-local-model-worker: the same, and not the cloud client either; it reaches the
+network only through meridian.llm.local.
 """
 
 import ast
@@ -108,10 +110,31 @@ def test_narrator_worker_reaches_the_network_only_through_the_model_client() -> 
     assert networked == [NARRATOR_NETWORK_ONLY_IN]
 
 
+LOCAL_FORBIDDEN = (*NARRATOR_FORBIDDEN, "meridian.llm.client", "meridian.narrator_worker")
+LOCAL_NETWORK_ONLY_IN = "meridian.llm.local"
+
+
+def test_local_model_worker_reaches_no_forbidden_module() -> None:
+    """No study data, no detection code and not the cloud client: it only carries
+    host-built requests to the local model."""
+    closure = _closure("meridian.local_model_worker")
+    assert LOCAL_NETWORK_ONLY_IN in closure
+    reached = sorted(m for m in closure if _hit(m, LOCAL_FORBIDDEN))
+    assert reached == []
+
+
+def test_local_model_worker_reaches_the_network_only_through_the_local_client() -> None:
+    closure = _closure("meridian.local_model_worker")
+    networked = sorted(m for m, direct in closure.items() if any(_hit(d, NETWORK) for d in direct))
+    assert networked == [LOCAL_NETWORK_ONLY_IN]
+
+
 API_PACKAGES = ("fastapi", "uvicorn", "starlette", "meridian.api")
 
 
-@pytest.mark.parametrize("root", ["meridian.worker", "meridian.narrator_worker"])
+@pytest.mark.parametrize(
+    "root", ["meridian.worker", "meridian.narrator_worker", "meridian.local_model_worker"]
+)
 def test_workers_import_neither_fastapi_nor_uvicorn(root: str) -> None:
     closure = _closure(root)
     reached = sorted(

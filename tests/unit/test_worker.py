@@ -31,7 +31,7 @@ def _args(stage: Path, agent: str = "rbqm.csm") -> list[str]:
         "--agent",
         agent,
         "--trigger",
-        str(stage / "trigger.json"),
+        str(stage / "meta" / "trigger.json"),
         "--cut-dir",
         str(stage),
         "--config",

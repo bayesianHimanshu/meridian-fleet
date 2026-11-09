@@ -40,6 +40,7 @@ class EventType(StrEnum):
     POLICY_DENIED = "policy_denied"
     CONTAINMENT_CHECK_COMPLETED = "containment_check_completed"
     FINDING_NARRATIVE = "finding_narrative"
+    FINDING_ASSESSMENT = "finding_assessment"
     HUMAN_DECISION = "human_decision"
 
 

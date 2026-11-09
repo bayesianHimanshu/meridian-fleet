@@ -15,6 +15,7 @@ filesystem_policy:
     - /usr/bin/tar
   read_write:
     - /tmp
+    - /stage/narr
 landlock:
   compatibility: hard_requirement
 process:

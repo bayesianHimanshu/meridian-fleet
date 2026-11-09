@@ -6,7 +6,14 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import Event, NarrativeStatus, RedactedEvent
+from meridian.domain.events import (
+    AssessmentCandidate,
+    AssessmentStatus,
+    Event,
+    NarrativeStatus,
+    RedactedEvent,
+    Verdict,
+)
 from meridian.domain.findings import Evidence
 
 _FROZEN = ConfigDict(frozen=True, extra="forbid")
@@ -73,6 +80,10 @@ class LatestNarrative(BaseModel):
     headline: str
     explanation: str
     seq: int
+    # Who wrote it (rbqm.narrator, the cloud model; safety.local_narrator, the local
+    # model) and with which model.
+    narrator_id: str = ""
+    model: str = ""
 
 
 class FindingSummary(BaseModel):
@@ -130,6 +141,33 @@ class NarrativeView(BaseModel):
     rejection_reasons: list[str]
     executor: str | None
     sandbox: str | None
+    narrator_id: str = ""
+    # The digest the local model was served with; null for the cloud narrator.
+    model_digest: str | None = None
+
+
+class AssessmentView(BaseModel):
+    """A local model's judgement about this finding (and, for a pair, one other). Shown
+    only when the role may see every finding it names. A rejected or failed answer shows
+    its status and reason codes, never the model's text."""
+
+    model_config = _FROZEN
+
+    seq: int
+    recorded_at: datetime
+    agent_id: str
+    agent_version: str
+    candidate: AssessmentCandidate
+    finding_ids: list[str]
+    status: AssessmentStatus
+    verdict: Verdict | None
+    reason: str | None
+    model: str
+    model_digest: str | None
+    rejection_reasons: list[str]
+    error: str | None
+    executor: str | None
+    sandbox: str | None
 
 
 class DecisionView(BaseModel):
@@ -183,6 +221,7 @@ class FindingDetail(BaseModel):
     hash: str
     evidence: list[Evidence]
     narratives: list[NarrativeView]
+    assessments: list[AssessmentView] = []
     decisions: list[DecisionView]
     run: RunTrace | None
 
@@ -233,7 +272,7 @@ class FleetAgent(BaseModel):
     agent_id: str
     version: str
     zone: str
-    role: Literal["detector", "narrator"]
+    role: Literal["detector", "narrator", "adjudicator"]
     enabled: bool
     policy: str  # the committed policy's name, e.g. rbqm or safety.sae_reconciler
     policy_file: str
@@ -247,7 +286,8 @@ class FleetAgent(BaseModel):
     )
     last_trigger_seq: int | None
     # Every version of the agent. A detector run failed when its ActorWoke has no
-    # ActorSuspended; a narrator run failed when it recorded status "error".
+    # ActorSuspended; a narrator or adjudicator run failed when it recorded status
+    # "error".
     runs_7d: int
     failed_7d: int
     last_failure_at: datetime | None

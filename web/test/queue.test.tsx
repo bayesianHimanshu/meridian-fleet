@@ -51,7 +51,14 @@ describe("review queue", () => {
 describe("the line under the title", () => {
   it("is the accepted narrative headline when there is one", () => {
     const f = finding("RBQM-0009", {
-      latest_narrative: { narrator_version: "1.1.0", headline: "A headline", explanation: "x", seq: 1 },
+      latest_narrative: {
+        narrator_version: "1.1.0",
+        headline: "A headline",
+        explanation: "x",
+        seq: 1,
+        narrator_id: "rbqm.narrator",
+        model: "m",
+      },
     });
     expect(secondLine(f)).toBe("A headline");
   });

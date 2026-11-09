@@ -13,7 +13,7 @@ import re
 from collections import defaultdict
 from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import timedelta
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -21,10 +21,12 @@ from meridian.agents.base import zone_of
 from meridian.agents.rbqm import narrator
 from meridian.agents.rbqm.describe import describe
 from meridian.agents.registry import AgentRegistry
+from meridian.agents.safety import local_narrator, term_adjudicator
 from meridian.api import safety as safety_view
 from meridian.api import visibility
 from meridian.api.identity import Person
 from meridian.api.models import (
+    AssessmentView,
     AssetLive,
     AssetStatic,
     ContainmentCheckView,
@@ -68,6 +70,7 @@ from meridian.domain.events import (
     DataCut,
     Event,
     EventDraft,
+    FindingAssessment,
     FindingNarrative,
     FindingRaised,
     HumanDecision,
@@ -80,6 +83,7 @@ from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
 from meridian.sandbox.policies import (
     ALL_POLICIES,
+    LOCAL_MODEL_POLICY,
     NARRATOR_POLICY,
     applied_sha256,
     policy_for_agent,
@@ -131,6 +135,8 @@ class Snapshot:
     cut_events: dict[int, Event] = field(default_factory=dict)
     raised: dict[str, _Raised] = field(default_factory=dict)
     narratives: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
+    # Under each finding it names; only when the role may see every one of them.
+    assessments: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
     decisions: dict[str, list[Event]] = field(default_factory=lambda: defaultdict(list))
     woke: list[Event] = field(default_factory=list)
     suspended: list[Event] = field(default_factory=list)
@@ -146,6 +152,7 @@ class Snapshot:
     def build(cls, entries: Sequence[LedgerEntry], role: Role) -> Snapshot:
         snap = cls(role=role)
         narratives: list[Event] = []
+        assessments: list[Event] = []
         decisions: list[Event] = []
         for entry in entries:
             shown = visibility.redact(role, entry)
@@ -168,6 +175,8 @@ class Snapshot:
                     )
             elif isinstance(p, FindingNarrative):
                 narratives.append(shown)
+            elif isinstance(p, FindingAssessment):
+                assessments.append(shown)
             elif isinstance(p, HumanDecision):
                 decisions.append(shown)
             elif isinstance(p, ActorWoke):
@@ -181,6 +190,11 @@ class Snapshot:
             assert isinstance(e.payload, FindingNarrative)
             if e.payload.finding_id in snap.raised:
                 snap.narratives[e.payload.finding_id].append(e)
+        for e in assessments:
+            assert isinstance(e.payload, FindingAssessment)
+            if visibility.can_see_assessment(e.payload, snap.raised):
+                for finding_id in e.payload.finding_ids:
+                    snap.assessments[finding_id].append(e)
         for e in decisions:
             assert isinstance(e.payload, HumanDecision)
             if e.payload.decision.finding_id in snap.raised:
@@ -236,6 +250,8 @@ def _latest_narrative(events: Sequence[Event]) -> LatestNarrative | None:
                 headline=n.headline,
                 explanation=n.explanation,
                 seq=e.seq,
+                narrator_id=n.agent_id,
+                model=n.model,
             )
     return None
 
@@ -557,9 +573,32 @@ class Repository:
                 rejection_reasons=list(p.rejection_reasons),
                 executor=p.executor,
                 sandbox=p.sandbox,
+                narrator_id=p.agent_id,
+                model_digest=p.model_digest,
             )
             for e in snap.narratives.get(finding_id, [])
             if isinstance((p := e.payload), FindingNarrative)
+        ]
+        assessments = [
+            AssessmentView(
+                seq=e.seq,
+                recorded_at=e.recorded_at,
+                agent_id=a.agent_id,
+                agent_version=a.agent_version,
+                candidate=a.candidate,
+                finding_ids=list(a.finding_ids),
+                status=a.status,
+                verdict=a.verdict,
+                reason=a.reason,
+                model=a.model,
+                model_digest=a.model_digest,
+                rejection_reasons=list(a.rejection_reasons),
+                error=a.error,
+                executor=a.executor,
+                sandbox=a.sandbox,
+            )
+            for e in snap.assessments.get(finding_id, [])
+            if isinstance((a := e.payload), FindingAssessment)
         ]
         return FindingDetail(
             finding=self._summary(r),
@@ -567,6 +606,7 @@ class Repository:
             hash=r.event.hash,
             evidence=list(r.finding.evidence),
             narratives=narratives,
+            assessments=assessments,
             decisions=[_decision_view(e) for e in snap.decisions.get(finding_id, [])],
             run=self._run(r),
         )
@@ -697,47 +737,45 @@ class Repository:
                 )
             )
         narratives = sorted(
-            (e for es in snap.narratives.values() for e in es),
+            {e.seq: e for es in snap.narratives.values() for e in es}.values(),
             key=lambda e: e.seq,
         )
-        current_n = [
-            e
-            for e in narratives
-            if isinstance(e.payload, FindingNarrative)
-            and e.payload.agent_version == narrator.VERSION
-        ]
-        recent_n = [e for e in narratives if e.recorded_at >= since]
-        errors_n = [
-            e
-            for e in narratives
-            if isinstance(e.payload, FindingNarrative) and e.payload.status == "error"
-        ]
-        last_n = current_n[-1] if current_n else None
-        narrator_policy = policy_path(NARRATOR_POLICY, self._policies_dir)
-        agents.append(
-            FleetAgent(
-                agent_id=narrator.AGENT_ID,
-                version=narrator.VERSION,
-                zone=ALL_POLICIES[NARRATOR_POLICY].zone,
-                role="narrator",
-                enabled=True,
-                policy=NARRATOR_POLICY,
-                policy_file=narrator_policy.as_posix(),
-                policy_file_sha256=_file_sha256(narrator_policy),
-                applied_policy_sha256=applied_sha256(NARRATOR_POLICY),
-                last_run_at=None if last_n is None else last_n.recorded_at,
-                last_outcome=None
-                if last_n is None or not isinstance(last_n.payload, FindingNarrative)
-                else last_n.payload.status,
-                last_trigger_seq=None
-                if last_n is None or not isinstance(last_n.payload, FindingNarrative)
-                else last_n.payload.finding_seq,
-                runs_7d=len(recent_n),
-                failed_7d=sum(1 for e in recent_n if e in errors_n),
-                last_failure_at=errors_n[-1].recorded_at if errors_n else None,
-                run_event_types=[EventType.FINDING_NARRATIVE],
-            )
+        assessed = sorted(
+            {e.seq: e for es in snap.assessments.values() for e in es}.values(),
+            key=lambda e: e.seq,
         )
+        rows: tuple[
+            tuple[str, str, str, Literal["narrator", "adjudicator"], list[Event], EventType], ...
+        ] = (
+            (
+                narrator.AGENT_ID,
+                narrator.VERSION,
+                NARRATOR_POLICY,
+                "narrator",
+                narratives,
+                EventType.FINDING_NARRATIVE,
+            ),
+            (
+                local_narrator.AGENT_ID,
+                local_narrator.VERSION,
+                LOCAL_MODEL_POLICY,
+                "narrator",
+                narratives,
+                EventType.FINDING_NARRATIVE,
+            ),
+            (
+                term_adjudicator.AGENT_ID,
+                term_adjudicator.VERSION,
+                LOCAL_MODEL_POLICY,
+                "adjudicator",
+                assessed,
+                EventType.FINDING_ASSESSMENT,
+            ),
+        )
+        for agent_id, version, policy_name, role, events, kind in rows:
+            agents.append(
+                self._model_agent(agent_id, version, policy_name, role, events, kind, since)
+            )
         latest: dict[str, Event] = {}
         for e in snap.containment:
             assert isinstance(e.payload, ContainmentCheckCompleted)
@@ -773,6 +811,47 @@ class Repository:
                 )
             )
         return Fleet(agents=sorted(agents, key=lambda a: a.agent_id), containment=containment)
+
+    def _model_agent(
+        self,
+        agent_id: str,
+        version: str,
+        policy_name: str,
+        role: Literal["narrator", "adjudicator"],
+        events: Sequence[Event],
+        kind: EventType,
+        since: datetime,
+    ) -> FleetAgent:
+        """A row for an agent that calls a model: one run per recorded call outcome."""
+        mine = [
+            e
+            for e in events
+            if isinstance(e.payload, FindingNarrative | FindingAssessment)
+            and e.payload.agent_id == agent_id
+        ]
+        current = [e for e in mine if _model_payload(e).agent_version == version]
+        recent = [e for e in mine if e.recorded_at >= since]
+        errors = [e for e in mine if _model_payload(e).status == "error"]
+        last = current[-1] if current else None
+        policy = policy_path(policy_name, self._policies_dir)
+        return FleetAgent(
+            agent_id=agent_id,
+            version=version,
+            zone=ALL_POLICIES[policy_name].zone,
+            role=role,
+            enabled=True,
+            policy=policy_name,
+            policy_file=policy.as_posix(),
+            policy_file_sha256=_file_sha256(policy),
+            applied_policy_sha256=applied_sha256(policy_name),
+            last_run_at=None if last is None else last.recorded_at,
+            last_outcome=None if last is None else _model_payload(last).status,
+            last_trigger_seq=None if last is None else _first_seq(last),
+            runs_7d=len(recent),
+            failed_7d=sum(1 for e in recent if e in errors),
+            last_failure_at=errors[-1].recorded_at if errors else None,
+            run_event_types=[kind],
+        )
 
     def flagged_checks(self, cut_id: str) -> dict[str, list[SiteFlag]]:
         """The current site-level findings on this cut (newest version, not superseded, not
@@ -972,11 +1051,22 @@ def _agent_of(e: LedgerEntry) -> str | None:
     if not isinstance(e, Event):
         return None
     p = e.payload
-    if isinstance(p, ActorWoke | ActorSuspended | FindingNarrative):
+    if isinstance(p, ActorWoke | ActorSuspended | FindingNarrative | FindingAssessment):
         return p.agent_id
     if isinstance(p, FindingRaised):
         return p.finding.agent_id
     return None
+
+
+def _model_payload(e: Event) -> FindingNarrative | FindingAssessment:
+    p = e.payload
+    assert isinstance(p, FindingNarrative | FindingAssessment)
+    return p
+
+
+def _first_seq(e: Event) -> int:
+    p = _model_payload(e)
+    return p.finding_seq if isinstance(p, FindingNarrative) else p.finding_seqs[0]
 
 
 def _woke(run: _Run) -> ActorWoke:

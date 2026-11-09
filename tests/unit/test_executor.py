@@ -60,10 +60,16 @@ class FakeOpenShellClient:
         self.created.append(name)
         self.live.add(name)
         self.policies.append(policy)
+        files = set()
         for local, remote in uploads:
-            assert remote == "/tmp"
-            self.uploaded.append({p.relative_to(local.parent).as_posix() for p in local.rglob("*")})
-            self.manifests.append((local / "inputs_manifest.json").read_text())
+            # One file per upload, straight into its area's folder.
+            assert local.is_file()
+            assert remote.startswith("/stage/")
+            files.add(f"{remote.removeprefix('/stage/')}/{local.name}")
+            if local.name == "inputs_manifest.json":
+                self.manifests.append(local.read_text())
+        if uploads:
+            self.uploaded.append(files)
 
     def exec(self, name: str, argv: Sequence[str], timeout_seconds: int) -> ExecOutput:
         assert name in self.live
@@ -145,12 +151,15 @@ def test_staging_holds_only_blinded_ops_and_the_trigger(cut_dir: Path) -> None:
     client = FakeOpenShellClient(output=ExecOutput(0, _expected(cut_dir), ""))
     _executor(client, cut_dir).run("rbqm.csm", cut_trigger(), "DC-TINY")
     (seen,) = client.uploaded
-    tops = {p.split("/")[1] for p in seen if p.count("/") >= 1}
-    assert tops == {"blinded", "ops", "trigger.json", "inputs_manifest.json"}
+    assert {p.split("/")[0] for p in seen} == {"blinded", "ops", "meta"}
+    assert {p for p in seen if p.startswith("meta/")} == {
+        "meta/trigger.json",
+        "meta/inputs_manifest.json",
+    }
     assert not [
         p for p in seen if "unblinded" in p or "ground_truth" in p or p.endswith("/manifest.json")
     ]
-    assert all(p.endswith(".parquet") for p in seen if p.count("/") == 2)
+    assert all(p.endswith(".parquet") for p in seen if not p.startswith("meta/"))
 
 
 def test_assert_clean_stage_refuses_anything_extra(tmp_path: Path, cut_dir: Path) -> None:
