@@ -89,6 +89,45 @@ accepted summaries next to their evidence for review. No pass mark is set in adv
 every accepted summary has passed validator 1.1.0 with the local rules, and the review
 decides whether the summaries are useful.
 
+## Step 3b2: abstain on disagreement (targets, written before the run)
+
+No model said "unsure" in step 3b, and every sealed error was a pair labelled "unsure".
+Two ways to get abstention are measured on the dev set only (the first sealed set is
+spent):
+
+* **1.1.0, agreement**: phi4-mini:3.8b-q4_K_M and qwen3.5:4b-q4_K_M (think false) are
+  asked the same question with the 1.0.0 prompt; "yes" only if both say yes, "no" only if
+  both say no, otherwise "unsure" (an answer that fails validation agrees with nothing).
+* **unsure prompt**: phi4-mini alone, with rule 3 of the prompt extended to "unsure when
+  one term may be a cause, a symptom or a complication of the other"
+  (term_adjudicator.UNSURE_PROMPT). Also reported, for information only: the agreement
+  rule with the unsure prompt on both models (two changes at once; not a candidate).
+* **1.0.0**, phi4-mini alone with the 1.0.0 prompt, is the baseline, rerun on the same set.
+
+The dev set gains 14 pairs labelled "unsure" (category related: one term may be a cause,
+symptom or complication of the other, for example PYREXIA and SEPSIS), none of them in
+the sealed set. It now has 75 pairs: 30 yes, 31 no (26 look-alikes), 14 unsure. On a pair
+labelled "unsure" only "unsure" is correct.
+
+Targets on dev:
+
+* **wrong "yes"** (the primary number): "yes" on a look-alike plus "yes" on a pair
+  labelled "unsure", at most one;
+* reported without a pass mark: the "unsure" rate, "unsure" on the 14 unsure-labelled
+  pairs, accuracy, rejected answers, latency, and the cost of abstention: how many pairs
+  1.0.0 answered correctly that the variant does not (and how many it gains).
+
+What ships:
+
+1. The agreement rule (1.1.0), if it meets the wrong "yes" target.
+2. The unsure prompt instead, only if it meets the target and the agreement rule does
+   not, or it has fewer wrong "yes", or the same number and costs at least 3 fewer correct
+   answers against 1.0.0.
+3. If neither meets the target, the agreement rule ships (it cannot say "yes" more often
+   than either model alone) and the miss is reported.
+
+A second sealed set, if the user gives one, is run once at the end with what ships.
+
 ## Results
 
 ### Dev term pairs (2026-11-09)
