@@ -380,6 +380,53 @@ export interface components {
             type: "actor_woke";
         };
         /**
+         * AssessmentView
+         * @description A local model's judgement about this finding (and, for a pair, one other). Shown
+         *     only when the role may see every finding it names. A rejected or failed answer shows
+         *     its status and reason codes, never the model's text.
+         */
+        AssessmentView: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string;
+            /**
+             * Candidate
+             * @enum {string}
+             */
+            candidate: "term_mismatch" | "unpaired_pair";
+            /** Error */
+            error: string | null;
+            /** Executor */
+            executor: string | null;
+            /** Finding Ids */
+            finding_ids: string[];
+            /** Model */
+            model: string;
+            /** Model Digest */
+            model_digest: string | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Rejection Reasons */
+            rejection_reasons: string[];
+            /** Sandbox */
+            sandbox: string | null;
+            /** Seq */
+            seq: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected" | "error";
+            /** Verdict */
+            verdict: ("yes" | "no" | "unsure") | null;
+        };
+        /**
          * AssetLive
          * @description Computed from the ledger at request time, as the caller may see it.
          */
@@ -718,7 +765,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["HumanDecision"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -736,7 +783,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "human_decision";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -800,8 +847,84 @@ export interface components {
             /** Visible To */
             visible_to: components["schemas"]["Role"][];
         };
+        /**
+         * FindingAssessment
+         * @description A model's judgement about one or two findings, by safety.term_adjudicator (phase 3
+         *     step 3b): do two event terms describe the same event?
+         *
+         *     It never changes, closes or supersedes a finding; a person reads it next to them.
+         *     candidate: term_mismatch (one sae_term_mismatch finding) or unpaired_pair (an
+         *     sae_missing_in_safety_db and a case_without_clinical_sae finding of the same subject
+         *     with onsets within the reconciler's window). accepted: the output passed validation,
+         *     and only then are verdict and reason recorded. rejected: it failed validation
+         *     (reasons say why); nothing of it is shown. error: the call failed or the served model
+         *     was not the pinned one (retried on the next pass). Hashes are of the canonical
+         *     request body sent and of the raw response body received; model_digest is the digest
+         *     Ollama served.
+         */
+        FindingAssessment: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string;
+            /**
+             * Candidate
+             * @enum {string}
+             */
+            candidate: "term_mismatch" | "unpaired_pair";
+            /** Error */
+            error?: string | null;
+            /** Executor */
+            executor?: string | null;
+            /** Finding Ids */
+            finding_ids: string[];
+            /** Finding Seqs */
+            finding_seqs: number[];
+            /** Input Tokens */
+            input_tokens?: number | null;
+            /** Latency Ms */
+            latency_ms?: number | null;
+            /** Model */
+            model: string;
+            /** Model Digest */
+            model_digest?: string | null;
+            /** Output Tokens */
+            output_tokens?: number | null;
+            /** Policy Sha256 */
+            policy_sha256?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Rejection Reasons
+             * @default []
+             */
+            rejection_reasons: string[];
+            /** Request Sha256 */
+            request_sha256: string;
+            /** Response Sha256 */
+            response_sha256?: string | null;
+            /** Sandbox */
+            sandbox?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected" | "error";
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "finding_assessment";
+            /** Verdict */
+            verdict?: ("yes" | "no" | "unsure") | null;
+        };
         /** FindingDetail */
         FindingDetail: {
+            /**
+             * Assessments
+             * @default []
+             */
+            assessments: components["schemas"]["AssessmentView"][];
             /** Decisions */
             decisions: components["schemas"]["DecisionView"][];
             /** Dedup Key */
@@ -853,6 +976,8 @@ export interface components {
             latency_ms?: number | null;
             /** Model */
             model: string;
+            /** Model Digest */
+            model_digest?: string | null;
             /** Output Tokens */
             output_tokens?: number | null;
             /** Policy Sha256 */
@@ -994,7 +1119,7 @@ export interface components {
              * Role
              * @enum {string}
              */
-            role: "detector" | "narrator";
+            role: "detector" | "narrator" | "adjudicator";
             /** Run Event Types */
             run_event_types: components["schemas"]["EventType"][];
             /** Runs 7D */
@@ -1039,6 +1164,16 @@ export interface components {
             explanation: string;
             /** Headline */
             headline: string;
+            /**
+             * Model
+             * @default
+             */
+            model: string;
+            /**
+             * Narrator Id
+             * @default
+             */
+            narrator_id: string;
             /** Narrator Version */
             narrator_version: string;
             /** Seq */
@@ -1063,6 +1198,13 @@ export interface components {
             headline: string | null;
             /** Model */
             model: string;
+            /** Model Digest */
+            model_digest?: string | null;
+            /**
+             * Narrator Id
+             * @default
+             */
+            narrator_id: string;
             /** Narrator Version */
             narrator_version: string;
             /**

@@ -5,9 +5,11 @@ test_visibility's property test looks for strings of restricted payloads. It did
 that GET /ledger showed RBQM FindingRaised events in full to portfolio_lead (outside their
 visible_to) while GET /findings/{id} returned 404, because those findings were blinded.
 This test generates random ledgers of findings with random visible_to (RBQM, safety
-subject-level and site-level, restricted), narratives and decisions, and checks, for every
-role and every GET endpoint, that no response contains the finding id, the subject id or an
-evidence display string of a finding that role cannot open (its detail page is 404).
+subject-level and site-level, restricted), narratives, decisions and FindingAssessments
+(about one finding, or a pair of findings), and checks, for every role and every GET
+endpoint, that no response contains the finding id, the subject id or an evidence display
+string of a finding that role cannot open (its detail page is 404), nor the reason of an
+assessment about any finding that role cannot open.
 
 test_the_property_fails_under_the_old_ledger_redaction runs the same check against the
 ledger redaction as it was before the fix (a test double for
@@ -28,7 +30,13 @@ from hypothesis import strategies as st
 from meridian.api import visibility
 from meridian.domain import safety as s
 from meridian.domain.enums import DecisionAction, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import FindingNarrative, FindingRaised, HumanDecision, LedgerEntry
+from meridian.domain.events import (
+    FindingAssessment,
+    FindingNarrative,
+    FindingRaised,
+    HumanDecision,
+    LedgerEntry,
+)
 from meridian.domain.findings import Decision, Evidence, Finding
 from tests.api_support import STUDY, Fixture, build, headers
 
@@ -69,6 +77,8 @@ spec = st.fixed_dictionaries(
         "word": st.from_regex(r"[A-Za-z]{6,10}", fullmatch=True),
         "narrative": st.booleans(),
         "decision": st.sampled_from([None, "accepted", "escalated", "dismissed"]),
+        # None, about this finding alone, or about this finding and the one before it.
+        "assessment": st.sampled_from([None, "single", "pair"]),
     }
 )
 specs_strategy = st.lists(spec, min_size=1, max_size=6)
@@ -139,6 +149,7 @@ def build_random(root: Path, specs: list[dict[str, Any]]) -> tuple[Fixture, list
     """The standard fixture plus the generated findings; returns what each one exposes."""
     fx = build(root, restricted=False)
     out: list[dict[str, Any]] = []
+    assessments: list[dict[str, Any]] = []
     for i, sp in enumerate(specs):
         finding, check, subject = _finding(i, sp)
         raised = fx.raise_finding(finding, check=check)
@@ -176,7 +187,37 @@ def build_random(root: Path, specs: list[dict[str, Any]]) -> tuple[Fixture, list
                 finding.visibility,
             )
         tokens = {fid, finding.evidence[0].display or ""} | ({subject} if subject else set())
-        out.append({"finding_id": fid, "tokens": tokens})
+        out.append(
+            {"finding_id": fid, "tokens": tokens, "seq": raised.seq, "vis": finding.visibility}
+        )
+        if sp["assessment"] == "pair" and len(out) >= 2:
+            about = [out[-2], out[-1]]
+        elif sp["assessment"]:
+            about = [out[-1]]
+        else:
+            about = []
+        if about:
+            reason = f"Assessed{i}x{sp['word']}"
+            restricted = any(x["vis"] is Visibility.RESTRICTED for x in about)
+            fx.append(
+                FindingAssessment(
+                    finding_ids=tuple(sorted(x["finding_id"] for x in about)),
+                    finding_seqs=tuple(
+                        x["seq"] for x in sorted(about, key=lambda x: x["finding_id"])
+                    ),
+                    candidate="unpaired_pair" if len(about) == 2 else "term_mismatch",
+                    agent_id="safety.term_adjudicator",
+                    agent_version="1.0.0",
+                    status="accepted",
+                    verdict="unsure",
+                    reason=reason,
+                    model="fake",
+                    model_digest="e" * 64,
+                    request_sha256="d" * 64,
+                ),
+                Visibility.RESTRICTED if restricted else Visibility.BLINDED,
+            )
+            assessments.append({"token": reason, "about": [x["finding_id"] for x in about]})
     # The fixture's own two RBQM findings are visible to the RBQM roles only.
     for e in fx.events:
         p = e.payload
@@ -191,6 +232,10 @@ def build_random(root: Path, specs: list[dict[str, Any]]) -> tuple[Fixture, list
                         "tokens": {fid} | (displays - {"18 observed (5.1 expected)"}),
                     }
                 )
+    # An assessment's reason belongs to all of its findings: it is secret from a role that
+    # cannot open any one of them.
+    for a in assessments:
+        out.append({"finding_id": None, "tokens": {a["token"]}, "about": a["about"]})
     return fx, out
 
 
@@ -202,14 +247,24 @@ def leaks(fx: Fixture, exposed: list[dict[str, Any]]) -> list[tuple[str, str, li
     for role in ROLES:
         hidden: set[str] = set()
         shown: set[str] = set()
+        opens: dict[str, bool] = {}
         for x in exposed:
+            if x["finding_id"] is None:
+                continue
             r = client.get(f"/api/v1/findings/{x['finding_id']}", headers=headers(role))
             assert r.status_code in (200, 404), r.text
+            opens[x["finding_id"]] = r.status_code == 200
             (shown if r.status_code == 200 else hidden).update(x["tokens"])
+        for x in exposed:
+            if x["finding_id"] is None:
+                visible = all(opens[f] for f in x["about"])
+                (shown if visible else hidden).update(x["tokens"])
         secrets = hidden - shown
         if not secrets:
             continue
-        paths = PATHS + [f"/api/v1/findings/{x['finding_id']}" for x in exposed]
+        paths = PATHS + [
+            f"/api/v1/findings/{x['finding_id']}" for x in exposed if x["finding_id"] is not None
+        ]
         for path in paths:
             body = client.get(path, headers=headers(role)).text
             leaked = sorted(t for t in secrets if t in body)
@@ -283,3 +338,40 @@ def test_the_property_fails_under_the_old_ledger_redaction(tmp_root: Path) -> No
     assert {"RBQM-0001", "RBQM-0002"} <= portfolio, found
     # And the same ledger passes with the redaction as it is.
     assert _check(tmp_root, example) == []
+
+
+def test_the_property_catches_an_assessment_shown_beside_one_hidden_finding(
+    tmp_root: Path,
+) -> None:
+    """With assessments shown when any one of their findings is visible (not all), a pair
+    assessment's reason leaks on the detail page of the finding the role can open."""
+
+    def any_visible(assessment: FindingAssessment, visible: Collection[str]) -> bool:
+        return any(f in visible for f in assessment.finding_ids)
+
+    example = [
+        {
+            "kind": "safety_subject",
+            "visible_to": {Role.MEDICAL_MONITOR},
+            "word": "Alphaaa",
+            "narrative": False,
+            "decision": None,
+            "assessment": None,
+        },
+        {
+            "kind": "safety_subject",
+            "visible_to": {Role.MEDICAL_MONITOR, Role.CLINICAL_OPS_LEAD},
+            "word": "Bravooo",
+            "narrative": False,
+            "decision": None,
+            "assessment": "pair",
+        },
+    ]
+    assert _check(tmp_root, example) == []
+    with mock.patch.object(visibility, "can_see_assessment", any_visible):
+        found = _check(tmp_root, example)
+    assert found
+    assert {role for role, _, _ in found} == {"clinical_ops_lead"}
+    assert all(path.startswith("/api/v1/findings/") for _, path, _ in found), found
+    # The reason, and the hidden finding's id, which the pair assessment names.
+    assert {t for _, _, tokens in found for t in tokens} == {"Assessed1xBravooo", "SAF-0001"}

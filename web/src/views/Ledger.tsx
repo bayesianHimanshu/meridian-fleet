@@ -17,6 +17,7 @@ const TYPES: EventType[] = [
   "actor_suspended",
   "finding_raised",
   "finding_narrative",
+  "finding_assessment",
   "human_decision",
   "policy_denied",
   "containment_check_completed",
@@ -59,7 +60,22 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
     case "finding_narrative":
       return (
         <>
-          Narrative for <FindingLink id={p.finding_id} />: {p.status}
+          Narrative for <FindingLink id={p.finding_id} />
+          {p.model_digest ? " by the local model" : ""}: {p.status}
+        </>
+      );
+    case "finding_assessment":
+      return (
+        <>
+          Same-event assessment for{" "}
+          {p.finding_ids.map((id, i) => (
+            <span key={id}>
+              {i > 0 ? " and " : null}
+              <FindingLink id={id} />
+            </span>
+          ))}
+          : {p.status}
+          {p.status === "accepted" && p.verdict ? `, ${p.verdict}` : ""}
         </>
       );
     case "human_decision": {

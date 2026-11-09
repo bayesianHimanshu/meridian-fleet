@@ -101,9 +101,16 @@ def test_fleet_lists_agents_policies_runs_and_containment(fx: Fixture) -> None:
         "rbqm.kri_monitor",
         "rbqm.narrator",
         "rbqm.qtl_detector",
+        "safety.local_narrator",
         "safety.sae_reconciler",
+        "safety.term_adjudicator",
     ]
     assert by_id["safety.sae_reconciler"]["policy_file"].endswith("safety.sae_reconciler.yaml")
+    for local in ("safety.local_narrator", "safety.term_adjudicator"):
+        assert by_id[local]["policy"] == "safety.local_model"
+        assert by_id[local]["zone"] == "safety_local"
+    assert by_id["safety.term_adjudicator"]["role"] == "adjudicator"
+    assert by_id["safety.term_adjudicator"]["run_event_types"] == ["finding_assessment"]
     kri = by_id["rbqm.kri_monitor"]
     expected_sha = (
         __import__("hashlib")

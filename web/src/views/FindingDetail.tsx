@@ -148,6 +148,78 @@ export function DecisionForm({
   );
 }
 
+const LOCAL_NARRATOR = "safety.local_narrator";
+
+const VERDICT_TEXT: Record<string, string> = {
+  yes: "probably the same event",
+  no: "probably different events",
+  unsure: "cannot tell",
+};
+const VERDICT_CLASS: Record<string, string> = { yes: "warning", no: "good", unsure: "" };
+
+/** The local model's same-event judgements about this finding. A judgement only: it
+ * never changes, closes or supersedes a finding. Rejected or failed answers show their
+ * status and reason codes, never the model's text. */
+export function Assessments({ detail }: { detail: Detail }) {
+  const items = detail.assessments;
+  if (items.length === 0) {
+    return null;
+  }
+  const me = detail.finding.finding_id;
+  const accepted = items.filter((a) => a.status === "accepted");
+  const other = items.filter((a) => a.status !== "accepted");
+  return (
+    <section className="panel" aria-labelledby="assess-title">
+      <div className="panel-head">
+        <h2 id="assess-title">Same-event assessment</h2>
+        <span className="src">local model, for a person to read; the finding is unchanged</span>
+      </div>
+      <div className="stack">
+        {accepted.map((a) => (
+          <div key={a.seq} data-testid="assessment">
+            <p>
+              <span className={`chip ${VERDICT_CLASS[a.verdict ?? ""] ?? ""}`}>
+                {a.verdict}: {VERDICT_TEXT[a.verdict ?? ""] ?? a.verdict}
+              </span>{" "}
+              {a.reason}
+            </p>
+            <p className="muted">
+              {a.candidate === "unpaired_pair" ? (
+                <>
+                  Together with{" "}
+                  {a.finding_ids
+                    .filter((id) => id !== me)
+                    .map((id) => (
+                      <FindingLink key={id} id={id} className="mono" />
+                    ))}
+                  .{" "}
+                </>
+              ) : null}
+              {a.agent_id} {a.agent_version}, local model <span className="mono">{a.model}</span>
+              {a.model_digest ? (
+                <>
+                  {" "}
+                  (<Hash value={a.model_digest} label={`model digest of assessment ${a.seq}`} />)
+                </>
+              ) : null}
+              , ledger seq <span className="mono">{a.seq}</span>, <Time iso={a.recorded_at} />
+            </p>
+          </div>
+        ))}
+        {other.length > 0 ? (
+          <p className="muted" data-testid="assessment-not-shown">
+            {other.length} answer{other.length === 1 ? "" : "s"} not shown:{" "}
+            {other
+              .map((a) => `${a.status} (${a.rejection_reasons.join(", ") || (a.error ?? "").split(":")[0]})`)
+              .join("; ")}
+            .
+          </p>
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
 function Traceability({ detail }: { detail: Detail }) {
   const run = detail.run;
   const suspended = run?.suspended;
@@ -266,17 +338,31 @@ export function FindingDetail() {
         <section className="panel" aria-labelledby="narrative-title">
           <div className="panel-head">
             <h2 id="narrative-title">Plain-language summary</h2>
-            {accepted ? <span className="src">narrator {accepted.narrator_version}</span> : null}
+            {accepted ? (
+              <span className="src" data-testid="narrator-source">
+                {accepted.narrator_id === LOCAL_NARRATOR ? (
+                  <>
+                    local model <span className="mono">{accepted.model}</span>, narrator {accepted.narrator_version}
+                  </>
+                ) : (
+                  <>narrator {accepted.narrator_version}</>
+                )}
+              </span>
+            ) : null}
           </div>
           {accepted ? (
             <>
-              <h3>{accepted.headline}</h3>
-              <p>{accepted.explanation}</p>
+              <h3>
+                <WithTimes text={accepted.headline ?? ""} />
+              </h3>
+              <p>
+                <WithTimes text={accepted.explanation ?? ""} />
+              </p>
             </>
           ) : f.agent_id.startsWith("safety.") ? (
             <p className="muted" data-testid="safety-summary-note">
-              Safety findings are not sent to the cloud language model. A summary from a local model arrives in a
-              later step.
+              Safety findings are never sent to the cloud language model. They are summarised by a local model on
+              this machine, and no local summary of this finding has been accepted yet.
             </p>
           ) : (
             <p className="muted">No accepted narrative for this finding.</p>
@@ -284,6 +370,8 @@ export function FindingDetail() {
         </section>
         <Traceability detail={d} />
       </div>
+
+      <Assessments detail={d} />
 
       <section className="panel" aria-labelledby="evidence-title">
         <div className="panel-head">

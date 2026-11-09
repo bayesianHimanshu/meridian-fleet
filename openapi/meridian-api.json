@@ -160,6 +160,154 @@
         "title": "ActorWoke",
         "type": "object"
       },
+      "AssessmentView": {
+        "additionalProperties": false,
+        "description": "A local model's judgement about this finding (and, for a pair, one other). Shown\nonly when the role may see every finding it names. A rejected or failed answer shows\nits status and reason codes, never the model's text.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "candidate": {
+            "enum": [
+              "term_mismatch",
+              "unpaired_pair"
+            ],
+            "title": "Candidate",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Digest"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "rejection_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "seq",
+          "recorded_at",
+          "agent_id",
+          "agent_version",
+          "candidate",
+          "finding_ids",
+          "status",
+          "verdict",
+          "reason",
+          "model",
+          "model_digest",
+          "rejection_reasons",
+          "error",
+          "executor",
+          "sandbox"
+        ],
+        "title": "AssessmentView",
+        "type": "object"
+      },
       "AssetLive": {
         "additionalProperties": false,
         "description": "Computed from the ledger at request time, as the caller may see it.",
@@ -1050,6 +1198,7 @@
                 "containment_check_completed": "#/components/schemas/ContainmentCheckCompleted",
                 "data_cut": "#/components/schemas/DataCut",
                 "document_filed": "#/components/schemas/DocumentFiled",
+                "finding_assessment": "#/components/schemas/FindingAssessment",
                 "finding_narrative": "#/components/schemas/FindingNarrative",
                 "finding_raised": "#/components/schemas/FindingRaised",
                 "human_decision": "#/components/schemas/HumanDecision",
@@ -1081,6 +1230,9 @@
               },
               {
                 "$ref": "#/components/schemas/FindingNarrative"
+              },
+              {
+                "$ref": "#/components/schemas/FindingAssessment"
               },
               {
                 "$ref": "#/components/schemas/HumanDecision"
@@ -1144,6 +1296,7 @@
           "policy_denied",
           "containment_check_completed",
           "finding_narrative",
+          "finding_assessment",
           "human_decision"
         ],
         "title": "EventType",
@@ -1349,9 +1502,239 @@
         "title": "Finding",
         "type": "object"
       },
+      "FindingAssessment": {
+        "additionalProperties": false,
+        "description": "A model's judgement about one or two findings, by safety.term_adjudicator (phase 3\nstep 3b): do two event terms describe the same event?\n\nIt never changes, closes or supersedes a finding; a person reads it next to them.\ncandidate: term_mismatch (one sae_term_mismatch finding) or unpaired_pair (an\nsae_missing_in_safety_db and a case_without_clinical_sae finding of the same subject\nwith onsets within the reconciler's window). accepted: the output passed validation,\nand only then are verdict and reason recorded. rejected: it failed validation\n(reasons say why); nothing of it is shown. error: the call failed or the served model\nwas not the pinned one (retried on the next pass). Hashes are of the canonical\nrequest body sent and of the raw response body received; model_digest is the digest\nOllama served.",
+        "properties": {
+          "agent_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "minLength": 1,
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "candidate": {
+            "enum": [
+              "term_mismatch",
+              "unpaired_pair"
+            ],
+            "title": "Candidate",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "finding_ids": {
+            "items": {
+              "pattern": "^[A-Z]+-[0-9]{4}$",
+              "type": "string"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "finding_seqs": {
+            "items": {
+              "exclusiveMinimum": 0.0,
+              "type": "integer"
+            },
+            "maxItems": 2,
+            "minItems": 1,
+            "title": "Finding Seqs",
+            "type": "array"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "model_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Digest"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "policy_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Sha256"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rejection_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "request_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "response_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Sha256"
+          },
+          "sandbox": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sandbox"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "const": "finding_assessment",
+            "default": "finding_assessment",
+            "title": "Type",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "finding_ids",
+          "finding_seqs",
+          "candidate",
+          "agent_id",
+          "agent_version",
+          "status",
+          "model",
+          "request_sha256"
+        ],
+        "title": "FindingAssessment",
+        "type": "object"
+      },
       "FindingDetail": {
         "additionalProperties": false,
         "properties": {
+          "assessments": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AssessmentView"
+            },
+            "title": "Assessments",
+            "type": "array"
+          },
           "decisions": {
             "items": {
               "$ref": "#/components/schemas/DecisionView"
@@ -1515,6 +1898,18 @@
             "minLength": 1,
             "title": "Model",
             "type": "string"
+          },
+          "model_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Digest"
           },
           "output_tokens": {
             "anyOf": [
@@ -1958,7 +2353,8 @@
           "role": {
             "enum": [
               "detector",
-              "narrator"
+              "narrator",
+              "adjudicator"
             ],
             "title": "Role",
             "type": "string"
@@ -2066,6 +2462,16 @@
             "title": "Headline",
             "type": "string"
           },
+          "model": {
+            "default": "",
+            "title": "Model",
+            "type": "string"
+          },
+          "narrator_id": {
+            "default": "",
+            "title": "Narrator Id",
+            "type": "string"
+          },
           "narrator_version": {
             "title": "Narrator Version",
             "type": "string"
@@ -2169,6 +2575,22 @@
           },
           "model": {
             "title": "Model",
+            "type": "string"
+          },
+          "model_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Digest"
+          },
+          "narrator_id": {
+            "default": "",
+            "title": "Narrator Id",
             "type": "string"
           },
           "narrator_version": {

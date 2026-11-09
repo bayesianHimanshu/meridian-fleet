@@ -71,6 +71,8 @@ export const queue: Schemas["ReviewQueue"] = {
         headline: "Site 1016: 18 protocol deviations against 5.1 expected",
         explanation: "Site 1016 recorded 18 observed (5.1 expected).",
         seq: 301,
+        narrator_id: "rbqm.narrator",
+        model: "claude-haiku-5-5",
       },
     }),
     finding("RBQM-0002", { seq: 200, severity: "medium", agent_id: "rbqm.csm", site_id: "1001", title: "Site 1001: vital signs vary unusually little" }),
@@ -114,6 +116,7 @@ export function detail(id = "RBQM-0003", over: Partial<Schemas["FindingSummary"]
       },
     ],
     narratives: [],
+    assessments: [],
     decisions: [],
     run: {
       agent_id: "rbqm.kri_monitor",
