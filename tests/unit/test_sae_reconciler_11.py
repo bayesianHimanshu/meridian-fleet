@@ -496,3 +496,24 @@ def test_every_subject_level_finding_names_its_records_in_the_evidence() -> None
     pairs = [d for d in drafts if check_of(d).split(":")[0] in s.CLINICAL_ANCHORED]
     assert pairs
     assert all(any("AESEQ=" in e.selector for e in d.evidence) for d in pairs)
+
+
+def test_a_late_report_gives_one_delay_form_and_names_both_records() -> None:
+    late = case("SC-7L", A, "FALL", "2025-01-10", receipt="2025-01-25T15:00:00+00:00")
+    (draft,) = run(spec([ae(A, 3, "FALL", "2025-01-10")], [late]))
+    assert check_of(draft) == f"{s.LATE_REPORT}:SC-7L"
+    # 2025-01-20T09:00 to 2025-01-25T15:00 is 126 hours.
+    assert (
+        draft.title == "Safety case SC-7L reached the sponsor 126 hours (5.2 days) after awareness"
+    )
+    assert "126 hours (5.2 days) later" in draft.summary
+    by_stat = {e.statistic: e for e in draft.evidence}
+    assert by_stat["report_delay_hours"].display == "126 hours (5.2 days) after awareness"
+    assert by_stat["case"].display == f"case SC-7L, version 1, subject {A}"
+    assert "CASEID=SC-7L; VERSION=1" in by_stat["case"].selector
+    assert by_stat["clinical_record"].selector == f"USUBJID={A}; AESEQ=3; AESER=Y"
+    # Without a paired clinical record there is no clinical evidence to name.
+    alone = case("SC-7M", B, "RASH", "2025-01-12", receipt="2025-01-25T15:00:00+00:00")
+    drafts = run(spec([], [alone]))
+    (late_alone,) = [d for d in drafts if check_of(d) == f"{s.LATE_REPORT}:SC-7M"]
+    assert "clinical_record" not in {e.statistic for e in late_alone.evidence}

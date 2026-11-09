@@ -1,4 +1,4 @@
-"""safety.sae_reconciler 1.1.0: serious adverse events in the clinical database (SDTM AE)
+"""safety.sae_reconciler 1.1.1: serious adverse events in the clinical database (SDTM AE)
 against the cases in the sponsor's safety database. Deterministic; no model.
 
 Inputs: blinded AE (rows with AESER = Y), DM (subjects and sites) and the blinded case table
@@ -51,6 +51,10 @@ The rule (docs/safety-notes.md, "The matching rule, 1.1"):
 
 Evidence names the clinical record by USUBJID and AESEQ, and the safety record by case id,
 version and USUBJID, so every subject-level finding carries its subject in the ledger.
+
+1.1.1 changes text and evidence only, never which findings are raised (MATCHING_VERSION):
+a late report gives its delay as "126 hours (5.2 days)" in title and summary, and its
+evidence names the paired clinical record (USUBJID, AESEQ) when there is one.
 """
 
 import re
@@ -72,7 +76,11 @@ from meridian.domain.findings import Evidence
 from meridian.platform.agent_settings import SaeReconcilerConfig
 
 AGENT_ID = "safety.sae_reconciler"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
+# The version whose matching rule this version runs: which findings it raises, per record.
+# A version that changes only text or evidence keeps it, and the stress sets' recorded
+# outcomes (keyed by it) stay valid without another run of the sealed holdout.
+MATCHING_VERSION = "1.1.0"
 AE = "ae"
 # The most any of its findings may reach; the config narrows it per finding.
 VISIBLE_TO_MAX = frozenset(
@@ -646,6 +654,11 @@ def match(
     return m
 
 
+def _delay(hours: float) -> str:
+    """One form for a report delay, in titles, summaries and evidence: 126 hours (5.2 days)."""
+    return f"{hours:.0f} hours ({hours / 24:.1f} days)"
+
+
 def _ordinal(d: date | None) -> float:
     return float(d.toordinal()) if d is not None else 0.0
 
@@ -707,10 +720,13 @@ class SaeReconciler:
             if diffs:
                 out.criteria(p, diffs)
         late_by_site: dict[str, list[Case]] = defaultdict(list)
+        paired = {
+            p.case.caseid: p.clinical for p in (*m.pairs, *m.subject_mismatches, *m.term_mismatches)
+        }
         for k in found:
             delay = k.delay_hours
             if delay is not None and delay > cfg.late_after_hours:
-                out.late(k, delay)
+                out.late(k, delay, paired.get(k.caseid))
                 late_by_site[k.site].append(k)
         for site in sorted(late_by_site):
             site_cases = [k for k in found if k.site == site]
@@ -1076,26 +1092,48 @@ class _Findings:
             ],
         )
 
-    def late(self, k: Case, hours: float) -> None:
+    def late(self, k: Case, hours: float, c: ClinicalSae | None = None) -> None:
+        delay = _delay(hours)
+        clinical = (
+            [
+                self._ev(
+                    AE,
+                    self._clinical_sel(c),
+                    "clinical_record",
+                    f"{c.usubjid} AESEQ {c.aeseq}, {c.term}, onset {c.onset.text}",
+                    role="supporting",
+                )
+            ]
+            if c is not None
+            else []
+        )
         self._add(
             s.LATE_REPORT,
             k.caseid,
             k.site,
-            f"Safety case {k.caseid} reached the sponsor {hours / 24:.1f} days after awareness",
-            f"Subject {k.usubjid}, {k.term.capitalize()}: the site became aware at "
-            f"{k.aware_text} and the sponsor received the initial report at {k.receipt_text}, "
-            f"{hours:.0f} hours later; the expectation is within "
-            f"{self.cfg.late_after_hours:g} hours.",
+            f"Safety case {k.caseid} reached the sponsor {delay} after awareness",
+            f"Subject {k.usubjid}, {k.term.capitalize()}, case {k.caseid} (latest version "
+            f"{k.version}): the site became aware at {k.aware_text} and the sponsor "
+            f"received the initial report at {k.receipt_text}, {delay} later; the "
+            f"expectation is within {self.cfg.late_after_hours:g} hours.",
             [
                 self._ev(
                     s.SAFETY_CASES,
                     self._case_sel(k),
                     "report_delay_hours",
-                    f"{hours:.0f} hours after awareness",
+                    f"{delay} after awareness",
                     value=round(hours, 2),
                     threshold=self.cfg.late_after_hours,
                     direction="high",
                 ),
+                self._ev(
+                    s.SAFETY_CASES,
+                    self._case_sel(k),
+                    "case",
+                    f"case {k.caseid}, version {k.version}, subject {k.usubjid}",
+                    role="supporting",
+                ),
+                *clinical,
                 self._ev(
                     s.SAFETY_CASES,
                     self._case_sel(k),
