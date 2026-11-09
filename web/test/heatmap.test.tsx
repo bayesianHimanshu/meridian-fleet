@@ -96,7 +96,9 @@ describe("heatmap", () => {
     ]);
     expect(document.querySelectorAll("td.critical:not(.flagged)")).toHaveLength(0);
     expect(cells[1]?.getAttribute("title")).toBe("Flagged by RBQM-0134, rbqm.kri_monitor 2.2.0 (dismissed)");
-    expect(screen.getByText(/RBQM-0134 at site 1008 by rbqm.kri_monitor 2.2.0/)).toBeTruthy();
+    const flagLink = screen.getByRole("link", { name: "RBQM-0134" });
+    expect(flagLink.getAttribute("href")).toBe("/findings/RBQM-0134");
+    expect(flagLink.parentElement?.textContent).toBe("RBQM-0134 at site 1008 by rbqm.kri_monitor 2.2.0.");
     expect(screen.getByText(/critical below -3.5/)).toBeTruthy();
     const row = screen.getByRole("rowheader");
     expect(row.querySelector(".mono")?.textContent).toBe("1008");

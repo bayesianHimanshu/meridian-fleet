@@ -983,3 +983,19 @@ table.heat {
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+/* The policy file / applied policy sha256 pair, on the fleet page and in traceability. */
+dl.policy-pair {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 2px var(--space-2);
+  margin: 4px 0 0;
+}
+dl.policy-pair dt {
+  color: var(--muted);
+  font-size: var(--text-xs);
+}
+dl.policy-pair dd {
+  margin: 0;
+  min-width: 0;
+}

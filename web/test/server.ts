@@ -80,6 +80,7 @@ export const queue: Schemas["ReviewQueue"] = {
 
 export const IMAGE = "sha256:9630f178a65395a623144c87087130c063470ddcf2ba86da560f1fc2860e412b";
 export const POLICY = "01637db6d926a6f556489e31d38a4a65404b90f7ebb7e149d7beee2a62b0805d";
+export const POLICY_FILE = "e7eb24f3992ef09e55277d4765cf5ef62178672ce36567b13507f71c54540c82";
 export const MANIFEST = "8834adff7f51ef74e4d7d32ac8d20980e82e223b397408a231ece226bb74eb73";
 export const FINDING_HASH = "a2ff19868b00859f146d2ed336499fe7667f7ef7f4427293ad68f5dced741a8b";
 
@@ -119,8 +120,8 @@ export function detail(id = "RBQM-0003", over: Partial<Schemas["FindingSummary"]
       agent_version: "2.2.0",
       trigger_seq: 2,
       cut_id: "DC-BASE",
-      woke: { seq: 593, hash: "1".repeat(64), recorded_at: "2026-11-07T17:31:48Z", executor: "openshell", image_digest: null, policy_sha256: null, inputs_manifest_sha256: null },
-      suspended: { seq: 597, hash: "2".repeat(64), recorded_at: "2026-11-07T17:31:51Z", executor: "openshell", image_digest: IMAGE, policy_sha256: POLICY, inputs_manifest_sha256: MANIFEST },
+      woke: { seq: 593, hash: "1".repeat(64), recorded_at: "2026-11-07T17:31:48Z", executor: "openshell", image_digest: null, inputs_manifest_sha256: null },
+      suspended: { seq: 597, hash: "2".repeat(64), recorded_at: "2026-11-07T17:31:51Z", executor: "openshell", image_digest: IMAGE, applied_policy_sha256: POLICY, policy_file: "policies/rbqm.yaml", policy_file_sha256: POLICY_FILE, inputs_manifest_sha256: MANIFEST },
     },
   };
 }
