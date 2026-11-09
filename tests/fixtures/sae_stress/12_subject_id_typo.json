@@ -1,14 +1,55 @@
 {
   "case": "subject_id_typo",
   "description": "The case carries a transposed subject id (201-9012-021 for 201-9012-012); term, onset, outcome and causality match. 201-9012-021 is not enrolled.",
-  "dm": [{"USUBJID": "201-9012-012", "SITEID": "9012"}],
+  "dm": [
+    {
+      "USUBJID": "201-9012-012",
+      "SITEID": "9012"
+    }
+  ],
   "ae": [
-    {"USUBJID": "201-9012-012", "AESEQ": 1, "AETERM": "rash", "AEDECOD": "RASH", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-09-05", "AEOUT": "RECOVERING/RESOLVING", "AEREL": "PROBABLE"}
+    {
+      "USUBJID": "201-9012-012",
+      "AESEQ": 1,
+      "AETERM": "rash",
+      "AEDECOD": "RASH",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-09-05",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "PROBABLE"
+    }
   ],
   "safety_cases": [
-    {"CASEID": "SC-ST12A", "USUBJID": "201-9012-021", "SITEID": "9012", "REPORTED_TERM": "rash", "PREFERRED_TERM": "RASH", "ONSET": "2025-09-05", "SHOSP": "Y", "OUTCOME": "RECOVERING/RESOLVING", "CAUSALITY": "PROBABLE", "AWARE_DTC": "2025-09-05T09:00:00+00:00", "RECEIPT_DTC": "2025-09-05T12:00:00+00:00"}
+    {
+      "CASEID": "SC-ST12A",
+      "USUBJID": "201-9012-021",
+      "SITEID": "9012",
+      "REPORTED_TERM": "rash",
+      "PREFERRED_TERM": "RASH",
+      "ONSET": "2025-09-05",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-09-05T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-09-05T12:00:00+00:00"
+    }
   ],
   "ideal": "One finding: the case's subject id is not enrolled and is probably 201-9012-012 (same site, term, onset); not a missing case plus an orphan.",
-  "predicted": ["case_without_clinical_sae:SC-ST12A", "sae_missing_in_safety_db:201-9012-012/1"],
-  "actual": ["case_without_clinical_sae:SC-ST12A", "sae_missing_in_safety_db:201-9012-012/1"]
+  "predicted": [
+    "case_without_clinical_sae:SC-ST12A",
+    "sae_missing_in_safety_db:201-9012-012/1"
+  ],
+  "ideal_findings": [
+    "sae_subject_mismatch:SC-ST12A"
+  ],
+  "actual": {
+    "1.0.0": [
+      "case_without_clinical_sae:SC-ST12A",
+      "sae_missing_in_safety_db:201-9012-012/1"
+    ],
+    "1.1.0": [
+      "sae_subject_mismatch:SC-ST12A"
+    ]
+  }
 }

@@ -414,7 +414,13 @@ def agents_list() -> None:
 
 ExecutorOption = Annotated[
     str | None,
-    typer.Option("--executor", help="inprocess or openshell (default: [runtime] executor)."),
+    typer.Option(
+        "--executor",
+        help=(
+            "openshell (the default, [runtime] executor) or inprocess. inprocess runs agent "
+            "code outside any sandbox and is refused for operational cuts (DC-BASE)."
+        ),
+    ),
 ]
 
 

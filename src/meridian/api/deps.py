@@ -17,7 +17,7 @@ from meridian.agents.registry import AgentRegistry
 from meridian.api.identity import ACTOR_HEADER, ROLE_HEADER, People, Person
 from meridian.api.repository import PortfolioEntry, Repository
 from meridian.data.study_store import ParquetStudyReader, StudyReader, UnblindedReader
-from meridian.domain.safety import CASEID, SAFETY_CASES, SAFETY_UNBLINDED, USUBJID
+from meridian.domain.safety import SAFETY_CASES, SAFETY_UNBLINDED
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
@@ -49,14 +49,6 @@ class ApiContext:
         cases = ParquetStudyReader(root, cut_id).table(SAFETY_CASES).height
         with_treatment = UnblindedReader(root, cut_id).table(SAFETY_UNBLINDED).height
         return cases, with_treatment
-
-    def safety_case_subjects(self, cut_id: str) -> dict[str, str]:
-        """CASEID to USUBJID of one cut's blinded safety case table: the subject of a
-        case-anchored reconciliation finding (a late report) whose evidence names only the
-        case. The caller only asks for findings the role may already see."""
-        root = self.safety_root / self.study_id
-        table = ParquetStudyReader(root, cut_id).table(SAFETY_CASES)
-        return dict(table.select(CASEID, USUBJID).sort(CASEID).iter_rows())
 
 
 def context(request: Request) -> ApiContext:

@@ -1,0 +1,44 @@
+{
+  "case": "vocabulary_only",
+  "control": true,
+  "description": "Control: the case uses other words for the same outcome and causality (Not recovered, Unlikely related for REMOTE).",
+  "dm": [
+    {
+      "USUBJID": "201-9205-002",
+      "SITEID": "9205"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9205-002",
+      "AESEQ": 1,
+      "AETERM": "hypotension",
+      "AEDECOD": "HYPOTENSION",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-05-21",
+      "AEOUT": "NOT RECOVERED/NOT RESOLVED",
+      "AEREL": "REMOTE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO05A",
+      "USUBJID": "201-9205-002",
+      "SITEID": "9205",
+      "REPORTED_TERM": "hypotension",
+      "PREFERRED_TERM": "HYPOTENSION",
+      "ONSET": "2025-05-21",
+      "SHOSP": "Y",
+      "OUTCOME": "Not recovered",
+      "CAUSALITY": "Unlikely related",
+      "AWARE_DTC": "2025-05-21T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-05-21T09:00:00+00:00"
+    }
+  ],
+  "ideal": [],
+  "ideal_note": "No finding.",
+  "actual": {
+    "1.1.0": []
+  }
+}

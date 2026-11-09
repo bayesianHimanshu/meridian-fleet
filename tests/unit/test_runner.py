@@ -415,7 +415,9 @@ def test_the_required_executor_processes_an_operational_cut(ledger: SqliteLedger
     assert woke.payload.executor == "openshell"
 
 
-def test_the_runner_the_container_builds_refuses_in_process_for_dc_base(tmp_path: Path) -> None:
+def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_asked(
+    tmp_path: Path,
+) -> None:
     """The rule as configured ([cuts] in config/default.toml), through the container."""
     from meridian.platform.config import Settings
     from meridian.platform.container import Container
@@ -423,10 +425,12 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base(tmp_path
     settings = Settings(ledger_path=tmp_path / "l.sqlite3")
     assert settings.cuts.operational == ("DC-BASE",)
     assert settings.cuts.operational_executor == "openshell"
-    assert settings.runtime.executor == "inprocess"
+    assert settings.runtime.executor == "openshell"
     with Container.build(settings, FixedClock(T0)) as c:
         c.ledger.initialize()
         _cut(c.ledger, "DC-BASE", study=settings.study_id)
+        log = structlog.get_logger()
+        inprocess = c.agent_runner(log, executor=c.inprocess_executor(log))
         with pytest.raises(SandboxRequiredError, match="DC-BASE"):
-            c.agent_runner(structlog.get_logger()).run_pending()
+            inprocess.run_pending()
         assert c.ledger.read(event_types=[EventType.ACTOR_WOKE]) == []

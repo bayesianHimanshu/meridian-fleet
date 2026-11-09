@@ -3,7 +3,7 @@ caller may already see (Repository passes only those), with the two compared val
 
 import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from meridian.api.models import CheckCount, ReconciliationItem, SiteCount
 from meridian.domain import safety as s
@@ -39,6 +39,27 @@ PAIRS: dict[str, tuple[str, str, str, str]] = {
     ),
     s.LATE_REPORT: ("awareness:safety_db", "Site aware", "receipt:safety_db", "Sponsor received"),
     s.LATE_SITE: ("late_cases", "Late cases", "median_report_delay_hours", "Median delay"),
+    s.DATA_QUALITY: ("data_quality:field", "Field", "data_quality:value", "Value"),
+    s.PROBABLE_DUPLICATE: ("case:first", "First case", "case:second", "Second case"),
+    s.PARTIAL_DATE: ("onset:clinical", "Clinical onset", "onset:safety_db", "Case onset"),
+    s.CRITERIA_MISMATCH: (
+        "criteria:clinical",
+        "Clinical criteria",
+        "criteria:safety_db",
+        "Case criteria",
+    ),
+    s.SUBJECT_MISMATCH: (
+        "subject:clinical",
+        "Probable subject",
+        "subject:safety_db",
+        "Subject on the case",
+    ),
+    s.TERM_MISMATCH: (
+        "preferred_term:clinical",
+        "Clinical term",
+        "preferred_term:safety_db",
+        "Case term",
+    ),
 }
 
 
@@ -57,20 +78,12 @@ def subject_of(finding: Finding) -> str | None:
     return None
 
 
-def item(
-    finding_id: str,
-    check: str,
-    finding: Finding,
-    status: str,
-    case_subjects: Mapping[str, str] | None = None,
-) -> ReconciliationItem:
-    """case_subjects (CASEID to USUBJID) gives the subject of a finding whose evidence names
-    only its case."""
+def item(finding_id: str, check: str, finding: Finding, status: str) -> ReconciliationItem:
+    """subject_id is the first USUBJID in the finding's evidence (1.1 evidence names it on
+    every subject-level finding); the site-level check has none. Only the ledger is read."""
     name = s.check_name(check)
-    subject = None if name == s.LATE_SITE else subject_of(finding)
-    if subject is None and name != s.LATE_SITE and case_subjects:
-        subject = case_subjects.get(case_of(finding) or "")
     left_stat, left_label, right_stat, right_label = PAIRS.get(name, ("", "", "", ""))
+    subject = None if name == s.LATE_SITE else subject_of(finding)
     return ReconciliationItem(
         finding_id=finding_id,
         check=name,
@@ -84,27 +97,6 @@ def item(
         right_label=right_label,
         right=_display(finding.evidence, right_stat),
     )
-
-
-_CASE = re.compile(r"CASEID=([^;|\s]+)")
-
-
-def needs_case_subject(check: str, finding: Finding) -> bool:
-    """A subject-level finding whose evidence names a case but no subject (a late report).
-    The site-level check has no subject by design."""
-    return (
-        s.check_name(check) != s.LATE_SITE
-        and subject_of(finding) is None
-        and case_of(finding) is not None
-    )
-
-
-def case_of(finding: Finding) -> str | None:
-    for e in finding.evidence:
-        m = _CASE.search(e.selector)
-        if m:
-            return m.group(1)
-    return None
 
 
 def counts(items: Sequence[ReconciliationItem]) -> tuple[list[CheckCount], list[SiteCount]]:

@@ -1,14 +1,55 @@
 {
   "case": "onset_four_days",
   "description": "Fallback edge, outside: the case onset is 4 days after the clinical onset; nothing else differs.",
-  "dm": [{"USUBJID": "201-9010-001", "SITEID": "9010"}],
+  "dm": [
+    {
+      "USUBJID": "201-9010-001",
+      "SITEID": "9010"
+    }
+  ],
   "ae": [
-    {"USUBJID": "201-9010-001", "AESEQ": 1, "AETERM": "fall", "AEDECOD": "FALL", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-02-10", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"}
+    {
+      "USUBJID": "201-9010-001",
+      "AESEQ": 1,
+      "AETERM": "fall",
+      "AEDECOD": "FALL",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-02-10",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    }
   ],
   "safety_cases": [
-    {"CASEID": "SC-ST10A", "USUBJID": "201-9010-001", "SITEID": "9010", "REPORTED_TERM": "fall", "PREFERRED_TERM": "FALL", "ONSET": "2025-02-14", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-14T09:00:00+00:00", "RECEIPT_DTC": "2025-02-14T13:00:00+00:00"}
+    {
+      "CASEID": "SC-ST10A",
+      "USUBJID": "201-9010-001",
+      "SITEID": "9010",
+      "REPORTED_TERM": "fall",
+      "PREFERRED_TERM": "FALL",
+      "ONSET": "2025-02-14",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-02-14T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-14T13:00:00+00:00"
+    }
   ],
   "ideal": "One onset mismatch (4 days): the only fall SAE of the subject and the only case.",
-  "predicted": ["case_without_clinical_sae:SC-ST10A", "sae_missing_in_safety_db:201-9010-001/1"],
-  "actual": ["case_without_clinical_sae:SC-ST10A", "sae_missing_in_safety_db:201-9010-001/1"]
+  "predicted": [
+    "case_without_clinical_sae:SC-ST10A",
+    "sae_missing_in_safety_db:201-9010-001/1"
+  ],
+  "ideal_findings": [
+    "onset_mismatch:201-9010-001/1"
+  ],
+  "actual": {
+    "1.0.0": [
+      "case_without_clinical_sae:SC-ST10A",
+      "sae_missing_in_safety_db:201-9010-001/1"
+    ],
+    "1.1.0": [
+      "onset_mismatch:201-9010-001/1"
+    ]
+  }
 }

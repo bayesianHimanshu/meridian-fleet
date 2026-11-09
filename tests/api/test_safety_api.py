@@ -314,18 +314,19 @@ def test_no_endpoint_leaks_a_subject_id_to_a_role_outside_visible_to(
                 assert leaked == [], (role, path, leaked)
 
 
-def late_finding(case: str) -> Finding:
-    """A late report: its evidence names the case only, as safety.sae_reconciler 1.0.0's does."""
-    sel = f"CASEID={case}"
+def late_finding(case: str, subject: str | None, version: str = "1.1.0") -> Finding:
+    """A late report. 1.1 evidence names the case, its version and its subject; 1.0.0
+    evidence named the case only (subject None)."""
+    sel = f"CASEID={case}" + (f"; VERSION=1; USUBJID={subject}" if subject else "")
     return Finding(
         kind=FindingKind.SAE_RECONCILIATION,
         agent_id=AGENT,
-        agent_version="1.0.0",
+        agent_version=version,
         study_id="MRD-201",
         site_id="1018",
         severity=Severity.HIGH,
         title=f"Safety case {case} reached the sponsor 2.5 days after awareness",
-        summary="The sponsor received the case 60 hours after the site became aware.",
+        summary="The sponsor received the initial report 60 hours after awareness.",
         evidence=(
             Evidence(
                 source=s.SAFETY_CASES,
@@ -362,30 +363,18 @@ def late_finding(case: str) -> Finding:
     )
 
 
-def test_late_case_items_carry_the_subject_for_subject_level_roles(tmp_path: Path) -> None:
-    from dataclasses import replace
-
-    from meridian.api.app import create_app
-    from meridian.data.study_store import ParquetStudyReader
-    from meridian.platform.clock import FixedClock
-    from meridian.safetydb.generate import ensure_clean_snapshot
-    from tests.safety_support import base_cut
-
-    fx = build(tmp_path / "api", restricted=False)
-    cut = base_cut(tmp_path)
-    ensure_clean_snapshot(
-        safety_root=tmp_path / "safety", study_id="MRD-201", cut=cut, clock=FixedClock(fx_t0())
+def test_late_case_items_carry_the_subject_from_the_evidence(fx: Fixture) -> None:
+    case, subject = "SC-0A1B2C3D4E", "201-1018-012"
+    fx.append(ActorWoke(agent_id=AGENT, agent_version="1.1.0", trigger_seq=1), actor=AGENT)
+    raised = fx.raise_finding(late_finding(case, subject), check=s.check_id(s.LATE_REPORT, case))
+    fx.raise_finding(
+        site_finding().model_copy(update={"agent_version": "1.1.0"}),
+        check=s.check_id(s.LATE_SITE, "1018"),
     )
-    cases = ParquetStudyReader(tmp_path / "safety" / "MRD-201", "DC-BASE").table(s.SAFETY_CASES)
-    case, subject = cases.sort(s.CASEID).select(s.CASEID, s.USUBJID).row(0)
-    fx.append(ActorWoke(agent_id=AGENT, agent_version="1.0.0", trigger_seq=1), actor=AGENT)
-    raised = fx.raise_finding(late_finding(case), check=s.check_id(s.LATE_REPORT, case))
-    fx.raise_finding(site_finding(), check=s.check_id(s.LATE_SITE, "1018"))
-    fx.append(ActorSuspended(agent_id=AGENT, agent_version="1.0.0", trigger_seq=1), actor=AGENT)
+    fx.append(ActorSuspended(agent_id=AGENT, agent_version="1.1.0", trigger_seq=1), actor=AGENT)
     assert isinstance(raised.payload, FindingRaised)
     late_id = raised.payload.finding.finding_id
-    context = replace(fx.context(), safety_root=tmp_path / "safety")
-    client = TestClient(create_app(context))
+    client = fx.client()
     for role in Role:
         body = _get(client, role, "/api/v1/safety/DC-BASE/reconciliation")
         by_id = {i["finding_id"]: i for i in body["items"]}
@@ -393,12 +382,38 @@ def test_late_case_items_carry_the_subject_for_subject_level_roles(tmp_path: Pat
         if role in SUBJECT_ROLES:
             assert by_id[late_id]["check"] == s.LATE_REPORT
             assert by_id[late_id]["subject_id"] == subject
-            assert by_id[late_id]["site_id"] == "1018"
         else:
             assert late_id not in by_id
             assert subject not in text, role
             assert case not in text, role
-    # Without the safety database snapshot the item is still served, without a subject.
-    bare = TestClient(create_app(replace(context, safety_root=tmp_path / "absent")))
-    item = _get(bare, Role.MEDICAL_MONITOR, "/api/v1/safety/DC-BASE/reconciliation")["items"]
-    assert [i["subject_id"] for i in item if i["finding_id"] == late_id] == [None]
+
+
+def test_the_reconciliation_endpoint_reads_only_the_ledger(
+    fx: Fixture, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No study, safety database or parquet read: every data reader raises."""
+    from dataclasses import replace
+
+    import polars as pl
+
+    from meridian.api.app import create_app
+    from meridian.data import study_store
+
+    subject_id, site_id = with_safety(fx)
+    context = replace(
+        fx.context(curated_root=tmp_path / "no-curated"), safety_root=tmp_path / "no-safety"
+    )
+    client = TestClient(create_app(context))
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise AssertionError("the reconciliation endpoint read data outside the ledger")
+
+    for name in ("ParquetStudyReader", "UnblindedReader", "LayeredStudyReader"):
+        if hasattr(study_store, name):
+            monkeypatch.setattr(getattr(study_store, name), "table", refuse)
+    monkeypatch.setattr(pl, "read_parquet", refuse)
+    monkeypatch.setattr(pl, "scan_parquet", refuse)
+    body = _get(client, Role.MEDICAL_MONITOR, "/api/v1/safety/DC-BASE/reconciliation")
+    assert {i["finding_id"] for i in body["items"]} == {subject_id, site_id}
+    (item,) = [i for i in body["items"] if i["finding_id"] == subject_id]
+    assert item["subject_id"] == SUBJECT

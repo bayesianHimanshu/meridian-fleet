@@ -1,15 +1,66 @@
 {
   "case": "followup_same_case_id",
   "description": "A follow-up version of the same case updates the outcome. The export holds both versions (initial and follow-up) under one case id; the follow-up agrees with the clinical database.",
-  "dm": [{"USUBJID": "201-9005-001", "SITEID": "9005"}],
+  "dm": [
+    {
+      "USUBJID": "201-9005-001",
+      "SITEID": "9005"
+    }
+  ],
   "ae": [
-    {"USUBJID": "201-9005-001", "AESEQ": 1, "AETERM": "pneumonia", "AEDECOD": "PNEUMONIA", "AESER": "Y", "AESHOSP": "Y", "AESTDTC": "2025-02-03", "AEOUT": "RECOVERED/RESOLVED", "AEREL": "NONE"}
+    {
+      "USUBJID": "201-9005-001",
+      "AESEQ": 1,
+      "AETERM": "pneumonia",
+      "AEDECOD": "PNEUMONIA",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-02-03",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    }
   ],
   "safety_cases": [
-    {"CASEID": "SC-ST05A", "CASE_VERSION": 1, "USUBJID": "201-9005-001", "SITEID": "9005", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-02-03", "SHOSP": "Y", "OUTCOME": "NOT RECOVERED/NOT RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-04T08:00:00+00:00", "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"},
-    {"CASEID": "SC-ST05A", "CASE_VERSION": 2, "USUBJID": "201-9005-001", "SITEID": "9005", "REPORTED_TERM": "pneumonia", "PREFERRED_TERM": "PNEUMONIA", "ONSET": "2025-02-03", "SHOSP": "Y", "OUTCOME": "RECOVERED/RESOLVED", "CAUSALITY": "NONE", "AWARE_DTC": "2025-02-04T08:00:00+00:00", "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"}
+    {
+      "CASEID": "SC-ST05A",
+      "CASE_VERSION": 1,
+      "USUBJID": "201-9005-001",
+      "SITEID": "9005",
+      "REPORTED_TERM": "pneumonia",
+      "PREFERRED_TERM": "PNEUMONIA",
+      "ONSET": "2025-02-03",
+      "SHOSP": "Y",
+      "OUTCOME": "NOT RECOVERED/NOT RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-02-04T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-ST05A",
+      "CASE_VERSION": 2,
+      "USUBJID": "201-9005-001",
+      "SITEID": "9005",
+      "REPORTED_TERM": "pneumonia",
+      "PREFERRED_TERM": "PNEUMONIA",
+      "ONSET": "2025-02-03",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-02-04T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-04T10:00:00+00:00"
+    }
   ],
   "ideal": "Compare the latest version only: no finding.",
-  "predicted": ["case_without_clinical_sae:SC-ST05A", "outcome_mismatch:201-9005-001/1?"],
-  "actual": ["case_without_clinical_sae:SC-ST05A", "outcome_mismatch:201-9005-001/1"]
+  "predicted": [
+    "case_without_clinical_sae:SC-ST05A",
+    "outcome_mismatch:201-9005-001/1?"
+  ],
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": [
+      "case_without_clinical_sae:SC-ST05A",
+      "outcome_mismatch:201-9005-001/1"
+    ],
+    "1.1.0": []
+  }
 }

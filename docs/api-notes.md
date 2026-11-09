@@ -106,12 +106,11 @@ use:
   bytes or a readable name, and re-issue the sweep cuts under such ids, keeping the old
   names only in ground truth.
 
-## Subjects of late-case reconciliation items
+## Subjects of reconciliation items
 
-A late report's evidence (safety.sae_reconciler 1.0.0) names its case only. For such an
-item, GET /safety/{cut}/reconciliation takes the subject id from the cut's blinded safety
-case table (CASEID to USUBJID), and only for findings the caller may already see. That
-means the roles in the finding's visible_to: medical_monitor, clinical_ops_lead and
-qa_auditor. Without the snapshot the item is served with subject_id null. The site-level
-finding never has a subject. The next agent version should put USUBJID in the case
-selector, so the ledger record carries it too.
+GET /safety/{cut}/reconciliation reads the ledger only. An item's subject_id is the first
+USUBJID in its finding's evidence. From safety.sae_reconciler 1.1.0, the evidence names the
+clinical record (USUBJID, AESEQ) and the safety record (case id, version, USUBJID), so every
+subject-level item has its subject, late reports included. Late-report findings of 1.0.0
+named only the case, so they have subject_id null; 1.1.0 supersedes them. The site-level
+finding never has a subject. (Step 3a's lookup in the cut's safety case table is removed.)

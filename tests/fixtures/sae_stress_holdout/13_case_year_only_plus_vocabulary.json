@@ -1,0 +1,48 @@
+{
+  "case": "case_year_only_plus_vocabulary",
+  "control": false,
+  "description": "The case onset is the year only, and the case words causality and outcome differently (Probably related, Resolved).",
+  "dm": [
+    {
+      "USUBJID": "201-9213-007",
+      "SITEID": "9213"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9213-007",
+      "AESEQ": 1,
+      "AETERM": "pancreatitis",
+      "AEDECOD": "PANCREATITIS",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-11-03",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "PROBABLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO13A",
+      "USUBJID": "201-9213-007",
+      "SITEID": "9213",
+      "REPORTED_TERM": "pancreatitis",
+      "PREFERRED_TERM": "PANCREATITIS",
+      "ONSET": "2025",
+      "SHOSP": "Y",
+      "OUTCOME": "Resolved",
+      "CAUSALITY": "Probably related",
+      "AWARE_DTC": "2025-11-04T07:00:00+00:00",
+      "RECEIPT_DTC": "2025-11-04T10:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "sae_partial_date:201-9213-007/1"
+  ],
+  "ideal_note": "One partial-date note; no mismatch.",
+  "actual": {
+    "1.1.0": [
+      "sae_partial_date:201-9213-007/1"
+    ]
+  }
+}

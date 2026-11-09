@@ -29,6 +29,7 @@ from meridian.agents.registry import RegistrationError
 from meridian.data.inputs_manifest import InputsManifestError, verify_manifest
 from meridian.data.study_store import MissingTableError, ParquetStudyReader, StudyAccessError
 from meridian.domain.events import DataCut, Event
+from meridian.platform.agent_settings import SAFETY_TERMS_FILE, load_safety_terms
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
 
 EXIT_OK = 0
@@ -76,7 +77,14 @@ def _logger() -> structlog.typing.FilteringBoundLogger:
 def load_agents_settings(path: Path) -> AgentsSettings:
     """The [agents] table of the packaged config. Environment overrides do not apply."""
     with path.open("rb") as handle:
-        return AgentsSettings.model_validate(tomllib.load(handle)["agents"])
+        agents = tomllib.load(handle)["agents"]
+    # The safety terminology table sits next to this config file, whatever the working
+    # directory of the sandbox is.
+    reconciler = dict(agents.get("sae_reconciler", {}))
+    if "terms" not in reconciler:
+        terms = load_safety_terms(path.parent / SAFETY_TERMS_FILE)
+        agents = {**agents, "sae_reconciler": {**reconciler, "terms": terms.model_dump()}}
+    return AgentsSettings.model_validate(agents)
 
 
 def _config_path(given: Path | None) -> Path:

@@ -1,0 +1,68 @@
+{
+  "case": "two_terms_same_day",
+  "control": true,
+  "description": "Control: one subject has two different serious AEs on the same day, each with its correct case.",
+  "dm": [
+    {
+      "USUBJID": "201-9206-014",
+      "SITEID": "9206"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9206-014",
+      "AESEQ": 1,
+      "AETERM": "fall",
+      "AEDECOD": "FALL",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-08-14",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    },
+    {
+      "USUBJID": "201-9206-014",
+      "AESEQ": 2,
+      "AETERM": "femur fracture",
+      "AEDECOD": "FEMUR FRACTURE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-08-14",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "NONE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO06A",
+      "USUBJID": "201-9206-014",
+      "SITEID": "9206",
+      "REPORTED_TERM": "femur fracture",
+      "PREFERRED_TERM": "FEMUR FRACTURE",
+      "ONSET": "2025-08-14",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-08-14T18:00:00+00:00",
+      "RECEIPT_DTC": "2025-08-15T06:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-HO06B",
+      "USUBJID": "201-9206-014",
+      "SITEID": "9206",
+      "REPORTED_TERM": "fall",
+      "PREFERRED_TERM": "FALL",
+      "ONSET": "2025-08-14",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-08-14T18:00:00+00:00",
+      "RECEIPT_DTC": "2025-08-15T06:00:00+00:00"
+    }
+  ],
+  "ideal": [],
+  "ideal_note": "No finding.",
+  "actual": {
+    "1.1.0": []
+  }
+}

@@ -16,8 +16,12 @@ Each file has:
   as `check:record` (record: subject/AESEQ or case id, as in the dedup key), or
   `run fails` if the agent should raise; a trailing `?` marks a finding that may or may
   not appear (order not defined). Written before the first run.
-- `actual`: added after the run (docs/safety-eval.md, "Stress set").
+- `ideal_findings` (added for 1.1): the ideal as `check:record` in the 1.1 check
+  vocabulary. The words in `ideal` came first; this only restates them;
+- `actual`: per agent version, the outcome recorded after that version's run
+  (docs/safety-eval.md).
 
 `tests/unit/test_sae_stress.py` runs each one through the agent and checks the result
-against `actual`, so a change in behaviour shows up; it does not check against `ideal`.
+against `actual` for the current version, so a change in behaviour shows up; it does not
+check against the ideal.
 Gaps between ideal and actual are the backlog for the next agent version.

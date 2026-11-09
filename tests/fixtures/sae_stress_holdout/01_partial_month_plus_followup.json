@@ -1,0 +1,63 @@
+{
+  "case": "partial_month_plus_followup",
+  "control": false,
+  "description": "Clinical onset known to the month only (2025-06). The case has two versions under one id; the follow-up (version 2, listed first in the export) updates the outcome to the clinical one. The initial report was on time; the follow-up came 13 days later.",
+  "dm": [
+    {
+      "USUBJID": "201-9201-003",
+      "SITEID": "9201"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9201-003",
+      "AESEQ": 2,
+      "AETERM": "vomiting",
+      "AEDECOD": "VOMITING",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-06",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "POSSIBLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO01A",
+      "USUBJID": "201-9201-003",
+      "SITEID": "9201",
+      "REPORTED_TERM": "vomiting",
+      "PREFERRED_TERM": "VOMITING",
+      "ONSET": "2025-06-11",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-06-12T07:00:00+00:00",
+      "RECEIPT_DTC": "2025-06-25T10:00:00+00:00",
+      "CASE_VERSION": 2
+    },
+    {
+      "CASEID": "SC-HO01A",
+      "USUBJID": "201-9201-003",
+      "SITEID": "9201",
+      "REPORTED_TERM": "vomiting",
+      "PREFERRED_TERM": "VOMITING",
+      "ONSET": "2025-06-11",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-06-12T07:00:00+00:00",
+      "RECEIPT_DTC": "2025-06-12T09:00:00+00:00",
+      "CASE_VERSION": 1
+    }
+  ],
+  "ideal": [
+    "sae_partial_date:201-9201-003/2"
+  ],
+  "ideal_note": "Pair through the partial date with the latest version; a low partial-date note. No outcome mismatch (version 1 is history), not late (timeliness is the initial report's).",
+  "actual": {
+    "1.1.0": [
+      "sae_partial_date:201-9201-003/2"
+    ]
+  }
+}

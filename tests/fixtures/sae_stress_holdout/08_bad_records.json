@@ -1,0 +1,79 @@
+{
+  "case": "bad_records",
+  "control": false,
+  "description": "A clinical SAE without an onset date (AESTDTC empty) whose case exists, and another subject's case whose receipt date is in a non-ISO format.",
+  "dm": [
+    {
+      "USUBJID": "201-9208-004",
+      "SITEID": "9208"
+    },
+    {
+      "USUBJID": "201-9208-006",
+      "SITEID": "9208"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9208-004",
+      "AESEQ": 1,
+      "AETERM": "cellulitis",
+      "AEDECOD": "CELLULITIS",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "NONE"
+    },
+    {
+      "USUBJID": "201-9208-006",
+      "AESEQ": 1,
+      "AETERM": "pyrexia",
+      "AEDECOD": "PYREXIA",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-10-05",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "POSSIBLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO08A",
+      "USUBJID": "201-9208-004",
+      "SITEID": "9208",
+      "REPORTED_TERM": "cellulitis",
+      "PREFERRED_TERM": "CELLULITIS",
+      "ONSET": "2025-10-02",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-10-02T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-10-02T13:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-HO08B",
+      "USUBJID": "201-9208-006",
+      "SITEID": "9208",
+      "REPORTED_TERM": "pyrexia",
+      "PREFERRED_TERM": "PYREXIA",
+      "ONSET": "2025-10-05",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-10-05T08:00:00+00:00",
+      "RECEIPT_DTC": "05/10/2025 14:00"
+    }
+  ],
+  "ideal": [
+    "sae_data_quality:201-9208-004/1#AESTDTC",
+    "sae_data_quality:SC-HO08B#RECEIPT_DTC"
+  ],
+  "ideal_note": "Two data-quality findings, one per bad field; nothing else (the cellulitis case is the subject's only one, so it is not an orphan to a reviewer).",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO08A",
+      "sae_data_quality:201-9208-004/1#AESTDTC",
+      "sae_data_quality:SC-HO08B#RECEIPT_DTC"
+    ]
+  }
+}
