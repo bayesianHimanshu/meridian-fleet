@@ -149,3 +149,24 @@ the command reported an exit status"): 77 error narratives, retried. With jobs o
 phi4-mini rarely writes "Site <id>" for a subject-level finding, whose title names the
 subject and not the site; the validator rejects that as it does for the cloud narrator.
 The prompt was not changed in response.
+
+### The sealed set (once, 2026-11-09)
+
+Run once with phi4-mini:3.8b-q4_K_M (digest 78fad5d182a7), the prompt, options and
+validator as committed; nothing was changed afterwards. The file stays outside the
+repository; only the numbers are here. It has 33 pairs labelled yes 15, no 11 and
+unsure 7, and one term per record, so each term was sent as both the preferred and the
+verbatim term. Look-alikes: the 10 "no" pairs other than the unrelated control.
+
+| Measure | Result | Target |
+|---|---|---|
+| Wrong "yes" on look-alikes | 0 of 10 | at most 1 (primary rule): met |
+| "no" recall on look-alikes | 1.0 | at least 0.85: met |
+| Accuracy | 0.788 (26 of 33) | at least 0.80: missed |
+| "unsure" answers | 0 | at most 0.15: met |
+| Rejected answers | 0 | at most 5%: met |
+| Latency, median of warm calls / first | 1010 / 7462 ms | |
+
+All seven errors are pairs labelled "unsure": six were answered "no" and one "yes" (a
+general and a local form of one skin reaction). The model never says "unsure", which
+is what costs the accuracy target; it never said "yes" to a pair labelled "no".
