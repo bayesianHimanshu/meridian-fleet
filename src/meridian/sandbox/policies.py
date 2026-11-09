@@ -14,14 +14,44 @@ time inside a real sandbox (docs/openshell-notes.md):
   extracts uploads by piping a tar stream through bash, cat, mkdir and tar inside the
   sandbox, under the same Landlock rules as the agent.
 
-The cut is uploaded to /tmp/cut, inside the one read-write path: an upload is extracted by
-the sandboxed process itself, so it can only land somewhere writable.
+Staged inputs land under /stage, one folder per area (STAGE_AREAS), which the image
+creates owned by the sandbox user. A policy lists only the areas its zone may use
+(ZonePolicy.reads); Landlock refuses every other one, so a blinded zone can never read
+/stage/unblinded, even if a staging bug put a file there (the upload itself would fail).
+An area is a read-write path because an upload is extracted by the sandboxed process
+itself and can only land somewhere writable; /stage itself is not listed, so it cannot be
+listed or written. /tmp stays read-write as scratch space; nothing is staged there.
 """
 
 import hashlib
+import ipaddress
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
+
+from meridian.data.stage_layout import (
+    BLINDED,
+    LM,
+    META,
+    NARR,
+    OPS,
+    STAGE_AREAS,
+    STAGE_ROOT,
+    UNBLINDED,
+    stage_path,
+)
+
+__all__ = [
+    "BLINDED",
+    "LM",
+    "META",
+    "NARR",
+    "OPS",
+    "STAGE_AREAS",
+    "STAGE_ROOT",
+    "UNBLINDED",
+    "stage_path",
+]
 
 POLICY_VERSION = 1
 READ_ONLY: tuple[str, ...] = (
@@ -35,6 +65,8 @@ READ_ONLY: tuple[str, ...] = (
     "/usr/bin/tar",
 )
 READ_WRITE: tuple[str, ...] = ("/tmp",)  # noqa: S108 (a path inside the sandbox)
+# What a blinded zone may read: the trigger, the blinded cut and the operational data.
+BLINDED_READS: tuple[str, ...] = (META, BLINDED, OPS)
 # Every agent zone (meridian.agents.base.Zone), as plain strings: rendering a policy must
 # not import agent code.
 ZONES: tuple[str, ...] = (
@@ -57,7 +89,11 @@ class HttpRule:
 
 @dataclass(frozen=True, slots=True)
 class NetworkRule:
-    """One OpenShell network policy: an endpoint, the requests allowed, and who may call."""
+    """One OpenShell network policy: an endpoint, the requests allowed, and who may call.
+
+    allowed_ips: the proxy refuses a private address unless the rule lists it here; it
+    refuses loopback, link-local and unspecified addresses whatever the rule says.
+    """
 
     name: str
     host: str
@@ -66,13 +102,16 @@ class NetworkRule:
     binaries: tuple[str, ...]
     protocol: str = "rest"
     enforcement: str = "enforce"
+    allowed_ips: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
 class ZonePolicy:
     zone: str
+    # The staged areas this zone may use (each becomes /stage/<area> in read_write).
+    reads: tuple[str, ...] = BLINDED_READS
     read_only: tuple[str, ...] = READ_ONLY
-    read_write: tuple[str, ...] = READ_WRITE
+    scratch: tuple[str, ...] = READ_WRITE
     landlock: str = "hard_requirement"
     run_as_user: str = "sandbox"
     run_as_group: str = "sandbox"
@@ -86,8 +125,21 @@ class ZonePolicy:
     def policy_name(self) -> str:
         return self.name or self.zone
 
+    @property
+    def read_write(self) -> tuple[str, ...]:
+        return (*self.scratch, *(stage_path(a) for a in self.reads))
 
-POLICIES: dict[str, ZonePolicy] = {zone: ZonePolicy(zone) for zone in ZONES}
+
+# The areas each zone may read. The safety zone reads no operational data (its agent
+# reads ae, dm and the safety database snapshot only); the unblinded zone is the only one
+# that may read the unblinded area. The others have no agent yet and keep the blinded
+# default.
+ZONE_READS: dict[str, tuple[str, ...]] = {
+    **dict.fromkeys(ZONES, BLINDED_READS),
+    "safety": (META, BLINDED),
+    "unblinded": (META, BLINDED, OPS, UNBLINDED),
+}
+POLICIES: dict[str, ZonePolicy] = {zone: ZonePolicy(zone, ZONE_READS[zone]) for zone in ZONES}
 
 # The meridian-anthropic provider profile (profiles/anthropic.yaml, imported by the user).
 # The proxy names a binary by its real path: the venv's python is a symlink to this file.
@@ -142,9 +194,30 @@ RECONCILER_POLICY = "safety.sae_reconciler"
 # endpoint (with the credential); this file states what the narrator itself needs, so
 # the prover can check it against the narrator boundary.
 NARRATOR_POLICY = "rbqm.narrator"
+# safety.local_model: the safety_local zone, where safety.term_adjudicator and
+# safety.local_narrator send host-built requests to the local model. It reads only its
+# job folder and may reach only the Ollama host address and port, and there only GET
+# /api/tags (the digest check) and POST /api/chat, for the python binary. Ollama listens
+# on the docker0 address only (docs/local-model-notes.md): loopback is refused by the
+# proxy whatever a policy says, and a private address must be listed in allowed_ips.
+LOCAL_MODEL_POLICY = "safety.local_model"
+LOCAL_ZONE = "safety_local"
+OLLAMA_HOST = "172.17.0.1"
+OLLAMA_PORT = 11434
+OLLAMA_TAGS = HttpRule("GET", "/api/tags")
+OLLAMA_CHAT = HttpRule("POST", "/api/chat")
+OLLAMA_RULE = NetworkRule(
+    name="ollama",
+    host=OLLAMA_HOST,
+    port=OLLAMA_PORT,
+    rules=(OLLAMA_TAGS, OLLAMA_CHAT),
+    binaries=(PYTHON,),
+    allowed_ips=(f"{OLLAMA_HOST}/32",),
+)
 AGENT_POLICIES: dict[str, ZonePolicy] = {
     NARRATOR_POLICY: ZonePolicy(
         "rbqm",
+        reads=(NARR,),
         name=NARRATOR_POLICY,
         network=(
             NetworkRule(
@@ -157,7 +230,15 @@ AGENT_POLICIES: dict[str, ZonePolicy] = {
         ),
         providers=("meridian-anthropic",),
     ),
-    RECONCILER_POLICY: ZonePolicy("safety", name=RECONCILER_POLICY),
+    RECONCILER_POLICY: ZonePolicy("safety", ZONE_READS["safety"], name=RECONCILER_POLICY),
+    LOCAL_MODEL_POLICY: ZonePolicy(
+        LOCAL_ZONE, reads=(LM,), name=LOCAL_MODEL_POLICY, network=(OLLAMA_RULE,)
+    ),
+}
+# The agents that run under a policy that is not named after them.
+AGENT_POLICY_OF: dict[str, str] = {
+    "safety.term_adjudicator": LOCAL_MODEL_POLICY,
+    "safety.local_narrator": LOCAL_MODEL_POLICY,
 }
 # Every committed policy file: one per zone, one per agent with its own policy.
 ALL_POLICIES: dict[str, ZonePolicy] = {**POLICIES, **AGENT_POLICIES}
@@ -180,12 +261,21 @@ def _list(key: str, items: Sequence[str]) -> list[str]:
     return [f"  {key}:", *(f"    - {item}" for item in items)]
 
 
+def _host(host: str) -> str:
+    """An address quoted, as 0.1.7 prints it; a host name as it is."""
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    return f"'{host}'"
+
+
 def _network_block(key: str, rule: NetworkRule) -> list[str]:
     lines = [
         f"  {key}:",
         f"    name: {key}",
         "    endpoints:",
-        f"      - host: {rule.host}",
+        f"      - host: {_host(rule.host)}",
         f"        port: {rule.port}",
         f"        protocol: {rule.protocol}",
         f"        enforcement: {rule.enforcement}",
@@ -197,6 +287,9 @@ def _network_block(key: str, rule: NetworkRule) -> list[str]:
             f"              method: {r.method}",
             f"              path: {r.path}",
         ]
+    if rule.allowed_ips:
+        lines.append("        allowed_ips:")
+        lines += [f"          - '{ip}'" for ip in rule.allowed_ips]
     lines.append("    binaries:")
     lines += [f"      - path: {b}" for b in rule.binaries]
     return lines
@@ -213,11 +306,15 @@ def _network(blocks: Sequence[tuple[str, NetworkRule]]) -> list[str]:
 
 def _header(policy: ZonePolicy) -> list[str]:
     if policy.name:
-        attached = (
-            f"# hand. Sandboxes using it are created with --provider {', '.join(policy.providers)}."
-            if policy.providers
-            else "# hand. No provider is attached and the policy has no network rule."
-        )
+        if policy.providers:
+            attached = (
+                "# hand. Sandboxes using it are created with --provider "
+                f"{', '.join(policy.providers)}."
+            )
+        elif policy.network:
+            attached = "# hand. No provider is attached; the network rules below are all it has."
+        else:
+            attached = "# hand. No provider is attached and the policy has no network rule."
         return [
             f"# OpenShell policy for the {policy.name} agent (zone {policy.zone}). Generated by",
             "# `meridian policy render` from src/meridian/sandbox/policies.py; do not edit by",
@@ -303,24 +400,31 @@ def expected_effective(policy: ZonePolicy) -> str:
 BOUNDARIES_DIR = "boundaries"
 # The narrator boundary is the blinded one plus the Messages API for python only: the
 # only policy allowed egress, and only there (phase 2 step 3).
+# The local model boundary is its job folder plus the two Ollama requests, for python only.
+# The unblinded boundary is the only one with the unblinded area.
 BOUNDARIES: dict[str, ZonePolicy] = {
     "blinded": ZonePolicy("blinded"),
-    "narrator": ZonePolicy("narrator", network=AGENT_POLICIES[NARRATOR_POLICY].network),
+    "unblinded": ZonePolicy("unblinded", ZONE_READS["unblinded"]),
+    "narrator": ZonePolicy(
+        "narrator", reads=(NARR,), network=AGENT_POLICIES[NARRATOR_POLICY].network
+    ),
+    "local_model": ZonePolicy("local_model", reads=(LM,), network=(OLLAMA_RULE,)),
 }
-# The boundary each zone is proved against. The unblinded zone is reserved and holds the
-# same policy for now; it gets its own boundary once it may read the unblinded staging
-# path.
-ZONE_BOUNDARY: dict[str, str] = dict.fromkeys(ZONES, "blinded")
+# The boundary each zone is proved against.
+ZONE_BOUNDARY: dict[str, str] = {**dict.fromkeys(ZONES, "blinded"), "unblinded": "unblinded"}
 # Every committed policy and the boundary it is proved against.
 POLICY_BOUNDARY: dict[str, str] = {
     **ZONE_BOUNDARY,
     NARRATOR_POLICY: "narrator",
     RECONCILER_POLICY: "blinded",
+    LOCAL_MODEL_POLICY: "local_model",
 }
 
 
 def policy_for_agent(agent_id: str) -> str:
     """The committed policy an agent runs under: its own if it has one, else its zone's."""
+    if agent_id in AGENT_POLICY_OF:
+        return AGENT_POLICY_OF[agent_id]
     return agent_id if agent_id in AGENT_POLICIES else agent_id.split(".", 1)[0]
 
 

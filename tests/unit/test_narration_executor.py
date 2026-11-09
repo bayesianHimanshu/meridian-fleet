@@ -47,10 +47,12 @@ class FakeClient:
         providers: Sequence[str] = (),
     ) -> None:
         assert policy.name == "rbqm.narrator.yaml"
-        ((local, remote),) = uploads
-        assert remote == "/tmp"
-        verify_manifest(local)  # what the worker checks first
-        self.staged = {p.name: p.read_text() for p in local.iterdir()}
+        # Each file straight into /stage/narr, the only area the narrator's policy grants.
+        assert {remote for _, remote in uploads} == {"/stage/narr"}
+        (folder,) = {local.parent for local, _ in uploads}
+        assert sorted(local for local, _ in uploads) == sorted(folder.iterdir())
+        verify_manifest(folder)  # what the worker checks first
+        self.staged = {local.name: local.read_text() for local, _ in uploads}
         self.created.append((name, tuple(providers)))
         self.live.add(name)
 

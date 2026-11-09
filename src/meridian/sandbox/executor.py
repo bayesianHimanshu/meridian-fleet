@@ -2,9 +2,9 @@
 
 Either way the result is the same list of FindingDrafts; only the host runner writes to
 the ledger. The OpenShell executor creates one sandbox per run from the agent image with
-the zone's policy, uploads a staged copy of the cut (blinded/, ops/ and the trigger,
-nothing else), runs meridian-worker, reads back the effective policy and always deletes
-the sandbox.
+the zone's policy, uploads a staged copy of the cut (the trigger and the cut areas the
+zone's policy may read, nothing else) into /stage, runs meridian-worker, reads back the
+effective policy and always deletes the sandbox.
 """
 
 import tempfile
@@ -28,6 +28,7 @@ from meridian.domain.events import DataCut, Event
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
+    META,
     expected_effective,
     policy_for_agent,
     policy_path,
@@ -36,10 +37,11 @@ from meridian.sandbox.policies import (
 )
 from meridian.sandbox.staging import (
     SANDBOX_CUT_DIR,
-    SANDBOX_ROOT,
     SANDBOX_TRIGGER,
     assert_clean_stage,
+    cut_areas_for,
     stage_cut,
+    uploads,
 )
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
@@ -203,11 +205,13 @@ class OpenShellExecutor:
         )
         name = self._name_factory(agent_id, trigger.seq)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, sandbox=name)
+        areas = cut_areas_for(policy.reads)
         with tempfile.TemporaryDirectory(prefix="meridian-stage-", dir=self._staging_dir) as tmp:
-            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra)
-            assert_clean_stage(stage)  # again, right before it leaves the host
+            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra, areas)
+            assert_clean_stage(stage, areas)  # again, right before it leaves the host
             recomputed = build_manifest(stage)
-            if (stage / MANIFEST_FILE).read_text(encoding="utf-8") != recomputed.dumps():
+            written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")
+            if written != recomputed.dumps():
                 raise ExecutionError("staged files changed after the inputs manifest was written")
             inputs_sha = recomputed.sha256()
             ok = False
@@ -216,7 +220,7 @@ class OpenShellExecutor:
             # Hashed from the bytes handed to create, so the record names that exact file.
             policy_file_sha256 = sha256_bytes(policy_file.read_bytes())
             try:
-                self._client.create(name, self._image, policy_file, [(stage, SANDBOX_ROOT)])
+                self._client.create(name, self._image, policy_file, uploads(stage))
                 out = self._client.exec(name, self._argv(agent_id), self._timeout)
                 effective = self._client.policy(name)
                 stderr_tail = out.stderr[-STDERR_TAIL:]

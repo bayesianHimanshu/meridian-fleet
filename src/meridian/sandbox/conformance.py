@@ -25,6 +25,20 @@ rbqm.narrator (the meridian-anthropic provider attached):
 * Whether ANTHROPIC_API_KEY inside the sandbox starts with "sk-ant-" (it must not): the
   sandbox prints only True or False, and only that is recorded.
 
+safety.local_model (no provider; Ollama on the host address only):
+
+* ollama_tags              python GET http://172.17.0.1:11434/api/tags, status 200 (the
+                           proxy reaches Ollama from the host namespace, past ufw)
+* ollama_other_endpoint    python GET /api/version on the same address: the proxy answers
+                           403 policy_denied (only GET /api/tags and POST /api/chat pass)
+* egress_anthropic         python GET https://api.anthropic.com/v1/models (refused)
+* egress_example_com, the two writes, egress_test_net and control_tmp as above.
+
+Every policy also gets one check per staged area (/stage/<area>): opening an area the
+policy lists must succeed (read_stage_<area>, allowed), and opening any other must be
+refused by Landlock (read_stage_<area>, refused). So a blinded zone is shown unable to
+read /stage/unblinded, and the local model zone unable to read any cut area.
+
 Writes use bash redirection, not touch: touch is not in the allow-list, so `touch X`
 fails before it ever tries to write X and would prove nothing.
 
@@ -56,10 +70,15 @@ from meridian.sandbox.logline import LogScan, NetLogRecord, scan
 from meridian.sandbox.openshell import ExecOutput, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
+    LOCAL_MODEL_POLICY,
     NARRATOR_POLICY,
+    OLLAMA_HOST,
+    OLLAMA_PORT,
+    STAGE_AREAS,
     expected_effective,
     policy_path,
     sha256_text,
+    stage_path,
 )
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
@@ -169,6 +188,37 @@ EGRESS_EXAMPLE = CheckSpec(
     "example.com:443",
     "ConnectError: [Errno 13] Permission denied",
 )
+EGRESS_ANTHROPIC = CheckSpec(
+    "egress_anthropic",
+    "refused",
+    _python_get("https://api.anthropic.com/v1/models"),
+    "api.anthropic.com:443",
+    "ConnectError: [Errno 13] Permission denied",
+)
+OLLAMA_URL = f"http://{OLLAMA_HOST}:{OLLAMA_PORT}"
+OLLAMA_TAGS_CHECK = CheckSpec(
+    "ollama_tags",
+    "allowed",
+    _python_get(f"{OLLAMA_URL}/api/tags"),
+    "status 200",
+    "",
+)
+# The proxy's L7 refusal is an HTTP 403 with error policy_denied; the command turns it
+# into a non-zero exit with that text on stderr. Any other status is inconclusive.
+OLLAMA_OTHER_ENDPOINT = CheckSpec(
+    "ollama_other_endpoint",
+    "refused",
+    (
+        f'{PYTHON} -c "import httpx, sys\n'
+        f"r = httpx.get('{OLLAMA_URL}/api/version', timeout=20)\n"
+        f"if r.status_code == 403 and 'policy_denied' in r.text:\n"
+        f"    sys.exit('HTTP 403 policy_denied: GET /api/version')\n"
+        f"print('status', r.status_code)\n"
+        f'sys.exit(r.status_code != 200)"'
+    ),
+    f"{OLLAMA_URL}/api/version",
+    "HTTP 403 policy_denied",
+)
 # Prints True or False only: never the value.
 KEY_PREFIX_COMMAND = (
     f"{PYTHON} -c \"import os; print(os.environ.get('ANTHROPIC_API_KEY', '')"
@@ -190,14 +240,40 @@ NARRATOR_CHECKS: tuple[CheckSpec, ...] = (
     EGRESS_TEST_NET,
     CONTROL_TMP,
 )
+LOCAL_MODEL_CHECKS: tuple[CheckSpec, ...] = (
+    OLLAMA_TAGS_CHECK,
+    OLLAMA_OTHER_ENDPOINT,
+    EGRESS_ANTHROPIC,
+    EGRESS_EXAMPLE,
+    WRITE_VAR_TMP,
+    WRITE_OPT,
+    EGRESS_TEST_NET,
+    CONTROL_TMP,
+)
 CHECKS = ZONE_CHECKS  # the zone checks (step 2b name)
 NETWORK_CHECK = EGRESS_TEST_NET.name
 # Network refusals are recorded from the supervisor's log line, not the harness.
-NETWORK_CHECKS = frozenset({EGRESS_TEST_NET.name, EGRESS_EXAMPLE.name})
+NETWORK_CHECKS = frozenset({EGRESS_TEST_NET.name, EGRESS_EXAMPLE.name, EGRESS_ANTHROPIC.name})
+
+
+def stage_check(area: str, readable: bool) -> CheckSpec:
+    """Open /stage/<area> as a directory: allowed when the policy lists it, else refused."""
+    path = stage_path(area)
+    if readable:
+        return CheckSpec(
+            f"read_stage_{area}", "allowed", f"exec 3< {path} && echo readable", "readable", ""
+        )
+    return CheckSpec(
+        f"read_stage_{area}", "refused", f"exec 3< {path}", path, f"{path}: Permission denied"
+    )
 
 
 def checks_for(policy_name: str) -> tuple[CheckSpec, ...]:
-    return NARRATOR_CHECKS if policy_name == NARRATOR_POLICY else ZONE_CHECKS
+    base = {NARRATOR_POLICY: NARRATOR_CHECKS, LOCAL_MODEL_POLICY: LOCAL_MODEL_CHECKS}.get(
+        policy_name, ZONE_CHECKS
+    )
+    reads = ALL_POLICIES[policy_name].reads
+    return (*base, *(stage_check(a, a in reads) for a in STAGE_AREAS))
 
 
 def zone_code(zone: str) -> str:
@@ -403,6 +479,8 @@ def _log_check(record: NetLogRecord) -> str | None:
         return EGRESS_TEST_NET.name
     if record.host == "example.com" or record.host.endswith(".example.com"):
         return EGRESS_EXAMPLE.name
+    if record.host == "api.anthropic.com":
+        return EGRESS_ANTHROPIC.name
     return None
 
 
@@ -419,7 +497,7 @@ def ledger_drafts(result: ConformanceResult, clock: Clock) -> list[EventDraft]:
             occurred_at=now, actor=ACTOR, visibility=Visibility.BLINDED, payload=payload
         )
 
-    specs = {s.name: s for s in (*ZONE_CHECKS, *NARRATOR_CHECKS)}
+    specs = {s.name: s for s in checks_for(result.zone)}
     for check in result.checks:
         if check.name in NETWORK_CHECKS or check.outcome != "refused" or check.expect != "refused":
             continue

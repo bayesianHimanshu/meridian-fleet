@@ -1,6 +1,7 @@
 """The narrator's OpenShell executor: one sandbox per pass, with the provider attached.
 
-The host stages job.json (the requests it built) and an inputs manifest, creates a sandbox
+The host stages job.json (the requests it built) and an inputs manifest into /stage/narr
+(the only staged area the narrator's policy grants), creates a sandbox
 from the agent image with policies/rbqm.narrator.yaml and --provider meridian-anthropic,
 runs meridian-narrator-worker, checks the effective policy, and always deletes the
 sandbox. The sandbox only carries the calls: the host built every request and validates
@@ -27,13 +28,18 @@ from meridian.sandbox.policies import (
     expected_effective,
     policy_path,
     sha256_text,
+    stage_path,
 )
-from meridian.sandbox.staging import SANDBOX_ROOT
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
 
 OPENSHELL = "openshell"
 NARRATOR_WORKER = "/opt/meridian/venv/bin/meridian-narrator-worker"
-SANDBOX_JOB = f"{SANDBOX_ROOT}/{JOB_DIR}/{JOB_FILE}"
+SANDBOX_JOB = f"{stage_path(JOB_DIR)}/{JOB_FILE}"
+
+
+def job_uploads(stage: Path) -> list[tuple[Path, str]]:
+    """Every file of a job folder, uploaded straight into /stage/<folder name>."""
+    return [(f, stage_path(stage.name)) for f in sorted(stage.iterdir()) if f.is_file()]
 
 
 def narrator_sandbox_name() -> str:
@@ -83,7 +89,7 @@ class OpenShellNarrationExecutor:
                     name,
                     self._image,
                     policy_file,
-                    [(stage, SANDBOX_ROOT)],
+                    job_uploads(stage),
                     providers=policy.providers,
                 )
                 effective = self._client.policy(name)

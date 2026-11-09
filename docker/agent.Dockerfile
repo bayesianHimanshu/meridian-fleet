@@ -31,6 +31,13 @@ RUN uv venv /opt/meridian/venv --python /usr/local/bin/python3.14 \
 FROM ${PYTHON_IMAGE}
 RUN groupadd --gid 1000 sandbox \
  && useradd --uid 1000 --gid sandbox --no-create-home --home-dir /tmp --shell /usr/sbin/nologin sandbox
+# One folder per staged area (meridian.sandbox.policies.STAGE_AREAS). Landlock rules name
+# paths that exist when the sandbox starts, so the folders are made here; a policy lists
+# only the areas its zone may use. /stage itself stays root's and is in no policy.
+RUN mkdir -m 0755 /stage \
+ && for area in meta blinded ops unblinded narr lm; do \
+      install -d -m 0700 -o sandbox -g sandbox "/stage/$area"; \
+    done
 COPY --from=build /opt/meridian/venv /opt/meridian/venv
 COPY config/default.toml config/sites.toml config/safety_terms.toml /opt/meridian/config/
 ENV PATH=/opt/meridian/venv/bin:$PATH \

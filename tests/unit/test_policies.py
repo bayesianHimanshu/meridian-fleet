@@ -20,12 +20,19 @@ ALLOWED = {
     "/usr/bin/mkdir",
     "/usr/bin/tar",
     "/tmp",
+    "/stage/meta",
+    "/stage/blinded",
+    "/stage/ops",
 }
 
 
 def test_every_zone_has_a_policy_and_two_agents_have_their_own() -> None:
     assert set(policies.POLICIES) == {z.value for z in Zone}
-    assert set(policies.AGENT_POLICIES) == {"rbqm.narrator", "safety.sae_reconciler"}
+    assert set(policies.AGENT_POLICIES) == {
+        "rbqm.narrator",
+        "safety.sae_reconciler",
+        "safety.local_model",
+    }
     assert sorted(p.name.removesuffix(".yaml") for p in COMMITTED.glob("*.yaml")) == sorted(
         policies.ALL_POLICIES
     )
@@ -57,11 +64,13 @@ def test_the_provider_profile_equals_its_rendering(tmp_path: Path) -> None:
 def test_zone_policy_lists_only_allowed_paths_and_no_network(zone: str) -> None:
     text = (COMMITTED / f"{zone}.yaml").read_text()
     listed = {line.strip()[2:] for line in text.splitlines() if line.strip().startswith("- ")}
-    assert listed <= ALLOWED, listed - ALLOWED
-    assert "/unblinded" not in text  # the zone called unblinded may name itself
+    allowed = ALLOWED | ({"/stage/unblinded"} if zone == "unblinded" else set())
+    assert listed <= allowed, listed - allowed
+    if zone != "unblinded":
+        assert "/unblinded" not in text
     assert "ground_truth" not in text
     policy = policies.POLICIES[zone]
-    assert policy.read_write == ("/tmp",)
+    assert policy.read_write == ("/tmp", *(f"/stage/{a}" for a in policies.ZONE_READS[zone]))
     assert "/" not in policy.read_only
     assert policy.landlock == "hard_requirement"
     assert policy.network == ()
@@ -74,10 +83,11 @@ NARRATOR = policies.ALL_POLICIES["rbqm.narrator"]
 
 def test_the_narrator_policy_is_rbqm_plus_one_endpoint_for_python() -> None:
     rbqm = policies.POLICIES["rbqm"]
+    # The rbqm read-only paths, and of the staged areas only its own job folder.
     assert (NARRATOR.zone, NARRATOR.read_only, NARRATOR.read_write) == (
         "rbqm",
         rbqm.read_only,
-        rbqm.read_write,
+        ("/tmp", "/stage/narr"),
     )
     (rule,) = NARRATOR.network
     assert (rule.host, rule.port, rule.protocol, rule.enforcement) == (
@@ -95,7 +105,7 @@ def test_the_narrator_policy_is_rbqm_plus_one_endpoint_for_python() -> None:
         for line in text.split("network_policies:")[0].splitlines()
         if line.strip().startswith("- ")
     }
-    assert listed <= ALLOWED
+    assert listed <= (ALLOWED - {"/stage/meta", "/stage/blinded", "/stage/ops"}) | {"/stage/narr"}
 
 
 def test_narrator_expected_effective_adds_baseline_and_provider_rule() -> None:

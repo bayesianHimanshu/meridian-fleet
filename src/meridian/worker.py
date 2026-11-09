@@ -1,13 +1,13 @@
 """meridian-worker: run one agent on one staged cut and print its drafts.
 
-    meridian-worker run --agent AGENT_ID --trigger /tmp/cut/trigger.json --cut-dir /tmp/cut
+    meridian-worker run --agent AGENT_ID --trigger /stage/meta/trigger.json --cut-dir /stage
 
 This is what runs inside a sandbox. It reads a trigger (a DataCut event as JSON) and a
-cut directory holding only blinded/ and ops/, checks every staged file against the
-host's inputs_manifest.json, builds the agent from the packaged config,
-and prints one canonical JSON document {"agent_id", "agent_version", "drafts"} on stdout.
-Logs go to stderr. It never opens the ledger, never touches the network and never sees
-unblinded data or ground truth.
+cut directory holding meta/ (the trigger and inputs_manifest.json) and the cut areas
+its zone may read, checks every staged file against the host's manifest, builds the
+agent from the packaged config, and prints one canonical JSON document {"agent_id",
+"agent_version", "drafts"} on stdout. Logs go to stderr. It never opens the ledger, never
+touches the network and never sees unblinded data or ground truth.
 
 Exit codes: 0 success, 2 bad arguments, 3 data error, 4 agent error.
 """
@@ -26,7 +26,8 @@ from pydantic import ValidationError
 from meridian.agents.catalog import build_registry
 from meridian.agents.execute import drafts_document, run_agent
 from meridian.agents.registry import RegistrationError
-from meridian.data.inputs_manifest import InputsManifestError, verify_manifest
+from meridian.data.inputs_manifest import MANIFEST_FILE, InputsManifestError, verify_manifest
+from meridian.data.stage_layout import META
 from meridian.data.study_store import MissingTableError, ParquetStudyReader, StudyAccessError
 from meridian.domain.events import DataCut, Event
 from meridian.platform.agent_settings import SAFETY_TERMS_FILE, load_safety_terms
@@ -107,8 +108,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         log.error("worker.bad_config", error=f"{type(exc).__name__}: {exc}")
         return EXIT_BAD_ARGS
     try:
-        # Before any data is read: the staged files must be exactly the host's manifest.
-        verify_manifest(args.cut_dir)
+        # Before any data is read: the staged files must be exactly the host's manifest,
+        # which sits in meta/ (the sandbox cannot list the stage root itself).
+        verify_manifest(args.cut_dir, at=args.cut_dir / META / MANIFEST_FILE)
     except InputsManifestError as exc:
         log.error("worker.inputs_rejected", error=str(exc))
         return EXIT_DATA

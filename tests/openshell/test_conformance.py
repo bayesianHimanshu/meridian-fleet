@@ -1,7 +1,9 @@
 """meridian sandbox conformance for every policy, in real sandboxes. Run with -m openshell.
 
 The rbqm.narrator test needs the meridian-anthropic provider (created by the user from
-profiles/anthropic.yaml) and makes one GET /v1/models through it.
+profiles/anthropic.yaml) and makes one GET /v1/models through it. The safety.local_model
+test needs Ollama listening on the host address in its policy and makes one GET
+/api/tags through the policy proxy.
 """
 
 import subprocess
@@ -14,7 +16,13 @@ from meridian.domain.events import ContainmentCheckCompleted, PolicyDenied
 from meridian.ledger.verify import verify
 from meridian.platform.clock import FixedClock
 from meridian.sandbox import image, policies
-from meridian.sandbox.conformance import ledger_drafts, run_conformance
+from meridian.sandbox.conformance import (
+    NETWORK_CHECKS,
+    OLLAMA_URL,
+    checks_for,
+    ledger_drafts,
+    run_conformance,
+)
 from meridian.sandbox.openshell import SubprocessOpenShellClient
 from meridian.sandbox.tracking import SandboxTracker
 from tests.openshell.test_sandbox import _skip_reason
@@ -32,13 +40,24 @@ def _openshell_available() -> None:
         pytest.skip(reason)
 
 
-# Every zone policy, and the agent policies without a provider (safety.sae_reconciler).
-NO_PROVIDER = sorted(name for name, p in policies.ALL_POLICIES.items() if not p.providers)
+# Every zone policy, and the agent policies without network (safety.sae_reconciler).
+NO_PROVIDER = sorted(name for name, p in policies.ALL_POLICIES.items() if not p.network)
 
 
 def test_the_no_provider_list_holds_the_reconciler() -> None:
     assert "safety.sae_reconciler" in NO_PROVIDER
     assert "rbqm.narrator" not in NO_PROVIDER
+    assert "safety.local_model" not in NO_PROVIDER
+
+
+def _expected_sources(name: str) -> list[tuple[str, str]]:
+    """Every refusal the harness saw, in check order, then the network ones from the
+    supervisor's log, in the order they ran."""
+    specs = checks_for(name)
+    harness = [
+        (c.name, "harness") for c in specs if c.expect == "refused" and c.name not in NETWORK_CHECKS
+    ]
+    return harness + [(c.name, "openshell_log") for c in specs if c.name in NETWORK_CHECKS]
 
 
 @pytest.mark.parametrize("zone", NO_PROVIDER)
@@ -67,12 +86,7 @@ def test_zone_policy_conforms_and_is_recorded(tmp_path: Path, zone: str) -> None
     sources = [
         (e.payload.check, e.payload.source) for e in events if isinstance(e.payload, PolicyDenied)
     ]
-    assert sources == [
-        ("read_outside_allow_list", "harness"),
-        ("write_var_tmp", "harness"),
-        ("write_opt_meridian", "harness"),
-        ("egress_test_net", "openshell_log"),
-    ]
+    assert sources == _expected_sources(zone)
     done = events[-1].payload
     assert isinstance(done, ContainmentCheckCompleted)
     assert done.all_refused
@@ -119,16 +133,68 @@ def test_the_narrator_policy_conforms_with_its_provider(tmp_path: Path) -> None:
     sources = [
         (e.payload.check, e.payload.source) for e in events if isinstance(e.payload, PolicyDenied)
     ]
-    assert sources == [
-        ("write_var_tmp", "harness"),
-        ("write_opt_meridian", "harness"),
-        ("egress_example_com", "openshell_log"),
-        ("egress_test_net", "openshell_log"),
-    ]
+    assert sources == _expected_sources("rbqm.narrator")
     done = events[-1].payload
     assert isinstance(done, ContainmentCheckCompleted)
     assert (done.policy_name, done.credential_value_visible, done.passed) == (
         "rbqm.narrator",
         False,
+        True,
+    )
+
+
+def _ollama_up() -> bool:
+    import httpx
+
+    try:
+        return httpx.get(f"{OLLAMA_URL}/api/tags", timeout=5, trust_env=False).status_code == 200
+    except httpx.HTTPError:
+        return False
+
+
+def test_the_local_model_policy_conforms(tmp_path: Path) -> None:
+    """GET /api/tags passes the proxy to Ollama on the host address (the proxy runs in the
+    host namespace, so ufw's rules for docker0 and the LAN do not stop it); every other
+    Ollama endpoint, every other host and every staged area but lm are refused."""
+    if not _ollama_up():
+        pytest.skip(f"Ollama is not listening at {OLLAMA_URL}; see docs/local-model-notes.md")
+    client = SubprocessOpenShellClient()
+    ref = image.default_image()
+    tracker = SandboxTracker(tmp_path / "sandboxes.jsonl", FixedClock(NOW))
+    result = run_conformance(
+        client=client,
+        zone="safety.local_model",
+        image=ref,
+        image_digest=image.inspect(ref).digest,
+        policies_dir=REPO / "policies",
+        tracker=tracker,
+        log=structlog.get_logger(),
+        log_timeout_seconds=30,
+    )
+    assert result.passed, result.failures()
+    assert result.providers == ()
+    assert {r.policy for r in result.allowed_records} == {"ollama"}
+    assert {r.destination for r in result.allowed_records} == {"172.17.0.1:11434"}
+    by_name = {c.name: c for c in result.checks}
+    assert by_name["ollama_tags"].outcome == "allowed"
+    assert by_name["ollama_other_endpoint"].outcome == "refused"
+    assert [a for a in policies.STAGE_AREAS if by_name[f"read_stage_{a}"].passed] == list(
+        policies.STAGE_AREAS
+    )
+    assert tracker.pending() == []
+
+    ledger = make_ledger(tmp_path / "ledger.sqlite3", FixedClock(NOW))
+    events = [ledger.append(d) for d in ledger_drafts(result, FixedClock(NOW))]
+    assert verify(ledger).ok
+    ledger.close()
+    sources = [
+        (e.payload.check, e.payload.source) for e in events if isinstance(e.payload, PolicyDenied)
+    ]
+    assert sources == _expected_sources("safety.local_model")
+    done = events[-1].payload
+    assert isinstance(done, ContainmentCheckCompleted)
+    assert (done.zone, done.policy_name, done.passed) == (
+        "safety_local",
+        "safety.local_model",
         True,
     )
