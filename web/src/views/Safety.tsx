@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, SeverityChip, StatusChip } from "../components/common";
+import { FindingLink, WithTimes } from "../components/text";
 import { useApi } from "../queries";
 
 const STUDY = "MRD-201";
@@ -30,11 +30,15 @@ function Compare({ item }: { item: Item }) {
     <dl className="compare">
       <div>
         <dt>{item.left_label}</dt>
-        <dd className="mono">{item.left}</dd>
+        <dd className="mono">
+          <WithTimes text={item.left} />
+        </dd>
       </div>
       <div>
         <dt>{item.right_label}</dt>
-        <dd className="mono">{item.right}</dd>
+        <dd className="mono">
+          <WithTimes text={item.right} />
+        </dd>
       </div>
     </dl>
   );
@@ -118,10 +122,7 @@ function Discrepancies({ items }: { items: Item[] }) {
               <span>{CHECK_TEXT[i.check] ?? i.check}</span>
             </div>
             <p>
-              <Link to={`/findings/${i.finding_id}`} className="mono">
-                {i.finding_id}
-              </Link>{" "}
-              {i.title}
+              <FindingLink id={i.finding_id} className="mono" /> <WithTimes text={i.title} />
             </p>
             <p className="muted">
               Site <span className="mono">{i.site_id ?? "n/a"}</span>

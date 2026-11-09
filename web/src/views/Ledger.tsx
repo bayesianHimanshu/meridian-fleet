@@ -1,9 +1,10 @@
 import { useInfiniteQuery, useMutation } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
-import { Link } from "react-router";
+import { type ReactNode } from "react";
+import { Link, useSearchParams } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
 import { ErrorNote, Loading, Time } from "../components/common";
+import { FindingLink as Linked, WithTimes } from "../components/text";
 import { ROLE_LABELS, useIdentity, type Person } from "../identity";
 
 type Entry = Schemas["LedgerPage"]["entries"][number];
@@ -22,15 +23,17 @@ const TYPES: EventType[] = [
   "document_filed",
 ];
 
+function typesText(types: EventType[]): string {
+  return types.map((t) => t.replaceAll("_", " ")).join(" and ");
+}
+
 export function isRedacted(entry: Entry): entry is Schemas["RedactedEvent"] {
   return "marker" in entry;
 }
 
 function FindingLink({ id }: { id: string | null | undefined }) {
   return id ? (
-    <Link to={`/findings/${id}`} className="mono">
-      {id}
-    </Link>
+    <Linked id={id} className="mono" />
   ) : (
     <span>Finding</span>
   );
@@ -50,7 +53,7 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
     case "finding_raised":
       return (
         <>
-          <FindingLink id={p.finding.finding_id} />: {p.finding.title}
+          <FindingLink id={p.finding.finding_id} />: <WithTimes text={p.finding.title} />
         </>
       );
     case "finding_narrative":
@@ -109,9 +112,22 @@ function VerifyPanel() {
 
 export function LedgerView() {
   const { person, people } = useIdentity();
-  const [type, setType] = useState<EventType | "">("");
+  // Filters live in the URL so another page can link to them (the fleet page links to an
+  // agent's run events): ?agent=<agent id>&type=<event type>, type repeatable.
+  const [params, setParams] = useSearchParams();
+  const types = params.getAll("type").filter((t): t is EventType => (TYPES as string[]).includes(t));
+  const agent = params.get("agent");
+  const type: EventType | "" = types.length === 1 ? (types[0] ?? "") : "";
+  const setType = (value: EventType | "") => {
+    const next = new URLSearchParams(params);
+    next.delete("type");
+    if (value) {
+      next.append("type", value);
+    }
+    setParams(next);
+  };
   const pages = useInfiniteQuery({
-    queryKey: [person.actor, "ledger", type],
+    queryKey: [person.actor, "ledger", types.join(","), agent ?? ""],
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       unwrap(
@@ -121,7 +137,8 @@ export function LedgerView() {
               order: "desc",
               limit: PAGE,
               ...(pageParam === undefined ? {} : { before: pageParam }),
-              ...(type ? { type: [type] } : {}),
+              ...(types.length > 0 ? { type: types } : {}),
+              ...(agent ? { agent } : {}),
             },
           },
         }),
@@ -151,7 +168,7 @@ export function LedgerView() {
               setType(e.target.value as EventType | "");
             }}
           >
-            <option value="">All types</option>
+            <option value="">{types.length > 1 ? typesText(types) : "All types"}</option>
             {TYPES.map((t) => (
               <option key={t} value={t}>
                 {t.replaceAll("_", " ")}
@@ -159,6 +176,13 @@ export function LedgerView() {
             ))}
           </select>
         </label>
+        {agent ? (
+          <p className="message" data-testid="agent-filter">
+            Only events of <span className="mono">{agent}</span>
+            {types.length > 0 ? ` (${typesText(types)})` : ""}. A run that started and never finished shows as
+            a started event with no finished one. <Link to="/ledger">Show every event</Link>
+          </p>
+        ) : null}
       </div>
       {pages.isPending ? <Loading what="the ledger" /> : null}
       {pages.isError ? <ErrorNote error={pages.error} /> : null}

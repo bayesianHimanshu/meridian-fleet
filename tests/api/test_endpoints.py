@@ -51,7 +51,7 @@ def test_a_sandboxed_finding_traces_to_its_image_policy_and_inputs(fx: Fixture) 
     suspended = run["suspended"]
     assert suspended["executor"] == "openshell"
     assert suspended["image_digest"] == IMAGE_DIGEST
-    assert suspended["policy_sha256"] == POLICY_SHA
+    assert suspended["applied_policy_sha256"] == POLICY_SHA
     assert suspended["inputs_manifest_sha256"] == MANIFEST_SHA
     assert detail["evidence"][0]["display"] == "18 observed (5.1 expected)"
     assert detail["narratives"][0]["narrator_version"] == "1.1.0"
@@ -110,7 +110,11 @@ def test_fleet_lists_agents_policies_runs_and_containment(fx: Fixture) -> None:
         .sha256((REPO_ROOT / "policies" / "rbqm.yaml").read_bytes())
         .hexdigest()
     )
-    assert (kri["version"], kri["policy_file"].endswith("rbqm.yaml"), kri["policy_sha256"]) == (
+    assert (
+        kri["version"],
+        kri["policy_file"].endswith("rbqm.yaml"),
+        kri["policy_file_sha256"],
+    ) == (
         "2.2.0",
         True,
         expected_sha,

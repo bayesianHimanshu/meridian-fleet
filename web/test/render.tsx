@@ -3,7 +3,9 @@ import { MemoryRouter } from "react-router";
 import { App } from "../src/App";
 import { Providers, makeQueryClient } from "../src/root";
 
-export function renderApp(path: string, actor = "asha.rao"): RenderResult {
+type Entry = string | { pathname: string; search?: string; state?: unknown };
+
+export function renderApp(path: Entry, actor = "asha.rao"): RenderResult {
   window.localStorage.setItem("meridian.command-center.actor", actor);
   const client = makeQueryClient();
   client.setDefaultOptions({ queries: { retry: false, staleTime: 0 } });

@@ -141,11 +141,13 @@ def ledger(
     limit: Annotated[int, Query(ge=1, le=LEDGER_PAGE_MAX)] = 100,
     order: Literal["asc", "desc"] = "asc",
     before: Annotated[int | None, Query(ge=1)] = None,
+    agent: Annotated[str | None, Query(max_length=64)] = None,
 ) -> LedgerPage:
     """Events as the caller may see them (restricted ones redacted). order=asc (default):
     after seq `since`, oldest first, continue with next_since. order=desc: newest first,
-    before seq `before` if given, continue with next_before."""
-    return repo.ledger_page(since, type, limit, order, before)
+    before seq `before` if given, continue with next_before. agent: only events the caller
+    may read in full whose payload names that agent (redacted events never match)."""
+    return repo.ledger_page(since, type, limit, order, before, agent)
 
 
 @router.get("/ledger/verify", tags=["ledger"])

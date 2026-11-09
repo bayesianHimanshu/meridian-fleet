@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from meridian.agents.safety.sae_reconciler import VERSION
+from meridian.agents.safety.sae_reconciler import MATCHING_VERSION as VERSION
 from tests.sae_stress_support import HOLDOUT, load, outcome
 
 CASES = sorted(HOLDOUT.glob("*.json"))

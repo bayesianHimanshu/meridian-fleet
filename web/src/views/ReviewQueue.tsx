@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { Link } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, SeverityChip, StatusChip, Time, agentName } from "../components/common";
+import { FindingLink, WithTimes } from "../components/text";
 import { useApi } from "../queries";
 
 type Finding = Schemas["FindingSummary"];
@@ -150,9 +150,13 @@ export function ReviewQueue() {
                       <Time iso={f.raised_at} />
                     </div>
                     <h3>
-                      <Link to={`/findings/${f.finding_id}`}>{f.title}</Link>
+                      <FindingLink id={f.finding_id}>
+                        <WithTimes text={f.title} />
+                      </FindingLink>
                     </h3>
-                    {secondLine(f) ? <p className="headline">{secondLine(f)}</p> : null}
+                    {secondLine(f) ? <p className="headline">
+                        <WithTimes text={secondLine(f)} />
+                      </p> : null}
                   </div>
                 </li>
               ))}

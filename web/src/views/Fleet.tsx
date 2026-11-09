@@ -1,4 +1,5 @@
-import { api, unwrap } from "../api/client";
+import { Link } from "react-router";
+import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
 import { ErrorNote, Loading, Time } from "../components/common";
 import { useApi } from "../queries";
@@ -12,6 +13,51 @@ const OUTCOME_CLASS: Record<string, string> = {
   refused: "warning",
 };
 
+/** The ledger, newest first, showing only this agent's run events. Failed runs stay there
+ * as they were recorded: an ActorWoke with no ActorSuspended after it. */
+export function runsLink(a: Schemas["FleetAgent"]): string {
+  const q = new URLSearchParams({ agent: a.agent_id });
+  for (const t of a.run_event_types) {
+    q.append("type", t);
+  }
+  return `/ledger?${q.toString()}`;
+}
+
+/** The two policy hashes, labelled the same way here and in a finding's traceability. */
+export function PolicyPair({
+  file,
+  fileSha,
+  appliedSha,
+  of,
+}: {
+  file: string | null | undefined;
+  fileSha: string | null | undefined;
+  appliedSha: string | null | undefined;
+  of: string;
+}) {
+  return (
+    <dl className="policy-pair">
+      <dt>policy file sha256</dt>
+      <dd>
+        {file ? <span className="mono">{file}</span> : null}{" "}
+        {fileSha ? (
+          <Hash value={fileSha} label={`policy file sha256 of ${of}`} />
+        ) : (
+          <span className="muted">not recorded</span>
+        )}
+      </dd>
+      <dt>applied policy sha256</dt>
+      <dd>
+        {appliedSha ? (
+          <Hash value={appliedSha} label={`applied policy sha256 of ${of}`} />
+        ) : (
+          <span className="muted">not recorded</span>
+        )}
+      </dd>
+    </dl>
+  );
+}
+
 export function FleetView() {
   const fleet = useApi(["fleet"], () => unwrap(api.GET("/api/v1/fleet")));
   return (
@@ -21,7 +67,9 @@ export function FleetView() {
           <h1 id="fleet-title">Agent fleet</h1>
           <p>
             The registered agents, the policy each runs under, and the latest containment check for each
-            sandbox policy.
+            sandbox policy. The policy file sha256 is the committed file, comments included. The applied
+            policy sha256 is what the sandbox reports as effective, without comments, and is what each run
+            records. Zone policies that differ only in their header comment apply the same policy.
           </p>
         </div>
       </div>
@@ -43,6 +91,13 @@ export function FleetView() {
                     <th scope="col">Policy</th>
                     <th scope="col">Last run</th>
                     <th scope="col">Outcome</th>
+                    <th scope="col" className="num">
+                      Runs, 7 days
+                    </th>
+                    <th scope="col" className="num">
+                      Failed, 7 days
+                    </th>
+                    <th scope="col">Last failure</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -56,9 +111,13 @@ export function FleetView() {
                       <td className="mono">{a.version}</td>
                       <td>{a.zone}</td>
                       <td>
-                        <span className="mono">{a.policy_file}</span>
-                        <br />
-                        <Hash value={a.policy_sha256} label={`policy sha256 of ${a.agent_id}`} />
+                        <span className="mono">{a.policy}</span>
+                        <PolicyPair
+                          file={a.policy_file}
+                          fileSha={a.policy_file_sha256}
+                          appliedSha={a.applied_policy_sha256}
+                          of={a.agent_id}
+                        />
                       </td>
                       <td className="mono">{a.last_run_at ? <Time iso={a.last_run_at} /> : "never"}</td>
                       <td>
@@ -69,6 +128,15 @@ export function FleetView() {
                         ) : (
                           <span className="muted">no run yet</span>
                         )}
+                      </td>
+                      <td className="num">{a.runs_7d}</td>
+                      <td className="num">
+                        {a.failed_7d > 0 ? <span className="chip critical">{a.failed_7d}</span> : a.failed_7d}
+                      </td>
+                      <td className="mono">
+                        {a.last_failure_at ? <Time iso={a.last_failure_at} /> : <span className="muted">none</span>}
+                        <br />
+                        <Link to={runsLink(a)}>Run events in the ledger</Link>
                       </td>
                     </tr>
                   ))}
@@ -91,7 +159,12 @@ export function FleetView() {
                   </h3>
                   <p className="muted">
                     <Time iso={c.recorded_at} />, ledger seq <span className="mono">{c.seq}</span>, image{" "}
-                    <Hash value={c.image_digest} label={`image digest for ${c.policy}`} />
+                    <Hash value={c.image_digest} label={`image digest for ${c.policy}`} />, applied policy sha256{" "}
+                    {c.applied_policy_sha256 ? (
+                      <Hash value={c.applied_policy_sha256} label={`applied policy sha256 for ${c.policy}`} />
+                    ) : (
+                      "not recorded"
+                    )}
                     {c.credential_value_visible === null
                       ? null
                       : c.credential_value_visible

@@ -338,7 +338,7 @@ def test_subject_visibility_may_not_exceed_site_visibility() -> None:
 
 def test_the_agent_identity() -> None:
     agent = SaeReconciler()
-    assert (agent.agent_id, agent.version, agent.zone.value) == (AGENT_ID, "1.1.0", "safety")
+    assert (agent.agent_id, agent.version, agent.zone.value) == (AGENT_ID, "1.1.1", "safety")
     assert Role.TOXICOLOGIST not in agent.visible_to
     assert Role.UNBLINDED_STATISTICIAN not in agent.visible_to
 

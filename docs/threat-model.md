@@ -69,6 +69,10 @@ Evidence:
 
 ## Known gaps
 
+* **Zone policies are identical in effect.** Every policy except rbqm.narrator applies the
+  same rules (docs/openshell-notes.md, "The zones are separate in name only"). Zone
+  separation rests on staging, not on per-zone sandbox rules.
+
 * **Filesystem refusals have no OpenShell log record on 0.1.7.** Landlock returns EACCES
   without any line in `openshell logs`, so file refusals are recorded from what the
   conformance harness observed from outside the sandbox (exit code and stderr,

@@ -230,7 +230,11 @@ a later version.
 
 Run on 2026-11-08 with safety.sae_reconciler 1.1.0. The sandbox pass ran 101 runs in
 OpenShell sandboxes, none failed, on image sha256:35a8e1f2...: DC-BASE, the 70 generated
-cuts and the 30 earlier cuts. 1.0.0 findings are superseded by the matching 1.1.0 findings
+cuts and the 30 earlier cuts. An earlier pass the same day failed 11 runs (ledger seq 1716
+to 1726, 15:49 to 15:50 UTC) before it was stopped: the worker looked for
+config/safety_terms.toml in its working directory, which in a sandbox is not the repo.
+Those 11 ActorWoke events have no ActorSuspended and stay in the ledger; the fleet page
+counts them as failed runs. 1.0.0 findings are superseded by the matching 1.1.0 findings
 (same cut and check) or retired.
 
 ### Regression on generated cuts (not new evidence)

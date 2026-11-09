@@ -56,6 +56,29 @@
             ],
             "title": "Inputs Manifest Sha256"
           },
+          "policy_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy File"
+          },
+          "policy_file_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy File Sha256"
+          },
           "policy_sha256": {
             "anyOf": [
               {
@@ -560,6 +583,17 @@
             "title": "All Refused",
             "type": "boolean"
           },
+          "applied_policy_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Policy Sha256"
+          },
           "checks": {
             "items": {
               "$ref": "#/components/schemas/ContainmentCheckView"
@@ -594,17 +628,6 @@
             "title": "Policy",
             "type": "string"
           },
-          "policy_sha256": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Policy Sha256"
-          },
           "recorded_at": {
             "format": "date-time",
             "title": "Recorded At",
@@ -630,7 +653,7 @@
           "recorded_at",
           "sandbox",
           "image_digest",
-          "policy_sha256",
+          "applied_policy_sha256",
           "passed",
           "all_refused",
           "log_line_found",
@@ -1854,9 +1877,29 @@
             "title": "Agent Id",
             "type": "string"
           },
+          "applied_policy_sha256": {
+            "title": "Applied Policy Sha256",
+            "type": "string"
+          },
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "failed_7d": {
+            "title": "Failed 7D",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
           },
           "last_outcome": {
             "anyOf": [
@@ -1900,12 +1943,16 @@
             ],
             "title": "Last Trigger Seq"
           },
+          "policy": {
+            "title": "Policy",
+            "type": "string"
+          },
           "policy_file": {
             "title": "Policy File",
             "type": "string"
           },
-          "policy_sha256": {
-            "title": "Policy Sha256",
+          "policy_file_sha256": {
+            "title": "Policy File Sha256",
             "type": "string"
           },
           "role": {
@@ -1915,6 +1962,17 @@
             ],
             "title": "Role",
             "type": "string"
+          },
+          "run_event_types": {
+            "items": {
+              "$ref": "#/components/schemas/EventType"
+            },
+            "title": "Run Event Types",
+            "type": "array"
+          },
+          "runs_7d": {
+            "title": "Runs 7D",
+            "type": "integer"
           },
           "version": {
             "title": "Version",
@@ -1931,11 +1989,17 @@
           "zone",
           "role",
           "enabled",
+          "policy",
           "policy_file",
-          "policy_sha256",
+          "policy_file_sha256",
+          "applied_policy_sha256",
           "last_run_at",
           "last_outcome",
-          "last_trigger_seq"
+          "last_trigger_seq",
+          "runs_7d",
+          "failed_7d",
+          "last_failure_at",
+          "run_event_types"
         ],
         "title": "FleetAgent",
         "type": "object"
@@ -2698,6 +2762,17 @@
       "RunEvent": {
         "additionalProperties": false,
         "properties": {
+          "applied_policy_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied Policy Sha256"
+          },
           "executor": {
             "anyOf": [
               {
@@ -2735,7 +2810,7 @@
             ],
             "title": "Inputs Manifest Sha256"
           },
-          "policy_sha256": {
+          "policy_file": {
             "anyOf": [
               {
                 "type": "string"
@@ -2744,7 +2819,18 @@
                 "type": "null"
               }
             ],
-            "title": "Policy Sha256"
+            "title": "Policy File"
+          },
+          "policy_file_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy File Sha256"
           },
           "recorded_at": {
             "format": "date-time",
@@ -3720,7 +3806,7 @@
     },
     "/api/v1/ledger": {
       "get": {
-        "description": "Events as the caller may see them (restricted ones redacted). order=asc (default):\nafter seq `since`, oldest first, continue with next_since. order=desc: newest first,\nbefore seq `before` if given, continue with next_before.",
+        "description": "Events as the caller may see them (restricted ones redacted). order=asc (default):\nafter seq `since`, oldest first, continue with next_since. order=desc: newest first,\nbefore seq `before` if given, continue with next_before. agent: only events the caller\nmay read in full whose payload names that agent (redacted events never match).",
         "operationId": "ledger_api_v1_ledger_get",
         "parameters": [
           {
@@ -3794,6 +3880,23 @@
                 }
               ],
               "title": "Before"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agent",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent"
             }
           },
           {

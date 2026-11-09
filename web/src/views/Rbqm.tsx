@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { api, unwrap, type Schemas } from "../api/client";
 import { ErrorNote, Loading, isStatus } from "../components/common";
+import { FindingLink } from "../components/text";
 import { useApi } from "../queries";
 
 type Site = Schemas["SiteMetrics"];
@@ -318,8 +319,14 @@ function Heatmap({ data }: { data: Schemas["RbqmSites"] }) {
           this cell:{" "}
           {flags.length === 0
             ? "none on this cut."
-            : flags.map((f) => `${f.finding_id} at site ${f.site} by ${f.agent_id} ${f.agent_version}`).join("; ") +
-              "."}
+            : flags.map((f, i) => (
+                <span key={`${f.finding_id}-${f.site}`}>
+                  {i > 0 ? "; " : ""}
+                  <FindingLink id={f.finding_id} className="mono" /> at site {f.site} by {f.agent_id}{" "}
+                  {f.agent_version}
+                  {i === flags.length - 1 ? "." : ""}
+                </span>
+              ))}
         </dd>
         <dt>Muted value</dt>
         <dd>
