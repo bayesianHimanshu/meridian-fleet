@@ -7,10 +7,11 @@ double underscore in environment variables, for example MERIDIAN_OPS_SYNTH__ENTR
 """
 
 import os
+import re
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_settings import (
     BaseSettings,
     PydanticBaseSettingsSource,
@@ -27,6 +28,7 @@ from meridian.platform.agent_settings import (
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 DEFAULT_CONFIG_FILE = Path("config/default.toml")
 
 DEFAULT_FINDING_ID_PREFIXES: dict[str, str] = {
@@ -106,6 +108,41 @@ class LlmSettings(BaseModel):
     timeout_seconds: float = Field(30.0, gt=0)
 
 
+class LocalModelSettings(BaseModel):
+    """The local model on the host ([local_model] in TOML), for the safety_local zone.
+
+    Reached only from the safety.local_model sandbox. base_url must name the address and
+    port in that policy (a test checks it). A model is pinned by digest: a job refuses to
+    run if Ollama serves a different digest for it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    base_url: str = "http://172.17.0.1:11434"
+    model: str = "granite4:3b"
+    # Model name to the digest /api/tags reports for it.
+    digests: dict[str, str] = Field(default_factory=dict)
+    num_ctx: int = Field(4096, ge=256)
+    seed: int = 20261109
+    temperature: float = Field(0.0, ge=0.0)
+    num_predict: int = Field(256, ge=1)
+    think: bool = False
+    timeout_seconds: float = Field(120.0, gt=0)
+    max_calls_per_pass: int = Field(200, ge=1)
+
+    @model_validator(mode="after")
+    def _pinned(self) -> LocalModelSettings:
+        if self.model not in self.digests:
+            raise ValueError(f"local model {self.model} has no pinned digest")
+        for name, digest in self.digests.items():
+            if not _SHA256.fullmatch(digest):
+                raise ValueError(f"digest of {name} is not 64 hex characters")
+        return self
+
+    def pinned(self, model: str | None = None) -> str:
+        return self.digests[model or self.model]
+
+
 class NarratorSettings(BaseModel):
     """rbqm.narrator ([narrator] in TOML)."""
 
@@ -165,6 +202,7 @@ class Settings(BaseSettings):
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
     llm: LlmSettings = Field(default_factory=LlmSettings)
     narrator: NarratorSettings = Field(default_factory=NarratorSettings)
+    local_model: LocalModelSettings | None = None
     api: ApiSettings = Field(default_factory=ApiSettings)
     cuts: CutsSettings = Field(default_factory=CutsSettings)
 

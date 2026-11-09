@@ -72,6 +72,28 @@ max_tokens = 300
 disable_thinking = true  # sends thinking {type: disabled}; output stays within max_tokens
 timeout_seconds = 30.0
 
+# The local model (phase 3 step 3b): Ollama on the host, reached only from the
+# safety.local_model sandbox (policies/safety.local_model.yaml). base_url must be the
+# address and port in that policy. Calls are deterministic (temperature 0, a fixed seed,
+# think false). A model is pinned by the digest /api/tags reports: a job refuses to run if
+# Ollama serves a different one. The candidates were compared in docs/local-model-eval.md.
+[local_model]
+base_url = "http://172.17.0.1:11434"
+model = "granite4:3b"
+num_ctx = 4096
+seed = 20261109
+temperature = 0.0
+num_predict = 256
+think = false
+timeout_seconds = 120.0
+max_calls_per_pass = 200
+
+[local_model.digests]
+"granite4:3b" = "89962fcc75239ac434cdebceb6b7e0669397f92eaef9c487774b718bc36a3e5f"
+"phi4-mini:3.8b-q4_K_M" = "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753"
+"qwen3.5:4b-q4_K_M" = "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04"
+
+
 # rbqm.narrator: explains findings of rbqm.kri_monitor, rbqm.qtl_detector and rbqm.csm.
 # It runs only in an OpenShell sandbox with policies/rbqm.narrator.yaml and the
 # meridian-anthropic provider, and only after that policy passed meridian sandbox
