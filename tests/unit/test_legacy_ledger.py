@@ -11,6 +11,7 @@ from meridian.domain.events import (
     ContainmentCheckCompleted,
     Event,
     EventDraft,
+    FindingAssessment,
     FindingNarrative,
     PolicyDenied,
 )
@@ -250,3 +251,60 @@ def test_step_2b_containment_check_verifies_next_to_narratives(tmp_path: Path) -
         report = verify(ledger)
         assert report.ok, report
         assert report.events_checked == 3
+
+
+def test_a_narrative_written_before_model_digest_verifies_and_assessments_append(
+    tmp_path: Path,
+) -> None:
+    """A FindingNarrative without model_digest (step 3a) still verifies and reads as null;
+    a FindingAssessment (step 3b) appends after it and the chain still verifies."""
+    path = tmp_path / "ledger.sqlite3"
+    clock = FixedClock(T0)
+    with make_ledger(path, clock) as ledger:
+        cut = ledger.append(data_cut_draft(1))
+    old: dict[str, object] = {
+        "type": "finding_narrative",
+        "finding_id": "RBQM-0001",
+        "finding_seq": 1,
+        "agent_id": "rbqm.narrator",
+        "agent_version": "1.1.0",
+        "status": "accepted",
+        "headline": "Site 1001 has more deviations than expected",
+        "explanation": "Site 1001 recorded 18 deviations where 5.1 were expected.",
+        "model": "claude-haiku-5-5",
+        "request_sha256": "c" * 64,
+        "rejection_reasons": [],
+    }
+    _insert_legacy(path, 2, cut.hash, old)
+    with make_ledger(path, clock) as ledger:
+        assert verify(ledger).ok
+        (legacy,) = ledger.read(event_types=[EventType.FINDING_NARRATIVE])
+        assert isinstance(legacy, Event)
+        assert isinstance(legacy.payload, FindingNarrative)
+        assert legacy.payload.model_digest is None
+        ledger.append(
+            EventDraft(
+                occurred_at=T0,
+                actor="safety.term_adjudicator",
+                visibility=Visibility.BLINDED,
+                payload=FindingAssessment(
+                    finding_ids=("SAF-0001",),
+                    finding_seqs=(2,),
+                    candidate="term_mismatch",
+                    agent_id="safety.term_adjudicator",
+                    agent_version="1.0.0",
+                    status="rejected",
+                    rejection_reasons=("bad_json",),
+                    model="granite4:3b",
+                    model_digest="d" * 64,
+                    request_sha256="e" * 64,
+                ),
+            )
+        )
+        report = verify(ledger)
+        assert report.ok, report
+        assert report.events_checked == 3
+        (assessment,) = ledger.read(event_types=[EventType.FINDING_ASSESSMENT])
+        assert isinstance(assessment, Event)
+        assert isinstance(assessment.payload, FindingAssessment)
+        assert assessment.payload.rejection_reasons == ("bad_json",)

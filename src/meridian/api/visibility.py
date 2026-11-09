@@ -4,7 +4,8 @@
   only to the unblinded statistician.
 * A ledger event is shown as the ledger shows it: restricted events are redacted for
   every role but the unblinded statistician (SqliteLedger.read with viewer_role).
-* A narrative or a decision is visible exactly when its finding is.
+* A narrative or a decision is visible exactly when its finding is; an assessment
+  (FindingAssessment, about one or two findings) exactly when all of its findings are.
 * In the ledger, an event about a finding the role may not see (its FindingRaised, a
   narrative or a decision) is redacted like a restricted event: a subject-level safety
   finding carries a subject id, and the ledger must not show it to portfolio_lead.
@@ -18,6 +19,7 @@ from collections.abc import Collection, Iterable
 from meridian.domain.enums import Role, Visibility
 from meridian.domain.events import (
     Event,
+    FindingAssessment,
     FindingNarrative,
     FindingRaised,
     HumanDecision,
@@ -65,15 +67,27 @@ def redact(role: Role, entry: LedgerEntry) -> LedgerEntry:
 
 
 def finding_id_of(entry: Event) -> str | None:
-    """The finding an event is about, if any."""
+    """The finding an event is about, if any (the first, for an assessment)."""
+    ids = finding_ids_of(entry)
+    return ids[0] if ids else None
+
+
+def finding_ids_of(entry: Event) -> tuple[str, ...]:
+    """Every finding an event is about."""
     p = entry.payload
     if isinstance(p, FindingRaised):
-        return p.finding.finding_id
+        return () if p.finding.finding_id is None else (p.finding.finding_id,)
     if isinstance(p, FindingNarrative):
-        return p.finding_id
+        return (p.finding_id,)
+    if isinstance(p, FindingAssessment):
+        return p.finding_ids
     if isinstance(p, HumanDecision):
-        return p.decision.finding_id
-    return None
+        return (p.decision.finding_id,)
+    return ()
+
+
+def can_see_assessment(assessment: FindingAssessment, visible_finding_ids: Collection[str]) -> bool:
+    return all(f in visible_finding_ids for f in assessment.finding_ids)
 
 
 def redact_with_findings(
@@ -82,16 +96,16 @@ def redact_with_findings(
     """redact, and also redact any event about a finding outside visible_finding_ids
     (the findings this role may see)."""
     shown = redact(role, entry)
-    if isinstance(shown, Event):
-        finding_id = finding_id_of(shown)
-        if finding_id is not None and finding_id not in visible_finding_ids:
-            return RedactedEvent(
-                seq=shown.seq,
-                event_type=shown.event_type,
-                recorded_at=shown.recorded_at,
-                hash=shown.hash,
-                prev_hash=shown.prev_hash,
-            )
+    if isinstance(shown, Event) and any(
+        f not in visible_finding_ids for f in finding_ids_of(shown)
+    ):
+        return RedactedEvent(
+            seq=shown.seq,
+            event_type=shown.event_type,
+            recorded_at=shown.recorded_at,
+            hash=shown.hash,
+            prev_hash=shown.prev_hash,
+        )
     return shown
 
 

@@ -23,6 +23,7 @@ from meridian.domain.events import (
     DataCut,
     Event,
     EventDraft,
+    FindingAssessment,
     FindingNarrative,
     FindingRaised,
     RedactedEvent,
@@ -477,9 +478,9 @@ def agents_run(
             raise typer.Exit(code=1)
 
 
-def _narrator_policy_conforms(c: Container) -> str | None:
-    """None if the latest conformance run of rbqm.narrator passed with the committed
-    policy; otherwise why the narrator may not run."""
+def _policy_conforms(c: Container, name: str) -> str | None:
+    """None if the latest conformance run of the agent policy passed with the committed
+    policy; otherwise why its agents may not run."""
     from meridian.domain.events import ContainmentCheckCompleted
 
     latest = None
@@ -487,19 +488,112 @@ def _narrator_policy_conforms(c: Container) -> str | None:
         if (
             isinstance(entry, Event)
             and isinstance(entry.payload, ContainmentCheckCompleted)
-            and entry.payload.policy_name == policies.NARRATOR_POLICY
+            and entry.payload.policy_name == name
         ):
             latest = entry.payload
     if latest is None:
-        return "no conformance run of rbqm.narrator in the ledger"
-    if not latest.passed or latest.credential_value_visible is not False:
-        return f"the latest conformance run of rbqm.narrator ({latest.sandbox}) did not pass"
-    expected = policies.sha256_text(
-        policies.expected_effective(policies.ALL_POLICIES[policies.NARRATOR_POLICY])
-    )
-    if latest.policy_sha256 != expected:
-        return "rbqm.narrator changed since its latest conformance run"
+        return f"no conformance run of {name} in the ledger"
+    policy = policies.ALL_POLICIES[name]
+    if not latest.passed or (policy.providers and latest.credential_value_visible is not False):
+        return f"the latest conformance run of {name} ({latest.sandbox}) did not pass"
+    if latest.policy_sha256 != policies.sha256_text(policies.expected_effective(policy)):
+        return f"{name} changed since its latest conformance run"
     return None
+
+
+def _narrator_policy_conforms(c: Container) -> str | None:
+    return _policy_conforms(c, policies.NARRATOR_POLICY)
+
+
+def _require_local_model_policy(c: Container) -> None:
+    problem = _policy_conforms(c, policies.LOCAL_MODEL_POLICY)
+    if problem:
+        typer.echo(
+            f"error: {problem}; run meridian sandbox conformance --policy "
+            f"{policies.LOCAL_MODEL_POLICY}",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+def _local_settings(max_calls: int | None) -> Settings:
+    settings = Settings()
+    if settings.local_model is None:
+        typer.echo("error: no [local_model] in the configuration", err=True)
+        raise typer.Exit(code=1)
+    if max_calls is not None:
+        local = settings.local_model.model_copy(update={"max_calls_per_pass": max_calls})
+        settings = settings.model_copy(update={"local_model": local})
+    return settings
+
+
+@agents_app.command("adjudicate")
+def agents_adjudicate(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only findings of these cuts; repeatable.")
+    ] = None,
+    max_calls: Annotated[
+        int | None,
+        typer.Option("--max-calls", help="Default: [local_model] max_calls_per_pass.", min=1),
+    ] = None,
+) -> None:
+    """One safety.term_adjudicator pass in the safety.local_model sandbox."""
+    with Container.build(_local_settings(max_calls)) as c:
+        log = _configure_logging(c.clock)
+        _require_local_model_policy(c)
+        try:
+            report = c.adjudicator_runner(log).run_pass(cuts)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    counts = ", ".join(f"{k} {v}" for k, v in sorted(report.counts.items())) or "nothing"
+    typer.echo(
+        f"assessed: {counts}; over budget: {len(report.deferred)}; not sent: {len(report.skipped)}"
+    )
+    if report.batch_error:
+        typer.echo(f"  batch failed: {report.batch_error}")
+    for event in report.events:
+        p = event.payload
+        assert isinstance(p, FindingAssessment)
+        detail = (
+            f"{p.verdict}: {p.reason}"
+            if p.status == "accepted"
+            else ", ".join(p.rejection_reasons) or p.error
+        )
+        typer.echo(f"  seq {event.seq} {'+'.join(p.finding_ids)} {p.status:<8} {detail}")
+
+
+@agents_app.command("narrate-local")
+def agents_narrate_local(
+    cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only findings of these cuts; repeatable.")
+    ] = None,
+    max_calls: Annotated[
+        int | None,
+        typer.Option("--max-calls", help="Default: [local_model] max_calls_per_pass.", min=1),
+    ] = None,
+) -> None:
+    """One safety.local_narrator pass in the safety.local_model sandbox."""
+    with Container.build(_local_settings(max_calls)) as c:
+        log = _configure_logging(c.clock)
+        _require_local_model_policy(c)
+        try:
+            report = c.local_narrator_runner(log).run_pass(cuts)
+        except (ImageError, OpenShellError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=1) from exc
+    counts = ", ".join(f"{k} {v}" for k, v in sorted(report.counts.items())) or "nothing"
+    reasons = ", ".join(f"{k} {v}" for k, v in sorted(report.reasons.items())) or "none"
+    typer.echo(
+        f"narrated: {counts}; rejection reasons: {reasons}; over budget: {len(report.deferred)}"
+    )
+    if report.batch_error:
+        typer.echo(f"  batch failed: {report.batch_error}")
+    for event in report.events:
+        p = event.payload
+        assert isinstance(p, FindingNarrative)
+        detail = p.headline if p.status == "accepted" else ", ".join(p.rejection_reasons)
+        typer.echo(f"  seq {event.seq} {p.finding_id} {p.status:<8} {detail or p.error}")
 
 
 @agents_app.command("narrate")

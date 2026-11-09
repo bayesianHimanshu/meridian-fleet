@@ -7,9 +7,12 @@ from typing import Self
 import structlog
 
 from meridian.agents.catalog import build_registry
+from meridian.agents.local_model import LocalModelExecutor
 from meridian.agents.narration import NarrationExecutor, NarratorRunner
 from meridian.agents.registry import AgentRegistry
 from meridian.agents.runner import AgentRunner
+from meridian.agents.safety.adjudication import AdjudicatorRunner, reader_lookup
+from meridian.agents.safety.local_narration import LocalNarratorRunner
 from meridian.data.ingest import IngestService
 from meridian.data.study_store import ParquetStudyReader, StudyReader
 from meridian.evals.scorecard import ScorecardStore
@@ -17,7 +20,7 @@ from meridian.faults.inject import FaultInjector
 from meridian.faults.safety import SafetyInjector
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
-from meridian.platform.config import Settings
+from meridian.platform.config import LocalModelSettings, Settings
 from meridian.sandbox import image
 from meridian.sandbox.executor import (
     OPENSHELL,
@@ -26,6 +29,7 @@ from meridian.sandbox.executor import (
     OpenShellExecutor,
 )
 from meridian.sandbox.image import default_image
+from meridian.sandbox.local_model import OpenShellLocalModelExecutor
 from meridian.sandbox.narration import OpenShellNarrationExecutor
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
@@ -163,6 +167,65 @@ class Container:
             clock=self.clock,
             llm=self.settings.llm,
             max_calls=self.settings.narrator.max_calls_per_pass,
+            log=log,
+        )
+
+    def local_model_settings(self) -> LocalModelSettings:
+        if self.settings.local_model is None:
+            raise RuntimeError("no [local_model] in the configuration")
+        return self.settings.local_model
+
+    def local_model_executor(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        client: OpenShellClient | None = None,
+    ) -> OpenShellLocalModelExecutor:
+        """The safety.local_model sandbox: the only way real local model calls are made."""
+        rt = self.settings.runtime
+        resolved = client or SubprocessOpenShellClient()
+        tracker = self.sandbox_tracker()
+        return OpenShellLocalModelExecutor(
+            client=resolved,
+            image=self.image_ref(),
+            policies_dir=rt.policies_dir,
+            base_url=self.local_model_settings().base_url,
+            tracker=tracker,
+            deleter=BackgroundDeleter(
+                delete=resolved.delete,
+                tracker=tracker,
+                workers=rt.delete_workers,
+                log=log,
+                live=resolved.names,
+                confirm_seconds=rt.delete_confirm_seconds,
+            ),
+            log=log,
+        )
+
+    def adjudicator_runner(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        executor: LocalModelExecutor | None = None,
+    ) -> AdjudicatorRunner:
+        return AdjudicatorRunner(
+            ledger=self.ledger,
+            executor=executor or self.local_model_executor(log),
+            clock=self.clock,
+            settings=self.local_model_settings(),
+            lookup=reader_lookup(self.study_reader, self.safety_db_reader),
+            window_days=self.settings.agents.sae_reconciler.fallback_window_days,
+            log=log,
+        )
+
+    def local_narrator_runner(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        executor: LocalModelExecutor | None = None,
+    ) -> LocalNarratorRunner:
+        return LocalNarratorRunner(
+            ledger=self.ledger,
+            executor=executor or self.local_model_executor(log),
+            clock=self.clock,
+            settings=self.local_model_settings(),
             log=log,
         )
 
