@@ -70,6 +70,12 @@ class ActorSuspended(BaseModel):
     # sha256 of the inputs_manifest.json the worker verified (phase 2 step 2). Null in
     # process and on older events.
     inputs_manifest_sha256: Sha256Hex | None = None
+    # The committed policy file passed to `openshell sandbox create` (its path, and the
+    # sha256 of its bytes, comments included). policy_sha256 above is the applied policy:
+    # what the sandbox reports back, without comments, so policies that differ only in
+    # their header comment share it. Null in process and before step 3a polish.
+    policy_file: str | None = None
+    policy_file_sha256: Sha256Hex | None = None
 
 
 class FindingRaised(BaseModel):

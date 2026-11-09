@@ -31,6 +31,7 @@ from meridian.sandbox.policies import (
     expected_effective,
     policy_for_agent,
     policy_path,
+    sha256_bytes,
     sha256_text,
 )
 from meridian.sandbox.staging import (
@@ -61,6 +62,8 @@ class ExecutionResult:
     duration_ms: int
     stderr_tail: str
     inputs_manifest_sha256: str | None = None
+    policy_file: str | None = None
+    policy_file_sha256: str | None = None
 
 
 class Executor(Protocol):
@@ -210,6 +213,8 @@ class OpenShellExecutor:
             ok = False
             # Recorded before the call: a failed create or upload can leave it behind.
             self._tracker.record(name, "created")
+            # Hashed from the bytes handed to create, so the record names that exact file.
+            policy_file_sha256 = sha256_bytes(policy_file.read_bytes())
             try:
                 self._client.create(name, self._image, policy_file, [(stage, SANDBOX_ROOT)])
                 out = self._client.exec(name, self._argv(agent_id), self._timeout)
@@ -239,6 +244,8 @@ class OpenShellExecutor:
             duration_ms=_ms(start),
             stderr_tail=stderr_tail,
             inputs_manifest_sha256=inputs_sha,
+            policy_file=policy_path(policy_name).as_posix(),
+            policy_file_sha256=policy_file_sha256,
         )
         log.info("sandbox.run_done", duration_ms=result.duration_ms, drafts=len(drafts))
         return result

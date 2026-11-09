@@ -59,6 +59,8 @@ class _Outcome:
     image_digest: str | None = "sha256:" + "0" * 64
     policy_sha256: str | None = None
     inputs_manifest_sha256: str | None = None
+    policy_file: str | None = None
+    policy_file_sha256: str | None = None
 
 
 class _FakeOpenShell:

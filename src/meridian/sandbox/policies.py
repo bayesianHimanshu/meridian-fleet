@@ -412,5 +412,19 @@ def render_profiles(root: Path = PROFILES_DIR) -> list[Path]:
     return paths
 
 
+def sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
 def sha256_text(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    return sha256_bytes(text.encode("utf-8"))
+
+
+def file_sha256(policy_name: str, root: Path = POLICIES_DIR) -> str:
+    """sha256 of the committed file's bytes, comments included."""
+    return sha256_bytes(policy_path(policy_name, root).read_bytes())
+
+
+def applied_sha256(policy_name: str) -> str:
+    """sha256 of what the sandbox reports as effective for this policy (no comments)."""
+    return sha256_text(expected_effective(ALL_POLICIES[policy_name]))

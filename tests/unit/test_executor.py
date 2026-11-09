@@ -334,3 +334,95 @@ def _expected_for(cut_dir: Path, trigger: Event) -> str:
     return drafts_document(
         registered, run_agent(registered, trigger, reader, structlog.get_logger())
     )
+
+
+@dataclass
+class ReportingClient(FakeOpenShellClient):
+    """Reports as effective what OpenShell 0.1.7 makes of the file it was given: comment
+    lines and an empty network_policies dropped, no final newline."""
+
+    given: list[bytes] = field(default_factory=list)
+
+    def create(
+        self,
+        name: str,
+        image: str,
+        policy: Path,
+        uploads: Sequence[tuple[Path, str]],
+        providers: Sequence[str] = (),
+    ) -> None:
+        self.given.append(policy.read_bytes())
+        lines = policy.read_text(encoding="utf-8").splitlines()
+        self.effective = "\n".join(
+            x for x in lines if not x.startswith("#") and x != "network_policies: {}"
+        )
+        super().create(name, image, policy, uploads, providers)
+
+
+def _run_under(
+    cut_dir: Path, tmp: Path, monkeypatch: pytest.MonkeyPatch, rbqm: policies.ZonePolicy, head: str
+) -> tuple[ReportingClient, ActorSuspended]:
+    """rbqm.csm through the runner, with rbqm.yaml rendered from `rbqm` under a header."""
+    tmp.mkdir()
+    root = tmp / "policies"
+    root.mkdir()
+    (root / "rbqm.yaml").write_text(policies.render(rbqm, header=[head]), encoding="utf-8")
+    monkeypatch.setitem(policies.ALL_POLICIES, "rbqm", rbqm)
+    ledger, cut = _ledger_with_cut(tmp, cut_dir)
+    client = ReportingClient(output=ExecOutput(0, _expected_for(cut_dir, cut), ""))
+    tracker = SandboxTracker(tmp / "sandboxes.jsonl", FixedClock(NOW))
+    log = structlog.get_logger()
+    executor = OpenShellExecutor(
+        client=client,
+        tracker=tracker,
+        deleter=BackgroundDeleter(delete=client.delete, tracker=tracker, workers=0, log=log),
+        registry=build_registry(AGENTS),
+        study_root=cut_dir.parent,
+        image="meridian-agent:test",
+        image_digest=DIGEST,
+        policies_dir=root,
+        exec_timeout_seconds=5,
+        keep_failed=False,
+        log=log,
+    )
+    AgentRunner(
+        ledger=ledger,
+        registry=build_registry(AGENTS.model_copy(update={"enabled": ("rbqm.csm",)})),
+        executor=executor,
+        clock=FixedClock(NOW),
+        study_id=STUDY,
+        log=log,
+        operational_cuts=(),
+    ).run_pending()
+    (done,) = [
+        e.payload
+        for e in ledger.read(event_types=[EventType.ACTOR_SUSPENDED])
+        if isinstance(e, Event) and isinstance(e.payload, ActorSuspended)
+    ]
+    assert isinstance(done, ActorSuspended)
+    ledger.close()
+    return client, done
+
+
+def test_a_run_records_the_hashes_of_the_policy_it_was_created_with(
+    cut_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    base = policies.POLICIES["rbqm"]
+    wider = policies.ZonePolicy("rbqm", read_only=(*base.read_only, "/srv/extra"))
+    runs = {
+        "base": _run_under(cut_dir, tmp_path / "a", monkeypatch, base, "# one"),
+        "comment": _run_under(cut_dir, tmp_path / "b", monkeypatch, base, "# two"),
+        "wider": _run_under(cut_dir, tmp_path / "c", monkeypatch, wider, "# one"),
+    }
+    for client, done in runs.values():
+        (given,) = client.given
+        # The file pair names exactly the bytes passed to `openshell sandbox create`, and
+        # the applied hash is what the sandbox reported for them.
+        assert done.policy_file == "policies/rbqm.yaml"
+        assert done.policy_file_sha256 == hashlib.sha256(given).hexdigest()
+        assert done.policy_sha256 == policies.sha256_text(client.effective)
+    files = {k: d.policy_file_sha256 for k, (_, d) in runs.items()}
+    applied = {k: d.policy_sha256 for k, (_, d) in runs.items()}
+    assert len(set(files.values())) == 3  # every file differs
+    # A comment-only change keeps the applied hash; a rule change moves it.
+    assert applied["base"] == applied["comment"] != applied["wider"]
