@@ -209,3 +209,44 @@ verbatim term. Look-alikes: the 10 "no" pairs other than the unrelated control.
 All seven errors are pairs labelled "unsure": six were answered "no" and one "yes" (a
 general and a local form of one skin reaction). The model never says "unsure", which
 is what costs the accuracy target; it never said "yes" to a pair labelled "no".
+
+### Step 3b2: the agreement rule and the unsure prompt on dev (2026-11-09)
+
+`scripts/term_agreement_eval.py`: 75 dev pairs (30 yes, 31 no of which 26 look-alikes,
+14 unsure), each model with each prompt in its own jobs in the safety.local_model
+sandbox; the agreement rows are combined from the single-model runs exactly as the
+agent combines answers. Wrong "yes" counts "yes" on look-alikes and on pairs labelled
+"unsure". Cost: pairs 1.0.0 answered correctly that the variant does not (lost), and the
+reverse (gained).
+
+| Variant | Correct (accuracy) | Wrong "yes" | "unsure" answers | "unsure" on the 14 unsure-labelled | Rejected | Lost / gained vs 1.0.0 | Median latency |
+|---|---|---|---|---|---|---|---|
+| 1.0.0, phi4-mini | 59 (0.787) | 1 (dev-050) | 0 | 0 | 0 | | 1013 ms |
+| qwen3.5 alone | 57 (0.760) | 0 | 0 | 0 | 3 | 4 / 2 | 2695 ms |
+| **1.1.0 agreement** | 55 (0.733) | **0** | 6 (0.08) | 0 | 0 | 4 / 0 | 3718 ms (both) |
+| unsure prompt, phi4-mini | 60 (0.800) | 1 (dev-050) | 0 | 0 | 0 | 0 / 1 | 1088 ms |
+| unsure prompt, qwen3.5 (information) | 59 (0.787) | 0 | 0 | 0 | 1 | 2 / 2 | 2918 ms |
+| agreement + unsure prompt (information) | 58 (0.773) | 0 | 3 (0.04) | 0 | 0 | 2 / 1 | 4179 ms (both) |
+
+Where the agreement rule abstains (6 pairs):
+
+* dev-050 (ATRIAL FIBRILLATION and ATRIAL FLUTTER, label no): phi4-mini yes, qwen3.5 no.
+  This is 1.0.0's one wrong "yes", now "unsure".
+* dev-021 (INFECTION and CELLULITIS, label yes): phi4-mini no, qwen3.5 yes (1.0.0 was
+  wrong here too).
+* Lost, label yes: dev-020 (qwen3.5 no); dev-003 and dev-023 (qwen3.5's answer rejected,
+  reason_too_long). Lost, label no: dev-054 (qwen3.5 rejected, too_many_sentences).
+
+Three of the four lost answers come from qwen3.5 answers that fail the validator, not
+from disagreement.
+
+The unsure-labelled pairs: every variant answered all 14 "no" (cause, symptom or
+complication, for example PYREXIA and SEPSIS). That is not a wrong "yes", but neither
+the agreement rule nor the explicit instruction makes a model say "unsure" there: the
+unsure prompt changed no "no" to "unsure" on any pair. Abstention comes only from
+disagreement.
+
+Decision, by the rule written above: the agreement rule meets the target (0 wrong
+"yes"); the unsure prompt also meets it (1) but has more wrong "yes" than the agreement
+rule, so **1.1.0 agreement ships**, with the 1.0.0 prompt. Its cost: 4 correct answers
+of 75 turned "unsure", and calls take both models' time (about 3.7 s per pair).
