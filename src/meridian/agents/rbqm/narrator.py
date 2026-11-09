@@ -67,7 +67,8 @@ NARRATES: dict[str, str] = {
 }
 SUBSCRIBES_TO_AGENTS = frozenset(NARRATES)
 # The cloud model never receives a finding of these zones, whatever NARRATES says: safety
-# findings are about individual subjects. Patient-level narration waits for a local model.
+# findings are about individual subjects; safety.local_narrator explains them with the
+# local model, which nothing leaves (docs/local-model-notes.md).
 EXCLUDED_ZONES = frozenset({"safety"})
 if any(agent.split(".", 1)[0] in EXCLUDED_ZONES for agent in NARRATES):
     raise RuntimeError("the narrator may not subscribe to an excluded zone")

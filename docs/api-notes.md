@@ -90,10 +90,12 @@ and `GET /ledger/verify`.
   `policies.expected_effective` for its file; the fleet page's value is that expected text's
   hash, so a run's value equals the fleet's when the sandbox applied the committed policy.
 
-Every policy without network rules (the seven zone policies and safety.sae_reconciler)
-renders the same rules and differs only in its comment, so all eight have different file
-hashes and one applied hash, 01637db6...b0805d. rbqm.narrator differs in effect (egress to
-the Messages API and the network baseline paths) and has its own applied hash. A test
+Until phase 3 step 3b every policy without network rules rendered the same rules and
+differed only in its comment, so all eight had one applied hash, 01637db6...b0805d. Since
+step 3b each policy lists only the staged areas its zone may read, so the applied hashes
+differ where the rules differ: five blinded zones share one, safety and
+safety.sae_reconciler another, unblinded, rbqm.narrator and safety.local_model each their
+own (docs/local-model-notes.md). A test
 (`tests/unit/test_executor.py`) checks that a run records the hash of the exact file passed
 to create and the hash the sandbox reported, that a comment-only change moves only the file
 hash, and that a rule change moves both.
@@ -162,3 +164,14 @@ client shows each instant in them as "20 Jan 2013, 22:02 UTC", with the ISO valu
 element's title attribute. A finding opened from the Safety, RBQM, ledger or review queue
 page links back there (the origin travels in the link's history state); otherwise it links
 to the review queue.
+
+## Assessments and local narratives (phase 3 step 3b)
+
+A finding's detail carries `assessments`: FindingAssessment events of
+safety.term_adjudicator about it (and, for a pair, one other finding). An assessment is
+indexed under every finding it names and shown only when the role may see all of them; a
+rejected or failed one carries its status and reason codes, never the model's text. Each
+narrative carries `narrator_id` (rbqm.narrator or safety.local_narrator) and
+`model_digest` (the local model's served digest; null for the cloud narrator). The fleet
+lists safety.term_adjudicator (role adjudicator) and safety.local_narrator under policy
+safety.local_model, each counted from its own events.

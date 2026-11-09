@@ -69,9 +69,16 @@ Evidence:
 
 ## Known gaps
 
-* **Zone policies are identical in effect.** Every policy except rbqm.narrator applies the
-  same rules (docs/openshell-notes.md, "The zones are separate in name only"). Zone
-  separation rests on staging, not on per-zone sandbox rules.
+* **Zone policies differ only in what they may read.** Since phase 3 step 3b each policy
+  lists only the staged areas its zone may use, so a blinded zone cannot open
+  /stage/unblinded even if a staging bug put a file there (docs/openshell-notes.md, "The
+  zones differ in what they may read"). The read-only paths (interpreter, libraries,
+  venv) are still the same for every zone.
+* **The local model is reached by address, not by identity.** safety.local_model may
+  reach 172.17.0.1:11434 (GET /api/tags and POST /api/chat only); whatever listens there
+  answers. Ollama's binding (OLLAMA_HOST on the docker0 address) and ufw are the user's
+  configuration, not something this code checks. Digest pinning makes a different model
+  under the same name fail the run, not pass it.
 
 * **Filesystem refusals have no OpenShell log record on 0.1.7.** Landlock returns EACCES
   without any line in `openshell logs`, so file refusals are recorded from what the

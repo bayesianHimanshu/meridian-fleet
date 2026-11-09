@@ -186,8 +186,8 @@ PROFILES: dict[str, ProviderProfile] = {
 PROFILES_DIR = Path("profiles")
 
 # safety.sae_reconciler: its own file with the zone's rules and no network. The safety zone
-# reads subject-level data, so its agents never get egress: patient-level narration waits
-# for a local model (docs/safety-notes.md).
+# reads subject-level data, so its agents never get egress; patient-level narration runs
+# in the safety_local zone, which reaches only the local model (docs/local-model-notes.md).
 RECONCILER_POLICY = "safety.sae_reconciler"
 # rbqm.narrator: the rbqm filesystem rules, plus egress to the Messages API for the
 # python binary only. The provider attached at create adds its own rule for the same
