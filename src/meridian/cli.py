@@ -1,5 +1,6 @@
 """Command line interface: `meridian ledger ...`."""
 
+import json
 import sys
 from collections.abc import MutableMapping
 from pathlib import Path
@@ -789,6 +790,94 @@ def eval_suite() -> None:
         typer.echo(f"report {result.report_path}")
         if result.agent_failures:
             raise typer.Exit(code=1)
+
+
+@eval_app.command("terms")
+def eval_terms(
+    file: Annotated[
+        Path, typer.Option("--file", help="Term pairs, JSON lines (docs/local-model-eval.md).")
+    ] = Path("data/term_pairs/dev.jsonl"),
+    models: Annotated[
+        list[str] | None,
+        typer.Option("--model", help="Pinned model to run; repeatable. Default: every one."),
+    ] = None,
+    out: Annotated[
+        Path, typer.Option("--out", help="Where to write the per-pair results (JSON).")
+    ] = Path("var/evals/term_pairs.json"),
+    sealed: Annotated[
+        bool,
+        typer.Option("--sealed", help="A sealed set: print the metrics and errors, write nothing."),
+    ] = False,
+) -> None:
+    """safety.term_adjudicator on labelled term pairs, per model, in the local model sandbox."""
+    from meridian.evals import term_pairs as tp
+
+    settings = _local_settings(None)
+    local = settings.local_model
+    assert local is not None
+    pairs = tp.load_pairs(file)
+    names = models or sorted(local.digests)
+    unknown = sorted(set(names) - set(local.digests))
+    if unknown:
+        typer.echo(f"error: not pinned in [local_model.digests]: {unknown}", err=True)
+        raise typer.Exit(code=1)
+    reports = []
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        _require_local_model_policy(c)
+        for name in names:
+            cfg = local.model_copy(update={"model": name, "max_calls_per_pass": len(pairs)})
+            report = tp.run_model(pairs, cfg, c.local_model_executor(log))
+            report.placement = tp.placement(cfg.base_url, name)
+            reports.append(report)
+            typer.echo(json.dumps(report.summary(), sort_keys=True))
+            for r in report.results:
+                if not r.correct:
+                    typer.echo(
+                        f"  {r.pair.id} {r.pair.category} label {r.pair.label}: "
+                        f"{r.status} {r.verdict or ','.join(r.rejection_reasons) or r.error}"
+                        + (
+                            f" ({r.pair.record_a.preferred_term} / "
+                            f"{r.pair.record_b.preferred_term})"
+                            if sealed
+                            else ""
+                        )
+                    )
+    chosen = tp.choose(reports)
+    typer.echo(f"chosen by the rule: {chosen.model if chosen else 'none'}")
+    if sealed:
+        return
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(
+        json.dumps(
+            {
+                "file": file.as_posix(),
+                "models": [r.summary() for r in reports],
+                "chosen": chosen.model if chosen else None,
+                "results": {
+                    r.model: [
+                        {
+                            "id": x.pair.id,
+                            "category": x.pair.category,
+                            "label": x.pair.label,
+                            "status": x.status,
+                            "verdict": x.verdict,
+                            "reason": x.reason,
+                            "rejection_reasons": list(x.rejection_reasons),
+                            "latency_ms": x.latency_ms,
+                        }
+                        for x in r.results
+                    ]
+                    for r in reports
+                },
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    typer.echo(f"wrote {out}")
 
 
 @eval_app.command("report")

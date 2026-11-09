@@ -119,7 +119,7 @@ class LocalModelSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     base_url: str = "http://172.17.0.1:11434"
-    model: str = "granite4:3b"
+    model: str = "phi4-mini:3.8b-q4_K_M"
     # Model name to the digest /api/tags reports for it.
     digests: dict[str, str] = Field(default_factory=dict)
     num_ctx: int = Field(4096, ge=256)

@@ -79,7 +79,7 @@ timeout_seconds = 30.0
 # Ollama serves a different one. The candidates were compared in docs/local-model-eval.md.
 [local_model]
 base_url = "http://172.17.0.1:11434"
-model = "granite4:3b"
+model = "phi4-mini:3.8b-q4_K_M"  # chosen on the dev term pairs (docs/local-model-eval.md)
 num_ctx = 4096
 seed = 20261109
 temperature = 0.0
