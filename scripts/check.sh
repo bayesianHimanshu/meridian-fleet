@@ -33,10 +33,12 @@ step() {
 }
 
 # set -e does not apply inside a function called from `if`, so every command is chained.
+# The rendered files must equal the working tree's (staged or committed), and none may be
+# left untracked: so a commit that changes a policy passes once the new files are added.
 policies_current() {
   uv run meridian policy render >/dev/null \
     && git diff --quiet --exit-code -- policies \
-    && test -z "$(git status --porcelain -- policies)"
+    && test -z "$(git ls-files --others --exclude-standard -- policies)"
 }
 
 step "ruff format --check" uv run ruff format --check

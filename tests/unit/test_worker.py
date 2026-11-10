@@ -103,9 +103,11 @@ def test_the_worker_reads_the_safety_terms_next_to_its_config(
     config_dir.mkdir(parents=True)
     shutil.copy(CONFIG, config_dir / "default.toml")
     shutil.copy(CONFIG.parent / SAFETY_TERMS_FILE, config_dir / SAFETY_TERMS_FILE)
+    shutil.copy(CONFIG.parent / "tmf_expected.toml", config_dir / "tmf_expected.toml")
     elsewhere = tmp_path / "work"
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
     monkeypatch.delenv("MERIDIAN_CONFIG_FILE", raising=False)
     agents = worker.load_agents_settings(config_dir / "default.toml")
     assert agents.sae_reconciler.terms.outcome_of("Recovered") == "RECOVERED/RESOLVED"
+    assert agents.tmf_completeness.reference.by_key()["pi_cv"].level == "site"

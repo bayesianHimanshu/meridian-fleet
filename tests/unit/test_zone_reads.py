@@ -38,6 +38,15 @@ def test_the_zones_read_what_their_agents_need_and_no_more() -> None:
     assert policies.ALL_POLICIES["safety.sae_reconciler"].reads == ("meta", "blinded")
     assert policies.ALL_POLICIES["rbqm.narrator"].reads == ("narr",)
     assert policies.ALL_POLICIES["safety.local_model"].reads == ("lm",)
+    # quality.tmf_completeness reads blinded DM and the eTMF index; no operational data.
+    assert policies.ALL_POLICIES["quality"].reads == ("meta", "blinded", "tmf")
+
+
+def test_only_the_quality_zone_may_read_the_etmf_area() -> None:
+    readers = sorted(n for n, p in policies.ALL_POLICIES.items() if "tmf" in p.reads)
+    assert readers == ["quality"]
+    assert policies.POLICY_BOUNDARY["quality"] == "quality"
+    assert sorted(n for n, b in policies.BOUNDARIES.items() if "tmf" in b.reads) == ["quality"]
 
 
 def test_a_cut_is_staged_only_with_the_areas_a_policy_reads() -> None:
@@ -57,7 +66,8 @@ def test_applied_hashes_now_differ_where_the_rules_differ() -> None:
     for name in policies.ALL_POLICIES:
         groups.setdefault(policies.applied_sha256(name), []).append(name)
     assert sorted(sorted(g) for g in groups.values()) == [
-        ["portfolio", "preclinical", "quality", "rbqm", "study_ops"],
+        ["portfolio", "preclinical", "rbqm", "study_ops"],
+        ["quality"],
         ["rbqm.narrator"],
         ["safety", "safety.sae_reconciler"],
         ["safety.local_model"],

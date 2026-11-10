@@ -23,12 +23,18 @@ from meridian.agents.execute import DraftsDocument, run_agent
 from meridian.agents.registry import AgentRegistry
 from meridian.data.cut_writer import BLINDED_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, build_manifest
-from meridian.data.study_store import SAFETY_DB_ZONES, LayeredStudyReader, StudyReader
+from meridian.data.study_store import (
+    SAFETY_DB_ZONES,
+    TMF_ZONES,
+    LayeredStudyReader,
+    StudyReader,
+)
 from meridian.domain.events import DataCut, Event
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
     META,
+    TMF,
     expected_effective,
     policy_for_agent,
     policy_path,
@@ -93,16 +99,20 @@ class InProcessExecutor:
         reader_factory: Callable[[str], StudyReader],
         log: structlog.typing.FilteringBoundLogger,
         safety_reader_factory: Callable[[str], StudyReader] | None = None,
+        tmf_reader_factory: Callable[[str], StudyReader] | None = None,
     ) -> None:
         self._registry = registry
         self._reader_factory = reader_factory
         self._safety_reader_factory = safety_reader_factory
+        self._tmf_reader_factory = tmf_reader_factory
         self._log = log
 
     def _reader(self, agent_id: str, cut_id: str) -> StudyReader:
         reader = self._reader_factory(cut_id)
         if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_reader_factory is not None:
             return LayeredStudyReader(reader, self._safety_reader_factory(cut_id))
+        if zone_of(agent_id) in TMF_ZONES and self._tmf_reader_factory is not None:
+            return LayeredStudyReader(reader, self._tmf_reader_factory(cut_id))
         return reader
 
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult:
@@ -174,8 +184,10 @@ class OpenShellExecutor:
         staging_dir: Path | None = None,
         name_factory: Callable[[str, int], str] = sandbox_name,
         safety_root: Path | None = None,
+        etmf_root: Path | None = None,
     ) -> None:
         self._safety_root = safety_root  # <safety_root>/<study>: snapshots by cut id
+        self._etmf_root = etmf_root  # <etmf_root>/<study>: eTMF snapshots by cut id
         self._client = client
         self._tracker = tracker
         self._deleter = deleter
@@ -203,12 +215,20 @@ class OpenShellExecutor:
             if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_root is not None
             else []
         )
+        tmf = None
+        if TMF in policy.reads:
+            if self._etmf_root is None:
+                raise ExecutionError(f"{agent_id} reads the eTMF index; no eTMF store is set")
+            tmf = self._etmf_root / cut_id / BLINDED_AREA
+            if not tmf.is_dir():
+                raise ExecutionError(f"no eTMF snapshot for cut {cut_id}")
         name = self._name_factory(agent_id, trigger.seq)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, sandbox=name)
         areas = cut_areas_for(policy.reads)
+        staged = (*areas, TMF) if tmf is not None else areas
         with tempfile.TemporaryDirectory(prefix="meridian-stage-", dir=self._staging_dir) as tmp:
-            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra, areas)
-            assert_clean_stage(stage, areas)  # again, right before it leaves the host
+            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra, areas, tmf)
+            assert_clean_stage(stage, staged)  # again, right before it leaves the host
             recomputed = build_manifest(stage)
             written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")
             if written != recomputed.dumps():

@@ -65,6 +65,7 @@ def test_zone_policy_lists_only_allowed_paths_and_no_network(zone: str) -> None:
     text = (COMMITTED / f"{zone}.yaml").read_text()
     listed = {line.strip()[2:] for line in text.splitlines() if line.strip().startswith("- ")}
     allowed = ALLOWED | ({"/stage/unblinded"} if zone == "unblinded" else set())
+    allowed |= {"/stage/tmf"} if zone == "quality" else set()
     assert listed <= allowed, listed - allowed
     if zone != "unblinded":
         assert "/unblinded" not in text

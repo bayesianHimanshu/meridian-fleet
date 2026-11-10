@@ -6,7 +6,8 @@ folder for that area (/stage/<area>, created in the image; meridian.sandbox.poli
 * meta/trigger.json and meta/inputs_manifest.json (size and sha256 of every other staged
   file, written last), and
 * the cut areas the zone may read: blinded/ and ops/ for a blinded zone, blinded/ only
-  for the safety zone (with the safety database snapshot's blinded area).
+  for the safety zone (with the safety database snapshot's blinded area), and
+* tmf/ for the quality zone: the blinded area of the cut's eTMF snapshot.
 
 It never holds unblinded/, the cut's manifest (which lists the unblinded files) or any
 ground truth. A file is uploaded to its area's folder, not as a folder, because a folder
@@ -22,7 +23,7 @@ from meridian.data.cut_writer import BLINDED_AREA, OPS_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, write_manifest
 from meridian.domain.events import Event
 from meridian.ledger.hashing import canonical_json
-from meridian.sandbox.policies import META, STAGE_ROOT, stage_path
+from meridian.sandbox.policies import META, STAGE_ROOT, TMF, stage_path
 
 STAGE_NAME = "cut"
 TRIGGER_FILE = "trigger.json"
@@ -61,11 +62,13 @@ def stage_cut(
     dest_root: Path,
     extra_blinded: Sequence[Path] = (),
     areas: Sequence[str] = CUT_AREAS,
+    tmf: Path | None = None,
 ) -> Path:
     """Copy the given cut areas' parquet files and write the trigger. Returns the stage.
 
     extra_blinded: further blinded areas staged into blinded/ (a safety agent gets the
-    blinded area of the cut's safety database snapshot; never an unblinded/ folder)."""
+    blinded area of the cut's safety database snapshot; never an unblinded/ folder).
+    tmf: the blinded area of the cut's eTMF snapshot, staged as tmf/ (quality zone)."""
     if not set(areas) <= set(CUT_AREAS) or BLINDED_AREA not in areas:
         raise StagingError(f"cannot stage areas {sorted(areas)}")
     stage = dest_root / STAGE_NAME
@@ -73,6 +76,12 @@ def stage_cut(
     for area in areas:
         (stage / area).mkdir()
         _copy_area(cut_dir / area, stage / area, area)
+    if tmf is not None:
+        if tmf.name != BLINDED_AREA:
+            raise StagingError(f"only a blinded area may be staged as {TMF}/, not {tmf}")
+        (stage / TMF).mkdir()
+        _copy_area(tmf, stage / TMF, TMF)
+        areas = (*areas, TMF)
     for extra in extra_blinded:
         if extra.name != BLINDED_AREA:
             raise StagingError(f"only a blinded area may be staged, not {extra}")

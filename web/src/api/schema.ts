@@ -988,7 +988,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).

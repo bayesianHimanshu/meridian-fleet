@@ -1928,7 +1928,8 @@
           "qtl_breach",
           "site_data_anomaly",
           "under_reporting",
-          "sae_reconciliation"
+          "sae_reconciliation",
+          "tmf"
         ],
         "title": "FindingKind",
         "type": "string"

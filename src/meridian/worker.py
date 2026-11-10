@@ -23,15 +23,26 @@ import polars as pl
 import structlog
 from pydantic import ValidationError
 
+from meridian.agents.base import zone_of
 from meridian.agents.catalog import build_registry
 from meridian.agents.execute import drafts_document, run_agent
 from meridian.agents.registry import RegistrationError
 from meridian.data.inputs_manifest import MANIFEST_FILE, InputsManifestError, verify_manifest
 from meridian.data.stage_layout import META
-from meridian.data.study_store import MissingTableError, ParquetStudyReader, StudyAccessError
+from meridian.data.study_store import (
+    TMF_STAGE_AREA,
+    TMF_ZONES,
+    LayeredStudyReader,
+    MissingTableError,
+    ParquetStudyReader,
+    StudyAccessError,
+    StudyReader,
+    TmfStageReader,
+)
 from meridian.domain.events import DataCut, Event
 from meridian.platform.agent_settings import SAFETY_TERMS_FILE, load_safety_terms
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
+from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
 
 EXIT_OK = 0
 EXIT_BAD_ARGS = 2
@@ -85,6 +96,11 @@ def load_agents_settings(path: Path) -> AgentsSettings:
     if "terms" not in reconciler:
         terms = load_safety_terms(path.parent / SAFETY_TERMS_FILE)
         agents = {**agents, "sae_reconciler": {**reconciler, "terms": terms.model_dump()}}
+    # The expected TMF artifacts sit there too (config/tmf_expected.toml).
+    tmf = dict(agents.get("tmf_completeness", {}))
+    if "reference" not in tmf:
+        reference = load_tmf_reference(path.parent / TMF_EXPECTED_FILE)
+        agents = {**agents, "tmf_completeness": {**tmf, "reference": reference.model_dump()}}
     return AgentsSettings.model_validate(agents)
 
 
@@ -118,9 +134,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         trigger = Event.model_validate_json(args.trigger.read_bytes())
         if not isinstance(trigger.payload, DataCut):
             raise ValueError(f"trigger is a {trigger.payload.type}, not a data_cut")
-        study = ParquetStudyReader.at_cut_dir(
-            args.cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.study_id
-        )
+        ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}
+        study: StudyReader = ParquetStudyReader.at_cut_dir(args.cut_dir, **ids)
+        if zone_of(args.agent) in TMF_ZONES and (args.cut_dir / TMF_STAGE_AREA).is_dir():
+            # The quality zone also reads the eTMF index staged under tmf/.
+            study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(args.cut_dir, **ids))
     except (OSError, ValidationError, ValueError, StudyAccessError) as exc:
         log.error("worker.bad_input", error=f"{type(exc).__name__}: {exc}")
         return EXIT_DATA

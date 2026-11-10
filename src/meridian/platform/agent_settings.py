@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from meridian.domain.enums import Role
+from meridian.platform.tmf_reference import TmfReference, load_tmf_reference
 
 
 class AgentConfig(BaseModel):
@@ -160,3 +161,28 @@ class SaeReconcilerConfig(AgentConfig):
         if not set(self.subject_visible_to) <= set(self.site_visible_to):
             raise ValueError("subject-level findings may not reach more roles than site-level")
         return self
+
+
+# DM fields that may give a site's first and last subject (SDTM DM reference dates).
+SubjectStartField = Literal["RFICDTC", "RFSTDTC"]
+SubjectEndField = Literal["RFENDTC", "RFPENDTC"]
+
+
+class TmfCompletenessConfig(AgentConfig):
+    """quality.tmf_completeness: the expected artifacts (config/tmf_expected.toml), the DM
+    fields that give the site milestones, and who may see its findings. Visibility lives
+    here, next to the agent, not in the API. No TMF finding names a subject."""
+
+    reference: TmfReference = Field(default_factory=load_tmf_reference)
+    # A site's first subject is the earliest of this field over its subjects, and its last
+    # subject the latest of last_subject_field. RFICDTC (informed consent) would be the
+    # better start, but it is empty for every subject of the CDISC pilot, so RFSTDTC (first
+    # study treatment) is used; docs/tmf-notes.md says what that misses.
+    first_subject_field: SubjectStartField = "RFSTDTC"
+    last_subject_field: SubjectEndField = "RFENDTC"
+    visible_to: tuple[Role, ...] = (
+        Role.CLINICAL_OPS_LEAD,
+        Role.MEDICAL_MONITOR,
+        Role.PORTFOLIO_LEAD,
+        Role.QA_AUDITOR,
+    )
