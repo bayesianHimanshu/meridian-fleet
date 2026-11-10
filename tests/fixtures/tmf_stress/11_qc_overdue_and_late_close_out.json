@@ -1,0 +1,8 @@
+{
+  "case": "qc_overdue_and_late_close_out",
+  "description": "Site 9001: the report of the 25 Nov 2013 visit has been pending QC since it was filed on 5 Dec 2013 (207 days at export); the close-out report dated 24 Feb 2014 was filed 30 Apr 2014 (65 days).",
+  "index_set": {"D-1-MV5": {"QC_STATUS": "pending"}, "D-1-CO": {"FILED_DATE": "2014-04-30"}},
+  "ideal": "QC overdue for D-1-MV5 and late filing for D-1-CO.",
+  "ideal_findings": ["tmf_qc_overdue:D-1-MV5", "tmf_late_filing:D-1-CO"],
+  "actual": {}
+}

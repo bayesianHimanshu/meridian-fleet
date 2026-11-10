@@ -1,0 +1,10 @@
+{
+  "case": "document_dated_in_the_future",
+  "description": "A second Monitoring Plan version is dated 1 Sep 2014, after the export (30 Jun 2014) and after the day it was filed (20 Jun 2014). Version 1 is fine.",
+  "index_add": [
+    {"DOCUMENT_ID": "D-T-MP2", "ARTIFACT": "Monitoring Plan", "LEVEL": "trial", "SITE": "", "DOC_SITE": "", "VERSION": "2", "DOCUMENT_DATE": "2014-09-01", "FILED_DATE": "2014-06-20", "QC_STATUS": "passed"}
+  ],
+  "ideal": "One data-quality finding for the impossible date of D-T-MP2; version 1 still counts, so the plan is not missing and nothing is late.",
+  "ideal_findings": ["tmf_data_quality:D-T-MP2#DOCUMENT_DATE"],
+  "actual": {}
+}

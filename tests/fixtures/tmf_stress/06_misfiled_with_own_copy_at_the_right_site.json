@@ -1,0 +1,10 @@
+{
+  "case": "misfiled_with_own_copy_at_the_right_site",
+  "description": "A copy of site 9001's Form FDA 1572 (the document names site 9001) is indexed under site 9002. Site 9001 has its own 1572 filed correctly, and so does site 9002.",
+  "index_add": [
+    {"DOCUMENT_ID": "D-1-1572X", "ARTIFACT": "Form FDA 1572", "LEVEL": "site", "SITE": "9002", "DOC_SITE": "9001", "VERSION": "1", "DOCUMENT_DATE": "2013-01-25", "FILED_DATE": "2013-02-14", "QC_STATUS": "passed"}
+  ],
+  "ideal": "One misfiled document (D-1-1572X); no missing 1572 at either site.",
+  "ideal_findings": ["tmf_misfiled:D-1-1572X"],
+  "actual": {}
+}

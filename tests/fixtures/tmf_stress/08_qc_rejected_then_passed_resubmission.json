@@ -1,0 +1,11 @@
+{
+  "case": "qc_rejected_then_passed_resubmission",
+  "description": "Site 9002's delegation log (Site Signature Sheet, dated 15 Apr 2013) was first filed 20 Apr 2013 and rejected at QC; the corrected version 2, with the same document date, was filed 30 Apr 2013 (15 days) and passed.",
+  "index_set": {"D-2-DEL": {"VERSION": "2", "FILED_DATE": "2013-04-30"}},
+  "index_add": [
+    {"DOCUMENT_ID": "D-2-DEL0", "ARTIFACT": "Site Signature Sheet", "LEVEL": "site", "SITE": "9002", "DOC_SITE": "9002", "VERSION": "1", "DOCUMENT_DATE": "2013-04-15", "FILED_DATE": "2013-04-20", "QC_STATUS": "rejected"}
+  ],
+  "ideal": "Nothing: the passed resubmission is the record and it was filed on time.",
+  "ideal_findings": [],
+  "actual": {}
+}

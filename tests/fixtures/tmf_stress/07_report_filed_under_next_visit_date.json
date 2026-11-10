@@ -1,0 +1,8 @@
+{
+  "case": "report_filed_under_next_visit_date",
+  "description": "Site 9001's report of the routine visit of 10 Jun 2013 (V-9001-R2) was indexed with the next visit's date, 5 Aug 2013, and filed 12 Aug 2013. The 5 Aug visit has its own report too, so two reports carry that date and none carries 10 Jun.",
+  "index_set": {"D-1-MV2": {"DOCUMENT_DATE": "2013-08-05", "FILED_DATE": "2013-08-12"}},
+  "ideal": "The 10 Jun visit shows no report: the index gives nothing else to tie D-1-MV2 to it. One finding for V-9001-R2; the 5 Aug visit is covered.",
+  "ideal_findings": ["tmf_monitoring_report_missing:V-9001-R2"],
+  "actual": {}
+}
