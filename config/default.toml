@@ -11,6 +11,7 @@ curated_root = "data/curated"
 sites_file = "config/sites.toml"
 ground_truth_dir = "data/ground_truth"
 safety_root = "data/safety_db"  # the synthetic safety database, one snapshot per cut
+etmf_root = "data/etmf"  # the synthetic eTMF index, one snapshot per cut
 evals_dir = "data/evals"
 
 # Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
@@ -127,7 +128,13 @@ openapi_file = "openapi/meridian-api.json"
 # Agents. enabled lists the agent ids the runner wakes; [agents.<name>] is each agent's
 # own configuration and is all the agent ever sees.
 [agents]
-enabled = ["rbqm.kri_monitor", "rbqm.qtl_detector", "rbqm.csm", "safety.sae_reconciler"]
+enabled = [
+    "rbqm.kri_monitor",
+    "rbqm.qtl_detector",
+    "rbqm.csm",
+    "safety.sae_reconciler",
+    "quality.tmf_completeness",
+]
 
 [agents.kri_monitor]
 alpha = 0.01
@@ -173,3 +180,14 @@ site_late_min = 2          # a site with 2 or more late cases gets a site-level 
 # finding (sae_late_reporting_site) carries no subject id and may also reach portfolio_lead.
 subject_visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor"]
 site_visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
+
+[agents.tmf_completeness]
+# quality.tmf_completeness 1.0.0 (phase 3 step 4a), deterministic. The expected artifacts,
+# their milestones and timing rules are in config/tmf_expected.toml (docs/tmf-notes.md).
+# Site milestones from DM: RFICDTC is empty for every pilot subject, so the first subject
+# at a site is its earliest RFSTDTC and the last its latest RFENDTC.
+first_subject_field = "RFSTDTC"
+last_subject_field = "RFENDTC"
+# No TMF finding carries subject data, so portfolio_lead may see them; not toxicologist,
+# and not the unblinded statistician (as for every blinded finding today).
+visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]

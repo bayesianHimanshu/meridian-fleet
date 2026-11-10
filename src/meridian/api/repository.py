@@ -18,11 +18,13 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from meridian.agents.base import zone_of
+from meridian.agents.quality import tmf_completeness
 from meridian.agents.rbqm import narrator
 from meridian.agents.rbqm.describe import describe
 from meridian.agents.registry import AgentRegistry
 from meridian.agents.safety import local_narrator, term_adjudicator
 from meridian.api import safety as safety_view
+from meridian.api import tmf as tmf_view
 from meridian.api import visibility
 from meridian.api.identity import Person
 from meridian.api.models import (
@@ -56,6 +58,8 @@ from meridian.api.models import (
     RunTrace,
     SiteFlag,
     StudySummary,
+    TmfCompletenessView,
+    TmfFindingItem,
     UnblindedCases,
     VerifyReport,
 )
@@ -80,6 +84,7 @@ from meridian.domain.events import (
 from meridian.domain.findings import Decision, Finding
 from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
 from meridian.ledger.verify import verify
+from meridian.platform.agent_settings import TmfCompletenessConfig
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
 from meridian.sandbox.policies import (
@@ -377,8 +382,8 @@ def cut_kind(cut_id: str, label: str | None) -> CutKind:
         return "sweep"
     if "HOLDOUT" in name or (label is not None and "holdout" in label.lower()):
         return "holdout"
-    if label is not None and label.startswith("safety_clean_"):
-        return "null"  # seeded clean safety cuts: nothing planted
+    if label is not None and label.startswith(("safety_clean_", "tmf_clean_")):
+        return "null"  # seeded clean safety and TMF cuts: nothing planted
     return "faulted"
 
 
@@ -420,7 +425,11 @@ class Repository:
         ground_truth_dir: Path,
         portfolio: Sequence[PortfolioEntry],
         operational_cuts: Collection[str] = ("DC-BASE",),
+        run_timeout_seconds: int = 120,
     ) -> None:
+        # A started detector run without its ActorSuspended counts as running, not failed,
+        # until this many seconds after its ActorWoke ([runtime] exec_timeout_seconds).
+        self._run_timeout = timedelta(seconds=run_timeout_seconds)
         self._ledger = ledger
         self.person = person
         self.role = person.role
@@ -717,8 +726,16 @@ class Repository:
 
     def fleet(self) -> Fleet:
         snap = self.snapshot()
-        since = self._clock.now() - RUN_WINDOW
+        now = self._clock.now()
+        since = now - RUN_WINDOW
         runs = _runs(snap.woke, snap.suspended)
+
+        def running(r: _Run) -> bool:
+            return r.suspended is None and now - r.woke.recorded_at <= self._run_timeout
+
+        def failed(r: _Run) -> bool:
+            return r.suspended is None and not running(r)
+
         agents: list[FleetAgent] = []
         for registered in self._registry.all():
             a = registered.agent
@@ -728,7 +745,7 @@ class Repository:
             current = [r for r in mine if _woke(r).agent_version == a.version]
             last = current[-1] if current else None
             recent = [r for r in mine if r.woke.recorded_at >= since]
-            failures = [r for r in mine if r.suspended is None]
+            failures = [r for r in mine if failed(r)]
             agents.append(
                 FleetAgent(
                     agent_id=a.agent_id,
@@ -743,10 +760,14 @@ class Repository:
                     last_run_at=None if last is None else last.woke.recorded_at,
                     last_outcome=None
                     if last is None
-                    else ("completed" if last.suspended is not None else "not_completed"),
+                    else "completed"
+                    if last.suspended is not None
+                    else "running"
+                    if running(last)
+                    else "not_completed",
                     last_trigger_seq=None if last is None else _trigger(last.woke),
                     runs_7d=len(recent),
-                    failed_7d=sum(1 for r in recent if r.suspended is None),
+                    failed_7d=sum(1 for r in recent if failed(r)),
                     last_failure_at=failures[-1].woke.recorded_at if failures else None,
                     run_event_types=[EventType.ACTOR_WOKE, EventType.ACTOR_SUSPENDED],
                 )
@@ -972,6 +993,74 @@ class Repository:
             by_check=by_check,
             by_site=by_site,
             items=items,
+        )
+
+    def tmf(
+        self, cut_id: str, reader: Callable[[str], StudyReader], cfg: TmfCompletenessConfig
+    ) -> TmfCompletenessView:
+        """The TMF of one cut: matrix and percentages from its eTMF index, and the current
+        quality.tmf_completeness findings this role may see."""
+        if not visibility.can_see_tmf(self.role, cfg.visible_to):
+            raise ForbiddenError(f"{self.role.value} may not see the TMF")
+        snap = self.snapshot()
+        cut = next((c for c in snap.cuts.values() if c.cut_id == cut_id), None)
+        if cut is None:
+            raise NotFoundError("cut not found")
+        try:
+            a = tmf_completeness.assess(reader(cut_id), cfg)
+        except (MissingTableError, StudyAccessError, OSError) as exc:
+            raise NotFoundError("eTMF index not available for the cut") from exc
+        trigger = next(seq for seq, c in snap.cuts.items() if c.cut_id == cut_id)
+        versions = sorted(
+            {
+                e.payload.agent_version
+                for e in snap.suspended
+                if isinstance(e.payload, ActorSuspended)
+                and e.payload.agent_id == tmf_completeness.AGENT_ID
+                and e.payload.trigger_seq == trigger
+                and e.payload.agent_version is not None
+            },
+            key=_version,
+        )
+        current = [
+            r
+            for r in sorted(snap.raised.values(), key=lambda r: r.event.seq)
+            if r.cut_id == cut_id
+            and r.finding.agent_id == tmf_completeness.AGENT_ID
+            and snap.current(r.finding_id)
+        ]
+        finding_of = {r.check.partition(":")[2]: r.finding_id for r in current}
+        trial, sites = tmf_view.rows(a, cfg.reference, finding_of)
+        complete, timely = a.percent(None)
+        trial_complete, trial_timely = a.percent("")
+        return TmfCompletenessView(
+            study_id=cut.study_id,
+            cut_id=cut_id,
+            scope=self.scope(cut_id),
+            export_date=None if a.export_date is None else a.export_date.isoformat(),
+            agent_id=tmf_completeness.AGENT_ID,
+            agent_version=versions[-1] if versions else None,
+            run_completed=bool(versions),
+            completeness_percent=complete,
+            timely_percent=timely,
+            trial_completeness_percent=trial_complete,
+            trial_timely_percent=trial_timely,
+            artifacts=tmf_view.artifacts(cfg.reference),
+            trial=trial,
+            sites=sites,
+            findings=tmf_view.items(
+                [
+                    TmfFindingItem(
+                        finding_id=r.finding_id,
+                        check=r.check.partition(":")[0],
+                        site_id=r.finding.site_id,
+                        severity=r.finding.severity,
+                        status=snap.status(r.finding_id),
+                        title=r.finding.title,
+                    )
+                    for r in current
+                ]
+            ),
         )
 
     def unblinded_cases(self, counter: Callable[[str], tuple[int, int]]) -> UnblindedCases:

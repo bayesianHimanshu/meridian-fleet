@@ -16,7 +16,7 @@ filesystem_policy:
     - /tmp
     - /stage/meta
     - /stage/blinded
-    - /stage/ops
+    - /stage/tmf
 landlock:
   compatibility: hard_requirement
 process:

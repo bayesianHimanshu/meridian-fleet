@@ -1,0 +1,22 @@
+{
+  "case": "missing_site_and_trial_records",
+  "description": "The Sample Case Report Form is not in the trial index, and site 9002 has no Form FDA 1572 and no report for its routine visit of 14 Oct 2013.",
+  "index_remove": [
+    "D-T-CRF",
+    "D-2-1572",
+    "D-2-MV3"
+  ],
+  "ideal": "Three findings: the trial-level CRF missing (medium), the 1572 of 9002 missing (high), the report of V-9002-R3 missing (high). No approval-after-first-subject finding for the missing 1572: there is no date to compare.",
+  "ideal_findings": [
+    "tmf_missing_artifact:TRIAL/sample_crf",
+    "tmf_missing_artifact:9002/form_fda_1572",
+    "tmf_monitoring_report_missing:V-9002-R3"
+  ],
+  "actual": {
+    "1.0.0": [
+      "tmf_missing_artifact:9002/form_fda_1572",
+      "tmf_missing_artifact:TRIAL/sample_crf",
+      "tmf_monitoring_report_missing:V-9002-R3"
+    ]
+  }
+}

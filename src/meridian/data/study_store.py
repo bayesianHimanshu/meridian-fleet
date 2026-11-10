@@ -140,6 +140,24 @@ class UnblindedReader(_AreaReader):
 
 # Zones whose agents also read the cut's safety database snapshot (its blinded area).
 SAFETY_DB_ZONES = frozenset({"safety"})
+# Zones whose agents also read the cut's eTMF index (the blinded area of its eTMF
+# snapshot; staged into the sandbox as /stage/tmf).
+TMF_ZONES = frozenset({"quality"})
+TMF_STAGE_AREA = "tmf"
+
+
+class TmfStageReader(_AreaReader):
+    """Inside a sandbox: the eTMF tables staged under <cut dir>/tmf, nothing else."""
+
+    _areas = (TMF_STAGE_AREA,)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> TmfStageReader:
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
 
 
 class LayeredStudyReader:

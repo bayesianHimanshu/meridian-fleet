@@ -302,12 +302,14 @@ class FleetAgent(BaseModel):
     applied_policy_sha256: str
     last_run_at: datetime | None
     last_outcome: (
-        Literal["completed", "not_completed", "accepted", "rejected", "refused", "error"] | None
+        Literal["completed", "running", "not_completed", "accepted", "rejected", "refused", "error"]
+        | None
     )
     last_trigger_seq: int | None
     # Every version of the agent. A detector run failed when its ActorWoke has no
-    # ActorSuspended; a narrator or adjudicator run failed when it recorded status
-    # "error".
+    # ActorSuspended and it started longer ago than the run timeout ([runtime]
+    # exec_timeout_seconds); until then it is running, not failed. A narrator or
+    # adjudicator run failed when it recorded status "error".
     runs_7d: int
     failed_7d: int
     last_failure_at: datetime | None
@@ -563,3 +565,80 @@ class UnblindedCases(BaseModel):
     cut_id: str
     cases: int
     cases_with_treatment: int
+
+
+# ---- TMF completeness (phase 3 step 4a)
+
+TmfCellStatus = Literal["filed", "filed_late", "missing", "not_expected"]
+
+
+class TmfArtifact(BaseModel):
+    """One expected artifact of config/tmf_expected.toml (names only, no numbers)."""
+
+    model_config = _FROZEN
+
+    key: str
+    name: str
+    zone: str
+    level: Literal["trial", "site"]
+    milestone: str
+    file_within_days: int
+    essential: bool
+
+
+class TmfCell(BaseModel):
+    """One artifact at one site (or the trial). For a visit report, expected counts the
+    visits that are due, filed those with a report, late those filed late."""
+
+    model_config = _FROZEN
+
+    artifact: str
+    status: TmfCellStatus
+    expected: int
+    filed: int
+    late: int
+    finding_ids: list[str]  # current findings about this cell that the caller may see
+
+
+class TmfSiteRow(BaseModel):
+    model_config = _FROZEN
+
+    site_id: str
+    completeness_percent: float | None
+    timely_percent: float | None
+    cells: list[TmfCell]  # one per site-level artifact, in the order of artifacts
+
+
+class TmfFindingItem(BaseModel):
+    model_config = _FROZEN
+
+    finding_id: str
+    check: str
+    site_id: str | None
+    severity: Severity
+    status: FindingStatus
+    title: str
+
+
+class TmfCompletenessView(BaseModel):
+    """The TMF of one cut: completeness and timely filing per site and for the trial, the
+    expected-against-filed matrix (computed from the cut's eTMF index), and the current
+    quality.tmf_completeness findings the caller may see. No subject data."""
+
+    model_config = _FROZEN
+
+    study_id: str
+    cut_id: str
+    scope: CutScope
+    export_date: str | None  # ISO date of the eTMF export
+    agent_id: str
+    agent_version: str | None
+    run_completed: bool
+    completeness_percent: float | None  # everything expected, trial and sites
+    timely_percent: float | None
+    trial_completeness_percent: float | None
+    trial_timely_percent: float | None
+    artifacts: list[TmfArtifact]
+    trial: list[TmfCell]  # one per trial-level artifact
+    sites: list[TmfSiteRow]
+    findings: list[TmfFindingItem]

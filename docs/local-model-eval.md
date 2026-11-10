@@ -320,3 +320,27 @@ the safety.local_model sandbox (both models, one job each).
   on each finding page, with both raw answers, models and digests; the toxicologist
   gets 404 for these findings and so never sees their assessments (unchanged rule: an
   assessment is shown only when every finding it names is).
+
+### Step 4a: safety.term_adjudicator 1.1.1 on dev (2026-11-10)
+
+Validator 1.1.0 accepts a reason of up to 2 sentences and 300 characters (1.0.0: one
+sentence, 200): in the 3b2 run three qwen3.5 answers (dev-003, dev-023 reason too long,
+dev-054 two sentences) were rejected only for their length. The prompt still asks for one
+sentence of at most 200 characters, and the agreement rule is unchanged. Rerun with
+`uv run python scripts/term_adjudicator_rerun.py` (both models, the agent's prompt, the
+local model sandbox), against the 1.1.0 results of 3b2:
+
+| | 1.1.0 (3b2) | 1.1.1 |
+|---|---|---|
+| correct of 75 | 55 (0.733) | 57 (0.760) |
+| wrong "yes" | 0 | 0 |
+| "unsure" verdicts | 6 (0.080) | 4 (0.053) |
+| qwen3.5 answers rejected | 3 | 0 |
+| phi4-mini correct alone | 59 | 59 |
+| qwen3.5 correct alone | 57 | 59 |
+| median latency per pair | 3718 ms | 3711 ms |
+
+Changed verdicts: dev-003 (yes) unsure to yes, dev-054 (no) unsure to no, both now
+right. dev-023 is still unsure: qwen3.5's answer now passes, but the two models disagree
+on it. All 14 pairs labelled unsure still get "no" from both models. As in 3b2, answers
+are not guaranteed repeatable, so a second run could move a pair either way.

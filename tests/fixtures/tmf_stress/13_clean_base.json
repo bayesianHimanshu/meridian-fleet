@@ -1,0 +1,9 @@
+{
+  "case": "clean_base",
+  "description": "Control: the base trial unchanged.",
+  "ideal": "Nothing.",
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": []
+  }
+}

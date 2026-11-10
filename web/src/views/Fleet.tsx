@@ -7,6 +7,7 @@ import { useApi } from "../queries";
 const OUTCOME_CLASS: Record<string, string> = {
   completed: "good",
   accepted: "good",
+  running: "", // started, still within its timeout: neither done nor failed
   not_completed: "critical",
   error: "critical",
   rejected: "warning",
@@ -66,10 +67,12 @@ export function FleetView() {
         <div>
           <h1 id="fleet-title">Agent fleet</h1>
           <p>
-            The registered agents, the policy each runs under, and the latest containment check for each
-            sandbox policy. The policy file sha256 is the committed file, comments included. The applied
-            policy sha256 is what the sandbox reports as effective, without comments, and is what each run
-            records. Zone policies that differ only in their header comment apply the same policy.
+            The registered agents, the policy each runs under, and the latest
+            containment check for each sandbox policy. The policy file sha256 is
+            the committed file, comments included. The applied policy sha256 is
+            what the sandbox reports as effective, without comments, and is what
+            each run records. Zone policies that differ only in their header
+            comment apply the same policy.
           </p>
         </div>
       </div>
@@ -119,10 +122,14 @@ export function FleetView() {
                           of={a.agent_id}
                         />
                       </td>
-                      <td className="mono">{a.last_run_at ? <Time iso={a.last_run_at} /> : "never"}</td>
+                      <td className="mono">
+                        {a.last_run_at ? <Time iso={a.last_run_at} /> : "never"}
+                      </td>
                       <td>
                         {a.last_outcome ? (
-                          <span className={`chip ${OUTCOME_CLASS[a.last_outcome] ?? ""}`}>
+                          <span
+                            className={`chip ${OUTCOME_CLASS[a.last_outcome] ?? ""}`}
+                          >
                             {a.last_outcome.replaceAll("_", " ")}
                           </span>
                         ) : (
@@ -131,10 +138,18 @@ export function FleetView() {
                       </td>
                       <td className="num">{a.runs_7d}</td>
                       <td className="num">
-                        {a.failed_7d > 0 ? <span className="chip critical">{a.failed_7d}</span> : a.failed_7d}
+                        {a.failed_7d > 0 ? (
+                          <span className="chip critical">{a.failed_7d}</span>
+                        ) : (
+                          a.failed_7d
+                        )}
                       </td>
                       <td className="mono">
-                        {a.last_failure_at ? <Time iso={a.last_failure_at} /> : <span className="muted">none</span>}
+                        {a.last_failure_at ? (
+                          <Time iso={a.last_failure_at} />
+                        ) : (
+                          <span className="muted">none</span>
+                        )}
                         <br />
                         <Link to={runsLink(a)}>Run events in the ledger</Link>
                       </td>
@@ -147,21 +162,35 @@ export function FleetView() {
           <section className="panel" aria-labelledby="contain-title">
             <div className="panel-head">
               <h2 id="contain-title">Containment checks</h2>
-              <span className="src">Latest per policy, run in a real sandbox</span>
+              <span className="src">
+                Latest per policy, run in a real sandbox
+              </span>
             </div>
-            {fleet.data.containment.length === 0 ? <p className="muted">No containment check recorded.</p> : null}
+            {fleet.data.containment.length === 0 ? (
+              <p className="muted">No containment check recorded.</p>
+            ) : null}
             <div className="stack">
               {fleet.data.containment.map((c) => (
                 <div key={c.policy}>
                   <h3>
                     {c.policy}{" "}
-                    <span className={`chip ${c.passed ? "good" : "critical"}`}>{c.passed ? "passed" : "failed"}</span>
+                    <span className={`chip ${c.passed ? "good" : "critical"}`}>
+                      {c.passed ? "passed" : "failed"}
+                    </span>
                   </h3>
                   <p className="muted">
-                    <Time iso={c.recorded_at} />, ledger seq <span className="mono">{c.seq}</span>, image{" "}
-                    <Hash value={c.image_digest} label={`image digest for ${c.policy}`} />, applied policy sha256{" "}
+                    <Time iso={c.recorded_at} />, ledger seq{" "}
+                    <span className="mono">{c.seq}</span>, image{" "}
+                    <Hash
+                      value={c.image_digest}
+                      label={`image digest for ${c.policy}`}
+                    />
+                    , applied policy sha256{" "}
                     {c.applied_policy_sha256 ? (
-                      <Hash value={c.applied_policy_sha256} label={`applied policy sha256 for ${c.policy}`} />
+                      <Hash
+                        value={c.applied_policy_sha256}
+                        label={`applied policy sha256 for ${c.policy}`}
+                      />
                     ) : (
                       "not recorded"
                     )}
@@ -187,7 +216,11 @@ export function FleetView() {
                             <td className="mono">{k.name}</td>
                             <td>{k.expect}</td>
                             <td>
-                              <span className={`chip ${k.passed ? "good" : "critical"}`}>{k.outcome}</span>
+                              <span
+                                className={`chip ${k.passed ? "good" : "critical"}`}
+                              >
+                                {k.outcome}
+                              </span>
                             </td>
                             <td className="mono muted">{k.message}</td>
                           </tr>

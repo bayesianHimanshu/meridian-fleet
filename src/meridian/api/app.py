@@ -79,6 +79,8 @@ def context_from_settings(
         portfolio=load_portfolio(portfolio_file),
         operational_cuts=tuple(settings.cuts.operational),
         safety_root=settings.safety_root,
+        etmf_root=settings.etmf_root,
+        run_timeout_seconds=settings.runtime.exec_timeout_seconds,
     )
 
 

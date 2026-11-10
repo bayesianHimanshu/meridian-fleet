@@ -53,6 +53,7 @@ export interface From {
 const ORIGINS: { prefix: string; label: string }[] = [
   { prefix: "/safety", label: "Back to the Safety page" },
   { prefix: "/rbqm", label: "Back to the RBQM page" },
+  { prefix: "/quality", label: "Back to the TMF page" },
   { prefix: "/ledger", label: "Back to the ledger" },
   { prefix: "/review", label: "Back to the review queue" },
 ];

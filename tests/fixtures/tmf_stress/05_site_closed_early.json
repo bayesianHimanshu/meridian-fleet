@@ -1,0 +1,47 @@
+{
+  "case": "site_closed_early",
+  "description": "Site 9002 closed early: its only subject ended on 30 Sep 2013, it had two routine visits and a close-out visit on 21 Oct 2013, months before site 9001 closed.",
+  "dm_set": {
+    "201-9002-001": {
+      "RFENDTC": "2013-09-30"
+    }
+  },
+  "visits_remove": [
+    "V-9002-R3",
+    "V-9002-R4",
+    "V-9002-R5",
+    "V-9002-CO"
+  ],
+  "visits_add": [
+    {
+      "VISIT_ID": "V-9002-CO",
+      "SITE": "9002",
+      "VISIT_TYPE": "close_out",
+      "VISIT_DATE": "2013-10-21"
+    }
+  ],
+  "index_remove": [
+    "D-2-MV3",
+    "D-2-MV4",
+    "D-2-MV5",
+    "D-2-CO"
+  ],
+  "index_add": [
+    {
+      "DOCUMENT_ID": "D-2-CO",
+      "ARTIFACT": "Final Trial Close Out Monitoring Report",
+      "LEVEL": "site",
+      "SITE": "9002",
+      "DOC_SITE": "9002",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-10-21",
+      "FILED_DATE": "2013-11-04",
+      "QC_STATUS": "passed"
+    }
+  ],
+  "ideal": "Nothing: no monitoring report is expected after the site closed, and its close-out report is filed.",
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": []
+  }
+}

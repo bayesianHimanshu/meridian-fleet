@@ -1,0 +1,33 @@
+{
+  "case": "amendment_approved_after_first_subject",
+  "description": "Site 9001: the original IRB approval (v1, 21 Jan 2013) is dated before the site's first subject (1 Mar 2013); the approvals of two protocol amendments (v2 5 Aug 2013, v3 4 Nov 2013) come after it, as amendments do. The trial index holds both amendments.",
+  "index_add": [
+    {
+      "DOCUMENT_ID": "D-T-AMD2",
+      "ARTIFACT": "Protocol Amendment",
+      "LEVEL": "trial",
+      "SITE": "",
+      "DOC_SITE": "",
+      "VERSION": "2",
+      "DOCUMENT_DATE": "2013-10-07",
+      "FILED_DATE": "2013-10-15",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-1-IRB3",
+      "ARTIFACT": "IRB or IEC Decision",
+      "LEVEL": "site",
+      "SITE": "9001",
+      "DOC_SITE": "9001",
+      "VERSION": "3",
+      "DOCUMENT_DATE": "2013-11-04",
+      "FILED_DATE": "2013-11-12",
+      "QC_STATUS": "passed"
+    }
+  ],
+  "ideal": "Nothing: the site was approved before its first subject; approving later amendments after it is normal.",
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": []
+  }
+}

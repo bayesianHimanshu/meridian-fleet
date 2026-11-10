@@ -1,4 +1,4 @@
-"""safety.term_adjudicator 1.1.0: do two event terms describe the same event?
+"""safety.term_adjudicator 1.1.1: do two event terms describe the same event?
 
 safety.sae_reconciler decides nothing about meaning: when a subject's only unmatched
 serious AE and only unmatched case have different preferred terms it raises
@@ -23,6 +23,11 @@ deterministic findings never change: the outcome is a FindingAssessment a person
 (meridian.domain.events.agreed_verdict): "yes" only if both say yes, "no" only if both
 say no, otherwise "unsure". In 1.0.0 no model ever said "unsure", and a wrong "yes" is
 the costly mistake; disagreement is the abstention. Both raw answers are recorded.
+
+1.1.1 (step 4a): validator 1.1.0 accepts a reason of up to 2 sentences and 300
+characters (1.0.0: one sentence, 200). In the step 3b2 dev run three qwen3.5 answers were
+rejected only for their length. The prompt is unchanged (it still asks for one sentence
+of at most 200 characters), and so is the agreement rule.
 """
 
 import json
@@ -49,13 +54,13 @@ from meridian.ledger.hashing import canonical_json
 from meridian.llm.local import LocalModelOptions, LocalModelRequest, LocalModelResponse
 
 AGENT_ID = "safety.term_adjudicator"
-VERSION = "1.1.0"
-VALIDATOR_VERSION = "1.0.0"
+VERSION = "1.1.1"
+VALIDATOR_VERSION = "1.1.0"
 # FindingRaised events of exactly these detector versions.
 ADJUDICATES: dict[str, str] = {"safety.sae_reconciler": "1.1.1"}
 VERDICTS: tuple[Verdict, ...] = ("yes", "no", "unsure")
-MAX_REASON = 200
-MAX_REASON_SENTENCES = 1
+MAX_REASON = 300  # 1.0.0: 200
+MAX_REASON_SENTENCES = 2  # 1.0.0: 1
 INPUT_KEYS = frozenset({"record_a", "record_b"})
 RECORD_KEYS = frozenset({"preferred_term", "verbatim_term"})
 # Dates and times in any common form, for the input check.

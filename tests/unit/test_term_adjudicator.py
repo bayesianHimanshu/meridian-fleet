@@ -161,7 +161,7 @@ def test_an_accepted_assessment_never_alters_a_finding(ledger: SqliteLedger) -> 
     assert [e.event_type for e in after[len(before) :]] == [EventType.FINDING_ASSESSMENT]
     ((event, a),) = _assessments(ledger)
     assert (a.status, a.verdict, a.candidate) == ("accepted", "yes", "term_mismatch")
-    assert a.agent_version == "1.1.0"
+    assert a.agent_version == ta.VERSION
     assert a.reason is not None
     assert a.reason.startswith("Every model said the terms describe the same event")
     assert a.finding_ids == (raised[0].payload.finding.finding_id,)  # type: ignore[union-attr]
@@ -245,8 +245,8 @@ def test_the_runner_applies_the_agreement_rule(
         (json.dumps({"same_event": "yes"}), "bad_json"),
         (json.dumps({"same_event": "yes", "reason": "r.", "extra": 1}), "bad_json"),
         (json.dumps({"same_event": "yes", "reason": " "}), "reason_empty"),
-        (answer("yes", "One. Two."), "too_many_sentences"),
-        (answer("yes", "x" * 201), "reason_too_long"),
+        (answer("yes", "One. Two. Three."), "too_many_sentences"),
+        (answer("yes", "x" * 301), "reason_too_long"),
         (answer("yes", f"Same event {EM_DASH} both allergic."), "em_dash"),
     ],
 )
@@ -268,7 +268,7 @@ def test_invalid_output_is_rejected_and_recorded_raw(
 
 def test_two_invalid_answers_reject_the_assessment(ledger: SqliteLedger) -> None:
     raise_spec(ledger, RECODED)
-    report = _runner(ledger, fake("not json", answer("yes", "x" * 201))).run_pass()
+    report = _runner(ledger, fake("not json", answer("yes", "x" * 301))).run_pass()
     assert report.counts == {"rejected": 1}
     ((_, a),) = _assessments(ledger)
     assert (a.verdict, a.reason) == (None, None)
@@ -413,3 +413,19 @@ def test_each_model_answers_all_its_requests_before_the_next(ledger: SqliteLedge
     # One job per request here, all of MODEL_A first: Ollama loads each model once.
     assert [r.model for r in client.requests] == [MODEL_A, MODEL_A, MODEL_B, MODEL_B]
     assert all(len(a.answers) == 2 for _, a in _assessments(ledger))
+
+
+def test_1_1_1_accepts_a_reason_of_two_sentences_and_300_characters(ledger: SqliteLedger) -> None:
+    """Validator 1.1.0: three qwen3.5 dev answers in step 3b2 failed only on length."""
+    assert (ta.VERSION, ta.VALIDATOR_VERSION) == ("1.1.1", "1.1.0")
+    long_two = "Pruritus is itching. " + "x" * (300 - len("Pruritus is itching. ") - 1) + "."
+    assert len(long_two) == 300
+    raise_spec(ledger, RECODED)
+    _runner(
+        ledger, fake(answer("yes", long_two), answer("yes", "One sentence. Another."))
+    ).run_pass()
+    ((_, a),) = _assessments(ledger)
+    assert all(x.status == "accepted" for x in a.answers)
+    assert (a.status, a.verdict) == ("accepted", "yes")
+    # The prompt still asks for one sentence of at most 200 characters.
+    assert "4. reason: one sentence, at most 200 characters" in ta.SYSTEM_PROMPT

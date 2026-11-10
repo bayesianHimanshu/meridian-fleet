@@ -25,6 +25,7 @@ from meridian.platform.agent_settings import (
     KriMonitorConfig,
     QtlDetectorConfig,
     SaeReconcilerConfig,
+    TmfCompletenessConfig,
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
@@ -68,6 +69,7 @@ class AgentsSettings(BaseModel):
     qtl_detector: QtlDetectorConfig
     csm: CsmConfig = Field(default_factory=CsmConfig)
     sae_reconciler: SaeReconcilerConfig = Field(default_factory=SaeReconcilerConfig)
+    tmf_completeness: TmfCompletenessConfig = Field(default_factory=TmfCompletenessConfig)
 
 
 class RuntimeSettings(BaseModel):
@@ -205,6 +207,8 @@ class Settings(BaseSettings):
     ground_truth_dir: Path = Path("data/ground_truth")
     # The synthetic safety database: one snapshot per cut (meridian.safetydb).
     safety_root: Path = Path("data/safety_db")
+    # The synthetic eTMF index: one snapshot per cut (meridian.tmf).
+    etmf_root: Path = Path("data/etmf")
     evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)

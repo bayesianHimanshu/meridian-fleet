@@ -11,6 +11,13 @@ tolerance number match with an exact match on display tokens, and adds one reaso
 known failure: number_not_displayed, unbacked_ratio, supporting_as_headline, zero_p_value,
 misattribution, threshold_restated and direction_contradicted. The 1.0.0 version is
 frozen in meridian.agents.rbqm.narrator_v1_0.
+
+1.1.1 (phase 3 step 4a) adds one rule, shared with safety.local_narrator (validator
+1.1.1): selector_leak:<token>. Text that copies an evidence selector or field name is
+rejected: a field name of an evidence selector (CASEID, AESEQ, AESER, USUBJID, ...) as a
+word, any upper-case key followed by "=" (AESER = N, SEVERITY=high), or an evidence
+statistic written out (onset:clinical). Selectors are for the reviewer's trace, not for
+the reader; step 3b2 found accepted local narratives that pasted them.
 """
 
 import json
@@ -57,7 +64,7 @@ __all__ = [
 ]
 
 AGENT_ID = "rbqm.narrator"
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 # finding_raised events of exactly these detector versions (1.0.0 narratives of older
 # versions stay as they are).
 NARRATES: dict[str, str] = {
@@ -350,8 +357,34 @@ def undisplayed_numbers(masked: str, inp: dict[str, Any]) -> list[str]:
     return list(dict.fromkeys(bad))
 
 
+_SELECTOR_KEY = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
+_KEY_EQUALS = re.compile(r"(?<![\w-])([A-Z][A-Z0-9_]{2,})\s*=")
+
+
+def selector_leaks(text: str, inp: dict[str, Any]) -> list[str]:
+    """Evidence selectors or field names copied into the text: a selector's field name as
+    a word, an upper-case key followed by "=", or an evidence statistic written out."""
+    keys: set[str] = set()
+    statistics: set[str] = set()
+    for e in inp.get("evidence", []):
+        if not isinstance(e, dict):
+            continue
+        for part in str(e.get("selector") or "").split(";"):
+            key = part.partition("=")[0].strip()
+            if _SELECTOR_KEY.fullmatch(key):
+                keys.add(key)
+        statistic = str(e.get("statistic") or "")
+        if ":" in statistic:
+            statistics.add(statistic)
+    found = [k for k in sorted(keys) if re.search(rf"(?<![\w-]){re.escape(k)}(?![\w-])", text)]
+    found += [m.group(1) for m in _KEY_EQUALS.finditer(text)]
+    lower = text.lower()
+    found += [s for s in sorted(statistics) if s.lower() in lower]
+    return list(dict.fromkeys(found))
+
+
 def validate(text: str, inp: dict[str, Any], stop_reason: str | None = None) -> Validation:
-    """Validator 1.1.0."""
+    """Validator 1.1.1 (1.1.0 and selector_leak)."""
     reasons: list[str] = []
     if stop_reason == "refusal":
         reasons.append("model_refusal")
@@ -393,6 +426,7 @@ def validate(text: str, inp: dict[str, Any], stop_reason: str | None = None) -> 
         reasons.append("misattribution")
     reasons += [f"threshold_restated:{b}" for b in threshold_restatements(both, inp)]
     reasons += [f"direction_contradicted:{b}" for b in direction_contradictions(both, inp)]
+    reasons += [f"selector_leak:{k}" for k in selector_leaks(both, inp)]
     if reasons:
         return Validation(None, None, tuple(dict.fromkeys(reasons)))
     return Validation(headline, explanation, ())

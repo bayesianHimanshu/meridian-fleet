@@ -18,6 +18,7 @@ from meridian.data.study_store import ParquetStudyReader, StudyReader
 from meridian.evals.scorecard import ScorecardStore
 from meridian.faults.inject import FaultInjector
 from meridian.faults.safety import SafetyInjector
+from meridian.faults.tmf import TmfInjector
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
 from meridian.platform.config import LocalModelSettings, Settings
@@ -59,6 +60,21 @@ class Container:
         """The blinded area of one cut's safety database snapshot (never its unblinded/)."""
         return ParquetStudyReader(self.settings.safety_root / self.settings.study_id, cut_id)
 
+    def etmf_reader(self, cut_id: str) -> StudyReader:
+        """The blinded area of one cut's eTMF snapshot: the index, visits and export date."""
+        return ParquetStudyReader(self.settings.etmf_root / self.settings.study_id, cut_id)
+
+    def tmf_injector(self) -> TmfInjector:
+        return TmfInjector(
+            clock=self.clock,
+            ledger=self.ledger,
+            curated_root=self.settings.curated_root,
+            etmf_root=self.settings.etmf_root,
+            study_id=self.settings.study_id,
+            ground_truth_dir=self.settings.ground_truth_dir,
+            ref=self.settings.agents.tmf_completeness.reference,
+        )
+
     def safety_injector(self) -> SafetyInjector:
         return SafetyInjector(
             clock=self.clock,
@@ -97,6 +113,7 @@ class Container:
             registry=self.agent_registry(),
             reader_factory=self.study_reader,
             safety_reader_factory=self.safety_db_reader,
+            tmf_reader_factory=self.etmf_reader,
             log=log,
         )
 
@@ -133,6 +150,7 @@ class Container:
             keep_failed=rt.keep_failed,
             log=log,
             safety_root=self.settings.safety_root / self.settings.study_id,
+            etmf_root=self.settings.etmf_root / self.settings.study_id,
         )
 
     def narrator_runner(

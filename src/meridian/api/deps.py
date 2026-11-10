@@ -16,7 +16,12 @@ from fastapi import Depends, Header, HTTPException, Request
 from meridian.agents.registry import AgentRegistry
 from meridian.api.identity import ACTOR_HEADER, ROLE_HEADER, People, Person
 from meridian.api.repository import PortfolioEntry, Repository
-from meridian.data.study_store import ParquetStudyReader, StudyReader, UnblindedReader
+from meridian.data.study_store import (
+    LayeredStudyReader,
+    ParquetStudyReader,
+    StudyReader,
+    UnblindedReader,
+)
 from meridian.domain.safety import SAFETY_CASES, SAFETY_UNBLINDED
 from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock
@@ -38,6 +43,15 @@ class ApiContext:
     portfolio: tuple[PortfolioEntry, ...]
     operational_cuts: tuple[str, ...] = ("DC-BASE",)
     safety_root: Path = Path("data/safety_db")
+    etmf_root: Path = Path("data/etmf")
+    run_timeout_seconds: int = 120  # [runtime] exec_timeout_seconds
+
+    def tmf_reader(self, cut_id: str) -> StudyReader:
+        """Blinded DM of the cut, layered with its eTMF snapshot (index, visits, export)."""
+        return LayeredStudyReader(
+            ParquetStudyReader(self.curated_root / self.study_id, cut_id),
+            ParquetStudyReader(self.etmf_root / self.study_id, cut_id),
+        )
 
     def study_reader(self, cut_id: str) -> StudyReader:
         return ParquetStudyReader(self.curated_root / self.study_id, cut_id)
@@ -98,6 +112,7 @@ def repository(
             ground_truth_dir=ctx.ground_truth_dir,
             portfolio=ctx.portfolio,
             operational_cuts=ctx.operational_cuts,
+            run_timeout_seconds=ctx.run_timeout_seconds,
         )
     finally:
         ledger.close()

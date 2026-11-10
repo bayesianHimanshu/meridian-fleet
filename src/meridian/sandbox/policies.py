@@ -37,6 +37,7 @@ from meridian.data.stage_layout import (
     OPS,
     STAGE_AREAS,
     STAGE_ROOT,
+    TMF,
     UNBLINDED,
     stage_path,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "OPS",
     "STAGE_AREAS",
     "STAGE_ROOT",
+    "TMF",
     "UNBLINDED",
     "stage_path",
 ]
@@ -131,12 +133,14 @@ class ZonePolicy:
 
 
 # The areas each zone may read. The safety zone reads no operational data (its agent
-# reads ae, dm and the safety database snapshot only); the unblinded zone is the only one
-# that may read the unblinded area. The others have no agent yet and keep the blinded
-# default.
+# reads ae, dm and the safety database snapshot only); the quality zone reads blinded DM
+# and the cut's eTMF index (tmf), and is the only zone that may read tmf; the unblinded
+# zone is the only one that may read the unblinded area. The others have no agent yet and
+# keep the blinded default.
 ZONE_READS: dict[str, tuple[str, ...]] = {
     **dict.fromkeys(ZONES, BLINDED_READS),
     "safety": (META, BLINDED),
+    "quality": (META, BLINDED, TMF),
     "unblinded": (META, BLINDED, OPS, UNBLINDED),
 }
 POLICIES: dict[str, ZonePolicy] = {zone: ZonePolicy(zone, ZONE_READS[zone]) for zone in ZONES}
@@ -401,9 +405,11 @@ BOUNDARIES_DIR = "boundaries"
 # The narrator boundary is the blinded one plus the Messages API for python only: the
 # only policy allowed egress, and only there (phase 2 step 3).
 # The local model boundary is its job folder plus the two Ollama requests, for python only.
-# The unblinded boundary is the only one with the unblinded area.
+# The unblinded boundary is the only one with the unblinded area, and the quality boundary
+# the only one with the eTMF area.
 BOUNDARIES: dict[str, ZonePolicy] = {
     "blinded": ZonePolicy("blinded"),
+    "quality": ZonePolicy("quality", ZONE_READS["quality"]),
     "unblinded": ZonePolicy("unblinded", ZONE_READS["unblinded"]),
     "narrator": ZonePolicy(
         "narrator", reads=(NARR,), network=AGENT_POLICIES[NARRATOR_POLICY].network
@@ -411,7 +417,11 @@ BOUNDARIES: dict[str, ZonePolicy] = {
     "local_model": ZonePolicy("local_model", reads=(LM,), network=(OLLAMA_RULE,)),
 }
 # The boundary each zone is proved against.
-ZONE_BOUNDARY: dict[str, str] = {**dict.fromkeys(ZONES, "blinded"), "unblinded": "unblinded"}
+ZONE_BOUNDARY: dict[str, str] = {
+    **dict.fromkeys(ZONES, "blinded"),
+    "quality": "quality",
+    "unblinded": "unblinded",
+}
 # Every committed policy and the boundary it is proved against.
 POLICY_BOUNDARY: dict[str, str] = {
     **ZONE_BOUNDARY,
