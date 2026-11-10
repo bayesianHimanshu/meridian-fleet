@@ -3558,7 +3558,9 @@
                 "enum": [
                   "harness",
                   "openshell_log",
-                  "substrate_log"
+                  "substrate_log",
+                  "runner_guard",
+                  "substrate_authz"
                 ],
                 "type": "string"
               },

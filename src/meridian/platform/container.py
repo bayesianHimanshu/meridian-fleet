@@ -1,7 +1,7 @@
 """Explicit wiring. Everything is constructed here and passed by constructor."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -39,7 +39,13 @@ from meridian.sandbox.image import default_image
 from meridian.sandbox.local_model import OpenShellLocalModelExecutor
 from meridian.sandbox.narration import OpenShellNarrationExecutor
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
-from meridian.sandbox.substrate import KubectlAteClient, SubstrateClient, read_install_record
+from meridian.sandbox.substrate import (
+    RUNNER_VERBS,
+    KubectlAteClient,
+    ServiceAccountToken,
+    SubstrateClient,
+    read_install_record,
+)
 from meridian.sandbox.substrate_executor import (
     SUBSTRATE,
     SubstrateExecutor,
@@ -55,6 +61,8 @@ class Container:
     settings: Settings
     clock: Clock
     ledger: SqliteLedger
+    # One runner token per container (minted on first use, shared by its clients).
+    _tokens: dict[str, ServiceAccountToken] = field(default_factory=dict, repr=False)
 
     @classmethod
     def build(cls, settings: Settings, clock: Clock | None = None) -> Self:
@@ -278,7 +286,36 @@ class Container:
     def sandbox_tracker(self) -> SandboxTracker:
         return SandboxTracker(self.settings.runtime.sandboxes_log, self.clock)
 
-    def substrate_client(self) -> KubectlAteClient:
+    def runner_token(self) -> ServiceAccountToken:
+        """The runner's ServiceAccount token, minted on first use and shared by its clients."""
+        s = self.settings.substrate
+        if "runner" not in self._tokens:
+            self._tokens["runner"] = ServiceAccountToken(
+                path=s.runner_token_file,
+                namespace=s.namespace,
+                service_account=s.runner_service_account,
+                audience=s.api_audience,
+                kubectl=s.kubectl,
+                context=s.context,
+            )
+        return self._tokens["runner"]
+
+    def substrate_client(self, *, guarded: bool = True) -> KubectlAteClient:
+        """The runner's client: its own identity (atespace editor) and the verb allow-list,
+        so it refuses suspend, revert and tag before Substrate sees them. guarded=False is
+        the same identity without the allow-list (only the guard check uses it)."""
+        s = self.settings.substrate
+        return KubectlAteClient(
+            s.atespace,
+            kubectl=s.kubectl,
+            context=s.context,
+            timeout_seconds=s.request_timeout_seconds,
+            token_file=self.runner_token(),
+            allowed=RUNNER_VERBS if guarded else None,
+        )
+
+    def substrate_admin_client(self) -> KubectlAteClient:
+        """The shared bootstrap identity, unguarded: deploy and the proofs' positive control."""
         s = self.settings.substrate
         return KubectlAteClient(
             s.atespace,

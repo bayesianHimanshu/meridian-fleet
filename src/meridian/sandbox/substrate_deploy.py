@@ -11,6 +11,7 @@ no longer name.
 
 import json
 import subprocess
+import tempfile
 import time
 import urllib.request
 from collections.abc import Sequence
@@ -105,6 +106,41 @@ def wait_pool(kubectl: str, context: str, namespace: str, name: str, timeout: fl
         ],
         timeout=timeout + 30,
     )
+
+
+def ensure_runner_identity(
+    kubectl: str,
+    context: str,
+    atespace: str,
+    runner_file: Path,
+    policy_file: Path,
+    expected_bindings: list[dict[str, object]],
+) -> str:
+    """Apply the runner's ServiceAccount and make the atespace's access policy the
+    committed one (create it, or update it with the server's uid and version)."""
+    _run([kubectl, "--context", context, "apply", "-f", str(runner_file)])
+    ate = [kubectl, "ate", "--context", context]
+    try:
+        current = json.loads(_run([*ate, "get", "access-policy", "-a", atespace, "-o", "json"]))
+    except DeployError as exc:
+        if "no access policy" not in str(exc) and "NotFound" not in str(exc):
+            raise
+        _run([*ate, "create", "access-policy", "-a", atespace, "-f", str(policy_file)])
+        return "created"
+    if current.get("bindings") == expected_bindings:
+        return "unchanged"
+    meta = current.get("metadata", {})
+    manifest = {
+        "metadata": {"name": "default", "uid": meta.get("uid"), "version": meta.get("version")},
+        "bindings": expected_bindings,
+    }
+    with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+        json.dump(manifest, handle)
+    try:
+        _run([*ate, "update", "access-policy", "-a", atespace, "-f", handle.name])
+    finally:
+        Path(handle.name).unlink(missing_ok=True)
+    return "updated"
 
 
 def ensure_atespace(client: KubectlAteClient, kubectl: str, context: str) -> None:

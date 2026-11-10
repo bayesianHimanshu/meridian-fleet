@@ -1567,7 +1567,7 @@ export interface components {
             /** Sandbox */
             sandbox?: string | null;
             /** Source */
-            source?: ("harness" | "openshell_log" | "substrate_log") | null;
+            source?: ("harness" | "openshell_log" | "substrate_log" | "runner_guard" | "substrate_authz") | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}

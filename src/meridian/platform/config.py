@@ -220,6 +220,13 @@ class SubstrateSettings(BaseModel):
     port: int = Field(8080, ge=1024, le=65535)  # what meridian-worker serve listens on
     request_timeout_seconds: float = Field(180.0, gt=0)
     actors_log: Path = Path("var/actors.jsonl")
+    # The runner's own identity: a ServiceAccount in `namespace` with `editor` on the
+    # atespace only (deploy/substrate/access-policy.yaml), and a short-lived token for it.
+    runner_service_account: str = "meridian-runner"
+    runner_token_file: Path = Path("var/substrate/runner.token")
+    api_audience: str = "api.ate-system.svc"  # the audience ate-api-server accepts
+    # A run that finds no free worker (ResourceExhausted) waits and retries this long.
+    placement_wait_seconds: float = Field(120.0, ge=0)
 
 
 class ApiSettings(BaseModel):

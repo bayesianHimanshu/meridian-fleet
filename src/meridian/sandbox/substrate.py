@@ -7,14 +7,27 @@ deploy` (meridian.sandbox.substrate_deploy). Tests inject a fake with the same p
 
 A run reaches its actor through `kubectl ate proxy actor`, which mints a client
 certificate, connects to atenet-router and forwards a local port to the actor's port.
+
+Two identities (phase 4a step 3, docs/substrate-design.md):
+- The runner acts as its own ServiceAccount, meridian/meridian-runner, with a short-lived
+  token (--token-file). Its only grant is `editor` on the atespace (the access policy in
+  deploy/substrate/access-policy.yaml), so Substrate refuses it anything outside the
+  atespace. Substrate v1.0.0 cannot refuse it suspend: an editor may create, delete,
+  suspend, revert and tag actors alike (cmd/ateapi/internal/authz/model.fga).
+  So the runner's client also carries a verb allow-list (RUNNER_VERBS) and refuses every
+  other `kubectl ate` call (suspend, revert, tag, update) before it is made, raising
+  GuardRefusedError. That guard is ours, in this process, not Substrate's.
+- Deploying templates and the proofs' positive control use the shared bootstrap identity
+  (ate-client), without a guard.
 """
 
 import contextlib
 import json
 import re
 import subprocess
+import threading
 import time
-from collections.abc import Iterator, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -28,6 +41,36 @@ class SubstrateError(Exception):
 
 class NotFoundError(SubstrateError):
     pass
+
+
+class ResourceExhaustedError(SubstrateError):
+    """No worker has room for the actor (gRPC ResourceExhausted)."""
+
+
+class GuardRefusedError(SubstrateError):
+    """The runner's client refused a call outside its allow-list; nothing was sent."""
+
+    def __init__(self, verb: str, kind: str, name: str | None) -> None:
+        self.verb, self.kind, self.name = verb, kind, name
+        super().__init__(
+            f"refused by the runner guard: `kubectl ate {verb} {kind}` is not in the runner's "
+            f"allow-list ({', '.join(' '.join(v) for v in sorted(RUNNER_VERBS))})"
+        )
+
+
+# What a run needs, and nothing else. Golden-snapshot resume (resume actor) only restores
+# the template's golden snapshot; it never writes one.
+RUNNER_VERBS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("get", "actor"),
+        ("get", "actor-template"),
+        ("get", "tag"),
+        ("create", "actor"),
+        ("resume", "actor"),
+        ("proxy", "actor"),
+        ("delete", "actor"),
+    }
+)
 
 
 class SubstrateClient(Protocol):
@@ -60,23 +103,42 @@ class KubectlAteClient:
         kubectl: str = KUBECTL,
         context: str | None = None,
         timeout_seconds: float = 120.0,
+        token_file: Callable[[], Path] | None = None,
+        allowed: frozenset[tuple[str, str]] | None = None,
     ) -> None:
+        """token_file returns a current token file (the runner's identity); None acts as
+        the shared bootstrap identity. allowed, if given, is the verb allow-list."""
         self._atespace = atespace
         self._kubectl = kubectl
         self._context = context
         self._timeout = timeout_seconds
+        self._token_file = token_file
+        self._allowed = allowed
 
     @property
     def atespace(self) -> str:
         return self._atespace
 
+    @property
+    def guarded(self) -> bool:
+        return self._allowed is not None
+
     def _base(self) -> list[str]:
         base = [self._kubectl, "ate"]
         if self._context:
             base += ["--context", self._context]
+        if self._token_file is not None:
+            base += ["--token-file", str(self._token_file())]
         return base
 
+    def _guard(self, args: Sequence[str]) -> None:
+        verb, kind = [*args, "", ""][:2]
+        if self._allowed is not None and (verb, kind) not in self._allowed:
+            name = args[2] if len(args) > 2 and not args[2].startswith("-") else None
+            raise GuardRefusedError(verb, kind, name)
+
     def _run(self, args: Sequence[str]) -> str:
+        self._guard(args)
         argv = [*self._base(), *args]
         try:
             done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
@@ -88,8 +150,14 @@ class KubectlAteClient:
             message = _error_text(done.stderr)
             if "NotFound" in message or "not found" in message:
                 raise NotFoundError(message)
+            if "ResourceExhausted" in message:
+                raise ResourceExhaustedError(message)
             raise SubstrateError(f"{' '.join(argv[:4])}: {message}")
         return done.stdout
+
+    def call(self, args: Sequence[str]) -> str:
+        """Any `kubectl ate` call (guarded like every other); the guard check uses it."""
+        return self._run(args)
 
     def _json(self, args: Sequence[str]) -> dict[str, Any]:
         out = self._run([*args, "-a", self._atespace, "-o", "json"])
@@ -127,11 +195,21 @@ class KubectlAteClient:
         self._run(["delete", "actor", name, "-a", self._atespace])
 
     def suspend_actor(self, name: str) -> dict[str, Any]:
-        """Only the canary proof's positive control suspends an actor; runs never do."""
+        """Only the canary proof's positive control suspends an actor, with the bootstrap
+        identity; the runner's guarded client refuses it."""
         return self._json(["suspend", "actor", name, "--mode", "sync"])
+
+    def tag_actor(self, name: str, tag: str) -> dict[str, Any]:
+        """Never used by a run; here so the guard's refusal of it can be tested."""
+        return self._json(["create", "tag", tag, "--actor", name])
+
+    def revert_actor(self, name: str) -> dict[str, Any]:
+        """Never used by a run; here so the guard's refusal of it can be tested."""
+        return self._json(["revert", "actor", name])
 
     @contextlib.contextmanager
     def proxy(self, name: str, port: int) -> Iterator[str]:
+        self._guard(["proxy", "actor", name])
         argv = [*self._base(), "proxy", "actor", name, "-a", self._atespace, f"0:{port}"]
         process = subprocess.Popen(  # noqa: S603 (argv built from fixed parts)
             argv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True
@@ -163,6 +241,59 @@ def _await_proxy(process: subprocess.Popen[str], timeout: float) -> str:
         if match:
             return match.group(1)
     raise SubstrateError("kubectl ate proxy did not start listening")
+
+
+class ServiceAccountToken:
+    """A short-lived token for a ServiceAccount (kubectl create token), kept in a 0600 file
+    and minted again when it is older than half its lifetime. Thread safe."""
+
+    def __init__(
+        self,
+        *,
+        path: Path,
+        namespace: str,
+        service_account: str,
+        audience: str,
+        kubectl: str = KUBECTL,
+        context: str | None = None,
+        lifetime_seconds: int = 3600,
+    ) -> None:
+        self._path = path
+        self._argv = [kubectl]
+        if context:
+            self._argv += ["--context", context]
+        self._argv += [
+            "-n",
+            namespace,
+            "create",
+            "token",
+            service_account,
+            "--audience",
+            audience,
+            "--duration",
+            f"{lifetime_seconds}s",
+        ]
+        self._lifetime = lifetime_seconds
+        self._minted_at: float | None = None
+        self._lock = threading.Lock()
+
+    def __call__(self) -> Path:
+        with self._lock:
+            now = time.monotonic()
+            if self._minted_at is None or now - self._minted_at > self._lifetime / 2:
+                done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
+                    self._argv, capture_output=True, text=True, timeout=60, check=False
+                )
+                if done.returncode != 0 or not done.stdout.strip():
+                    raise SubstrateError(f"cannot mint the runner token: {done.stderr[-500:]}")
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                tmp = self._path.with_suffix(".tmp")
+                tmp.touch(mode=0o600)
+                tmp.chmod(0o600)
+                tmp.write_text(done.stdout.strip(), encoding="utf-8")
+                tmp.replace(self._path)
+                self._minted_at = now
+            return self._path
 
 
 def _error_text(stderr: str) -> str:
