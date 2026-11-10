@@ -1,4 +1,7 @@
-# Agent Substrate: proofs and measurements (phase 4a step 2)
+# Agent Substrate: proofs and measurements (phase 4a steps 2 and 3)
+
+Step 2's proofs and measurements come first; step 3's (the runner's identity, the slow
+restores, worker size, the full pass) are in "Step 3" at the end.
 
 Setup: Agent Substrate v1.0.0 (`b34fbee7`) on a single-node kind cluster (Kubernetes 1.37)
 on this laptop (16 CPUs, 15 GiB RAM), gVisor only. One WorkerPool, meridian/meridian, of
@@ -177,3 +180,34 @@ Substrate steps (100 warm runs; p50 / p95 / max, in ms):
 baseline, and 8.4 times faster than OpenShell measured now on the same agent, cut and laptop.
 Today the OpenShell run is 10.1 s rather than 8 s, probably because the cluster shares the
 laptop. A pass of the 6 DC-BASE agents takes about 7 s instead of about a minute.
+
+## Step 3
+
+### Slow restores: the node's image cache evicts the agent image
+
+`meridian substrate bench` now writes one row per run (actor, worker pod, start time,
+steps) to its JSON line (`runs_each`). 200 sequential runs (var/substrate/restore.jsonl):
+p50 1.19 s, p95 1.26 s, one slow run, the first (resume 3,009 ms). atelet's "Restore
+timing breakdown" line for that actor: `oci_unpack` 2.77 s (median of 220 restores:
+0.5 ms), snapshot download 0.3 ms, gVisor restore 0.15 s. atelet had logged `Image cache
+miss` for the agent image just before, and `Image cache GC pass complete ... evicted_images
+1, evicted_layers 9` (574 MB) at the previous 5-minute GC pass.
+
+atelet's image GC (`cmd/atelet/imagegc.go` in v1.0.0) runs every 5 minutes and, while the
+cache volume is above 85% full, evicts images older than 2 minutes that no actor uses. The
+kind node's /var is this laptop's disk, 89% full. Five benches of 4 runs after idle gaps
+(var/substrate/restore-gaps.jsonl) match the GC schedule exactly:
+
+| Idle gap before the bench | GC pass with the image idle over 2 min? | First resume |
+|---|---|---:|
+| 0 s (twice) | no | 242 ms, 252 ms |
+| 60 s | no | 209 ms |
+| 180 s | no (the 20:50:04 pass saw 1 min 43 s) | 192 ms |
+| 300 s | yes (20:55:04, evicted) | **2,817 ms** |
+
+The second run of the 300 s bench, on the other worker, resumed in 220 ms: the cache is
+per node, not per worker. So this is not a first restore per template or per worker, and
+pre-warming workers after deploy would not help (the image is evicted again after a few
+idle minutes). Fixes are outside this project's remit: free space on the laptop's disk, or
+raise atelet's `--image-cache-high-percent` in ate-system. A pass pays it once, at its
+first wave of runs (they share one pull).

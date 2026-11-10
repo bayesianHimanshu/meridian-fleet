@@ -3,7 +3,7 @@
 # src/meridian/sandbox/substrate_templates.py; do not edit by hand.
 metadata:
   atespace: meridian
-  name: quality-audit-trail-3f954d2c8c3e-m768
+  name: quality-audit-trail-3f954d2c8c3e-m384
 workerSelector:
   matchLabels:
     workload: meridian
@@ -24,6 +24,6 @@ containers:
 resources:
   limits:
     cpuMillicores: 1000
-    memoryBytes: 805306368
+    memoryBytes: 402653184
 snapshotConfig:
   preferredFidelity: "SNAPSHOT_FIDELITY_MEMORY"

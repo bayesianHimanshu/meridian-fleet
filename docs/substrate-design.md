@@ -1,7 +1,8 @@
-# Agent Substrate: discovery and design (phase 4a steps 1 and 2)
+# Agent Substrate: discovery and design (phase 4a steps 1 to 3)
 
 Parts 0 and 1 are the step 1 design. Part 2 records the decisions taken after it and what
-step 2 built, including where the build departs from the design. Measurements and proofs are
+step 2 built, including where the build departs from the design. Part 3 is step 3: the
+runner's identity, the parallel runner, worker size, image source and pre-warming. Measurements and proofs are
 in docs/substrate-eval.md.
 
 Step 1 was design only: no executor code, no cluster, nothing installed. Every claim about Substrate cites
@@ -226,7 +227,7 @@ What makes it only procedural, not enforced:
 
 Mitigation: an AccessPolicy that grants the runner create, delete and get on actors in the data
 atespaces, and nothing that can suspend (`docs/guides/authorization.md:112-193`; **guess** that
-the RPC checks are fine-grained enough, to verify).
+the RPC checks are fine-grained enough, to verify). Step 3 verified it: they are not (Part 3).
 
 ### 3. Containment parity
 
@@ -438,7 +439,70 @@ restore phases. Its numbers are targets, not measurements: under 500 ms resume
   must decode it; a plain zstd decoder fails on every object.
 - **DeleteActor removes the actor's own snapshot** from object storage within 30 s (seen in the
   canary's positive control), as Part 1 read in `workflow_delete.go`.
-- **AccessPolicy:** not set up. The runner acts as the shared bootstrap identity
-  `system:serviceaccount:ate-system:ate-client`, which can also suspend. The control that no
-  run is suspended is therefore the executor's per-run snapshot check plus the canary proof,
-  not authorization (docs/threat-model.md section 4).
+- **AccessPolicy:** not set up in step 2; the runner acted as the shared bootstrap identity
+  `system:serviceaccount:ate-system:ate-client`. Step 3 gave it its own identity (Part 3).
+
+## Part 3: step 3 (phase 4a step 3)
+
+### The runner's identity, and why suspend is refused by our client, not by Substrate
+
+- **Own identity.** The runner acts as the ServiceAccount `meridian/meridian-runner`
+  (deploy/substrate/runner.yaml), with a one-hour token minted by `kubectl create token
+  --audience api.ate-system.svc` and passed as `kubectl ate --token-file`. Its only grant is
+  `editor` on the meridian atespace (deploy/substrate/access-policy.yaml, applied by
+  `meridian substrate deploy`). The shared bootstrap owner `ate-client` is used only by
+  deploy and by the canary's positive control.
+- **v1.0.0 cannot express "create and delete, but not suspend".** In the release:
+  `cmd/ateapi/internal/authz/model.fga` defines `can_create_actor: editor` on the atespace and
+  `can_delete`, `can_suspend` and `can_revert` as `editor from parent_atespace` on the
+  actor, and `can_create_tag: editor`. Access policies accept only owner, editor and viewer
+  (`cmd/ateapi/internal/apivalidation/access_policy.go`, validAtespaceRoles), and there are
+  no per-actor or per-template grants (`docs/guides/authorization.md`, "Known
+  limitations"). The `[user]` direct relation on `can_suspend` is not reachable through any
+  API. So any identity that can run an actor can suspend it. Verified: the runner's
+  identity suspends a data-free actor (`meridian substrate guard-check --show-gap`).
+- **What we do instead.** The runner's client carries an allow-list (`RUNNER_VERBS` in
+  src/meridian/sandbox/substrate.py: get actor, template and tag; create, resume, proxy and
+  delete actor) and refuses every other `kubectl ate` call before running it. It is a
+  control in our process, not in Substrate. The per-run snapshot check and the canary proof
+  remain as the second layer.
+- **Worker-initiated suspend** does not exist in v1.0.0: `internal/ateworker/suspend` has
+  `RequestSuspend` but nothing calls it, and DrainWorker leaves assignments alone
+  (`cmd/ateapi/internal/controlapi/worker.go`).
+
+### Parallel runner
+
+- `AgentRunner.run_pending` orders the pending pairs by (trigger seq, agent id), plans them
+  all, and runs them through one queue per executor of `capacity()` threads. Substrate's
+  capacity is the WorkerPool's readyReplicas (Kubernetes status, because the runner's
+  identity may not list workers) minus the live actors in the atespace; OpenShell and
+  in-process stay at 1.
+- Runs do not write the ledger. The calling thread takes their results in plan order and
+  appends each run's ActorWoke, findings and ActorSuspended together, so the ledger content
+  of a pass does not depend on timing. ActorWoke is therefore appended after the run.
+  `tests/unit/test_parallel_runner.py` compares a sequential pass with five jittered
+  parallel passes, event for event (all fields but the random event id and the hashes).
+- A resume that finds no free worker (`ResourceExhausted`) waits with backoff for up to
+  `placement_wait_seconds` (120 s) instead of failing.
+
+### Image source
+
+- `meridian image build` labels the image `org.opencontainers.image.revision=<HEAD>` and
+  `dev.meridian.source.dirty=<true|false>` (any image source modified, staged, deleted or
+  untracked). `meridian substrate deploy` refuses an image without the labels, a dirty one,
+  or one naming a commit the repository lacks. The executor reads the label from the
+  registry's image config and records it on SubstrateRun as `image_source_commit`.
+
+### Slow restores: an image cache eviction, not a first restore
+
+About 1 run in 100 resumed in about 2.8 s instead of 0.2 s. atelet's "Restore timing
+breakdown" log line for such a run shows 2.77 s in `oci_unpack` and normal times elsewhere
+(snapshot download 0.3 ms, gVisor restore 0.15 s). atelet logged `Image cache miss` for the
+agent image just before it. The node's image cache had evicted the image: atelet's image GC
+runs every 5 minutes (`--image-cache-gc-period`) and, while the cache volume is above 85%
+(`--image-cache-high-percent`), evicts images older than 2 minutes that no actor uses
+(`cmd/atelet/imagegc.go`). The kind node's /var is the laptop's disk, 89% full, so after
+about 2 to 7 idle minutes the next restore pulls and unpacks the 574 MB image again. In
+every bench at one or two runs at a time (step 2 and step 3), the slow runs were the first
+of the bench, after an idle period (in step 2's 2-worker bench, the first two, which shared
+one pull). It is not a first restore per template or per worker: those took about 0.5 s.

@@ -88,6 +88,10 @@ atespace = "meridian"
 namespace = "meridian"
 worker_pool = "meridian"
 workers = 2
+# 512 MiB workers and 384 MiB actors (phase 4a step 3: peak 289 MiB per worker pod;
+# 200 runs at 16 concurrent, none failed; docs/substrate-eval.md).
+worker_memory_mib = 512
+actor_memory_mib = 384
 sandbox_class = "gvisor"
 registry = "localhost:5001"
 deploy_dir = "deploy/substrate"
