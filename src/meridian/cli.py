@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -483,6 +484,7 @@ def agents_run(
             raise typer.Exit(code=2)
         if only_cuts:
             cuts = set(only_cuts) if cuts is None else cuts & set(only_cuts)
+        started = time.perf_counter()
         try:
             report = c.agent_runner(log).run_pending(cuts=cuts, rerun=rerun)
         except SandboxRequiredError as exc:
@@ -496,6 +498,11 @@ def agents_run(
             f"findings appended {len(report.findings_appended)}, "
             f"skipped as duplicates {len(report.findings_skipped)}"
         )
+        per = ", ".join(
+            f"{n} {k} ({report.capacity.get(n, 1)} at a time)"
+            for n, k in sorted(report.executors.items())
+        )
+        typer.echo(f"  {time.perf_counter() - started:.1f} s; runs per executor: {per or 'none'}")
         for agent_id, seq in report.completed:
             typer.echo(f"  done   {agent_id} on DataCut seq {seq}")
         for agent_id, seq, error in report.failed:

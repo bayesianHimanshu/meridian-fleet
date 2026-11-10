@@ -77,6 +77,9 @@ class _FakeOpenShell:
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
         return RunPlan(self.name)
 
+    def capacity(self, executor: str) -> int:
+        return 1
+
     def run(
         self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
     ) -> _Outcome:

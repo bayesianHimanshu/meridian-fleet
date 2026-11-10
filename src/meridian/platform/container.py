@@ -1,6 +1,6 @@
 """Explicit wiring. Everything is constructed here and passed by constructor."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
@@ -44,6 +44,8 @@ from meridian.sandbox.substrate import (
     KubectlAteClient,
     ServiceAccountToken,
     SubstrateClient,
+    free_workers,
+    pool_ready_workers,
     read_install_record,
 )
 from meridian.sandbox.substrate_executor import (
@@ -372,7 +374,19 @@ class Container:
             etmf_root=self.settings.etmf_root / self.settings.study_id,
             audit_root=self.settings.audit_root,
             delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
+            free_workers=None if client is not None else self._free_workers(resolved),
+            placement_wait_seconds=self.settings.substrate.placement_wait_seconds,
         )
+
+    def _free_workers(self, client: SubstrateClient) -> Callable[[], int] | None:
+        if not isinstance(client, KubectlAteClient):
+            return None
+        s = self.settings.substrate
+
+        def ready() -> int:
+            return pool_ready_workers(s.kubectl, s.context, s.namespace, s.worker_pool)
+
+        return lambda: free_workers(client, ready)
 
     def zoned_executor(self, log: structlog.typing.FilteringBoundLogger) -> ZonedExecutor:
         """openshell for every policy, except those [runtime] executors sends to substrate."""

@@ -296,6 +296,25 @@ class ServiceAccountToken:
             return self._path
 
 
+def pool_ready_workers(kubectl: str, context: str | None, namespace: str, pool: str) -> int:
+    """readyReplicas of the WorkerPool (Kubernetes status; the runner's Substrate identity
+    may not list workers, which are global)."""
+    argv = [kubectl, *(["--context", context] if context else []), "-n", namespace]
+    argv += ["get", "workerpool", pool, "-o", "jsonpath={.status.readyReplicas}"]
+    done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
+        argv, capture_output=True, text=True, timeout=60, check=False
+    )
+    if done.returncode != 0:
+        raise SubstrateError(f"cannot read WorkerPool {namespace}/{pool}: {done.stderr[-300:]}")
+    return int(done.stdout.strip() or 0)
+
+
+def free_workers(client: KubectlAteClient, ready: Callable[[], int]) -> int:
+    """Ready workers minus live actors in the atespace (the pool serves only it, and
+    holds one actor per worker)."""
+    return ready() - len(client.actors())
+
+
 def _error_text(stderr: str) -> str:
     """stderr without the shared-identity warning kubectl ate prints on every call."""
     lines = [
