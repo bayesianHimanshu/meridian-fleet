@@ -99,7 +99,9 @@ def substrate_deploy(
 ) -> None:
     """Push the agent image to the kind registry, render deploy/substrate for its digest,
     apply the WorkerPool, create the atespace and templates, and wait for golden snapshots."""
+    from meridian.sandbox import image
     from meridian.sandbox import substrate_deploy as d
+    from meridian.sandbox.image import ImageError
     from meridian.sandbox.substrate_templates import (
         ACCESS_POLICY_FILE,
         CONFORMANCE,
@@ -115,6 +117,8 @@ def substrate_deploy(
     with Container.build(settings) as c:
         try:
             c.check_substrate_release()
+            commit = d.require_clean_source(image.inspect(c.image_ref()))
+            typer.echo(f"{c.image_ref()} was built from {commit} (clean)")
             pushed = d.push_image(c.image_ref(), s.registry)
             typer.echo(f"pushed {pushed.ref} (image id {pushed.config_digest})")
             write_rendered(settings, pushed.ref)
@@ -140,7 +144,7 @@ def substrate_deploy(
             if prune:
                 for name in d.prune_templates(client, s.kubectl, s.context, names):
                     typer.echo(f"deleted template {name}")
-        except (d.DeployError, SubstrateError, ExecutionError, OSError) as exc:
+        except (d.DeployError, SubstrateError, ExecutionError, ImageError, OSError) as exc:
             raise _fail(exc) from exc
 
 

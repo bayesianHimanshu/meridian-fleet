@@ -353,7 +353,11 @@ class Container:
         client: SubstrateClient | None = None,
         policies: Sequence[str] | None = None,
     ) -> SubstrateExecutor:
-        from meridian.sandbox.substrate_deploy import registry_config_digest
+        from meridian.sandbox.image import REVISION_LABEL
+        from meridian.sandbox.substrate_deploy import (
+            registry_config_digest,
+            registry_image_labels,
+        )
 
         self.check_substrate_release()
         resolved = client or self.substrate_client()
@@ -361,12 +365,14 @@ class Container:
         images = {t.image for t in templates.values()}
         if len(images) != 1:
             raise ExecutionError(f"the substrate templates name {len(images)} images: {images}")
+        image_ref = images.pop()
         return SubstrateExecutor(
             client=resolved,
             registry=self.agent_registry(),
             settings=self.settings.substrate,
             templates=templates,
-            image_digest=registry_config_digest(images.pop()),
+            image_digest=registry_config_digest(image_ref),
+            image_source_commit=registry_image_labels(image_ref).get(REVISION_LABEL),
             study_root=self.settings.curated_root / self.settings.study_id,
             tracker=SandboxTracker(self.settings.substrate.actors_log, self.clock),
             log=log,

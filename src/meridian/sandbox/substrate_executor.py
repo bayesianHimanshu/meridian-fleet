@@ -171,6 +171,7 @@ class SubstrateExecutor:
         templates: Mapping[str, ZoneTemplate],
         image_digest: str,
         study_root: Path,
+        image_source_commit: str | None = None,
         tracker: SandboxTracker,
         log: structlog.typing.FilteringBoundLogger,
         safety_root: Path | None = None,
@@ -195,6 +196,7 @@ class SubstrateExecutor:
         self._settings = settings
         self._templates = dict(templates)
         self._image_digest = image_digest  # the image id, as the OpenShell executor records
+        self._image_source_commit = image_source_commit
         self._study_root = study_root
         self._safety_root = safety_root
         self._etmf_root = etmf_root
@@ -237,6 +239,7 @@ class SubstrateExecutor:
             actor=actor,
             golden_tag=template.golden_tag,
             golden_snapshot=template.golden_snapshot,
+            image_source_commit=self._image_source_commit,
         )
 
     def executor_name(self, agent_id: str) -> str:

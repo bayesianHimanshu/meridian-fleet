@@ -68,6 +68,11 @@ class SubstrateRun(BaseModel):
     golden_snapshot: Annotated[str, Field(min_length=1)]  # the snapshot uuid of that tag
     actor_uid: str | None = None
     worker_pod: str | None = None
+    # Phase 4a step 3: the git commit the agent image was built from, read from the image's
+    # org.opencontainers.image.revision label in the registry. deploy refuses an image built
+    # from a dirty tree, so the commit names the image's sources exactly. Null on older
+    # events and for images without the label.
+    image_source_commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")] | None = None
 
 
 class ActorWoke(BaseModel):

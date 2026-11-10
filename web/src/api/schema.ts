@@ -1883,6 +1883,8 @@ export interface components {
             golden_tag: string;
             /** Image */
             image: string;
+            /** Image Source Commit */
+            image_source_commit?: string | null;
             /** Sandbox Class */
             sandbox_class: string;
             /** Template */

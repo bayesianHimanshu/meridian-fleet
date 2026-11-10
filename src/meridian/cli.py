@@ -944,6 +944,8 @@ def image_build(
     typer.echo(f"image {info.ref}")
     typer.echo(f"digest {info.digest}")
     typer.echo(f"size {info.size_bytes} bytes ({info.size_bytes / 1e6:.1f} MB), user {info.user}")
+    state = "dirty: deploy will refuse it" if info.dirty else "clean"
+    typer.echo(f"built from {info.revision} ({state})")
 
 
 @policy_app.command("render")

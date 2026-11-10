@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from meridian.sandbox.image import DIRTY_LABEL, REVISION_LABEL, ImageInfo
 from meridian.sandbox.substrate import KubectlAteClient, NotFoundError, SubstrateError
 from meridian.sandbox.substrate_templates import (
     golden_error_of,
@@ -54,16 +55,55 @@ def _run(argv: Sequence[str], timeout: float = 600) -> str:
     return done.stdout
 
 
+def _registry_get(url: str, accept: str | None = None) -> bytes:
+    request = urllib.request.Request(  # noqa: S310 (the local kind registry)
+        url, headers={"Accept": accept} if accept else {}
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
+        return bytes(response.read())
+
+
 def registry_config_digest(image_ref: str, registry_url: str = "http://127.0.0.1:5001") -> str:
     """The config digest (the image id) of a pushed image, read from the registry."""
     repo_part, digest = image_ref.split("@", 1)
     repo = repo_part.split("/", 1)[1]
-    request = urllib.request.Request(  # noqa: S310 (the local kind registry)
-        f"{registry_url}/v2/{repo}/manifests/{digest}", headers={"Accept": MANIFEST_TYPES}
+    raw = _registry_get(f"{registry_url}/v2/{repo}/manifests/{digest}", MANIFEST_TYPES)
+    return str(json.loads(raw)["config"]["digest"])
+
+
+def registry_image_labels(
+    image_ref: str, registry_url: str = "http://127.0.0.1:5001"
+) -> dict[str, str]:
+    """The labels in a pushed image's config, read from the registry (what actors run)."""
+    repo_part, _ = image_ref.split("@", 1)
+    repo = repo_part.split("/", 1)[1]
+    config = registry_config_digest(image_ref, registry_url)
+    blob = json.loads(_registry_get(f"{registry_url}/v2/{repo}/blobs/{config}"))
+    return {str(k): str(v) for k, v in dict(blob.get("config", {}).get("Labels") or {}).items()}
+
+
+def require_clean_source(info: ImageInfo, repo: Path = Path()) -> str:
+    """The commit an image was built from; refuse an image without the label, built from
+    a dirty tree, or naming a commit this repository does not have."""
+    if not info.revision or info.dirty is None:
+        raise DeployError(
+            f"{info.ref} has no {REVISION_LABEL}/{DIRTY_LABEL} labels; rebuild it with "
+            "`meridian image build`"
+        )
+    if info.dirty:
+        raise DeployError(
+            f"{info.ref} was built from a dirty tree at {info.revision[:12]}; commit the "
+            "image sources and rebuild before deploying templates"
+        )
+    done = subprocess.run(  # noqa: S603 (fixed argv)
+        ["git", "cat-file", "-e", f"{info.revision}^{{commit}}"],  # noqa: S607
+        capture_output=True,
+        check=False,
+        cwd=repo,
     )
-    with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310
-        manifest = json.loads(response.read())
-    return str(manifest["config"]["digest"])
+    if done.returncode != 0:
+        raise DeployError(f"{info.ref} names commit {info.revision}, which is not in this repo")
+    return info.revision
 
 
 def push_image(local_ref: str, registry: str) -> PushedImage:
