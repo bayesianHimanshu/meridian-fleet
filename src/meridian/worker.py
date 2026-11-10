@@ -32,6 +32,7 @@ from meridian.data.stage_layout import META
 from meridian.data.study_store import (
     TMF_STAGE_AREA,
     TMF_ZONES,
+    AuditStageReader,
     LayeredStudyReader,
     MissingTableError,
     ParquetStudyReader,
@@ -39,7 +40,8 @@ from meridian.data.study_store import (
     StudyReader,
     TmfStageReader,
 )
-from meridian.domain.events import DataCut, Event
+from meridian.domain.audit import LEDGER_SCOPE
+from meridian.domain.events import AuditReviewRequested, DataCut, Event
 from meridian.platform.agent_settings import SAFETY_TERMS_FILE, load_safety_terms
 from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
 from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
@@ -132,13 +134,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_DATA
     try:
         trigger = Event.model_validate_json(args.trigger.read_bytes())
-        if not isinstance(trigger.payload, DataCut):
+        study: StudyReader
+        if isinstance(trigger.payload, AuditReviewRequested):
+            # An audit review reads only the audit extract staged under audit/.
+            study = AuditStageReader.at_cut_dir(
+                args.cut_dir, cut_id=LEDGER_SCOPE, study_id=trigger.payload.study_id
+            )
+        elif isinstance(trigger.payload, DataCut):
+            ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}
+            study = ParquetStudyReader.at_cut_dir(args.cut_dir, **ids)
+            if zone_of(args.agent) in TMF_ZONES and (args.cut_dir / TMF_STAGE_AREA).is_dir():
+                # The quality zone also reads the eTMF index staged under tmf/.
+                study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(args.cut_dir, **ids))
+        else:
             raise ValueError(f"trigger is a {trigger.payload.type}, not a data_cut")
-        ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}
-        study: StudyReader = ParquetStudyReader.at_cut_dir(args.cut_dir, **ids)
-        if zone_of(args.agent) in TMF_ZONES and (args.cut_dir / TMF_STAGE_AREA).is_dir():
-            # The quality zone also reads the eTMF index staged under tmf/.
-            study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(args.cut_dir, **ids))
     except (OSError, ValidationError, ValueError, StudyAccessError) as exc:
         log.error("worker.bad_input", error=f"{type(exc).__name__}: {exc}")
         return EXIT_DATA

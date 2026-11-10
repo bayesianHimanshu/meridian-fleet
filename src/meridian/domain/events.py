@@ -5,7 +5,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, PositiveInt, model_validator
 
-from meridian.domain.enums import EventType, Visibility
+from meridian.domain.enums import EventType, Severity, Visibility
 from meridian.domain.findings import Decision, Finding
 from meridian.domain.ids import (
     ActorId,
@@ -51,6 +51,21 @@ class ActorWoke(BaseModel):
     # Where the run executes ("inprocess" or "openshell"). Known before the run starts.
     # Null on events written before phase 2.
     executor: str | None = None
+    # An audit review (phase 3 step 4b): the ledger seq range the run reviews. Null for a
+    # run on a data cut.
+    review_from_seq: PositiveInt | None = None
+    review_to_seq: PositiveInt | None = None
+
+    @model_validator(mode="after")
+    def _range(self) -> Self:
+        if (self.review_from_seq is None) != (self.review_to_seq is None):
+            raise ValueError("a review range needs both ends")
+        if self.review_from_seq is not None and self.review_to_seq is not None:
+            if self.review_from_seq > self.review_to_seq:
+                raise ValueError("review_from_seq may not exceed review_to_seq")
+            if self.review_to_seq >= self.trigger_seq:
+                raise ValueError("a review covers only events before its trigger")
+        return self
 
 
 class ActorSuspended(BaseModel):
@@ -358,6 +373,40 @@ class FindingAssessment(BaseModel):
         return self
 
 
+class AuditReviewRequested(BaseModel):
+    """The trigger of an audit review (phase 3 step 4b): quality.audit_trail_reviewer reads
+    the ledger from from_seq through through_seq, always below this event's own seq."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.AUDIT_REVIEW_REQUESTED] = EventType.AUDIT_REVIEW_REQUESTED
+    study_id: StudyId
+    from_seq: PositiveInt = 1
+    through_seq: PositiveInt
+
+    @model_validator(mode="after")
+    def _check(self) -> Self:
+        if self.from_seq > self.through_seq:
+            raise ValueError("from_seq may not exceed through_seq")
+        return self
+
+
+class QualityObservation(BaseModel):
+    """A QA auditor's observation (phase 3 step 4b), attributed to the auditor. The same
+    write appends a qa_observation finding that names this observation_id."""
+
+    model_config = _FROZEN
+
+    type: Literal[EventType.QUALITY_OBSERVATION] = EventType.QUALITY_OBSERVATION
+    observation_id: Annotated[str, Field(pattern=r"^OB-[0-9a-f]{12}$")]
+    raised_by: ActorId
+    title: Annotated[str, Field(min_length=1, max_length=200)]
+    description: Annotated[str, Field(min_length=1, max_length=4000)]
+    severity: Severity
+    refers_to_finding_id: FindingId | None = None
+    refers_to_seq: PositiveInt | None = None
+
+
 class HumanDecision(BaseModel):
     model_config = _FROZEN
 
@@ -375,7 +424,9 @@ EventPayload = Annotated[
     | ContainmentCheckCompleted
     | FindingNarrative
     | FindingAssessment
-    | HumanDecision,
+    | HumanDecision
+    | AuditReviewRequested
+    | QualityObservation,
     Field(discriminator="type"),
 ]
 

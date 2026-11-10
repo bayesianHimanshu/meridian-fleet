@@ -65,6 +65,9 @@ class FindingDraft(BaseModel):
     # subject-level ones reach fewer roles than the site-level one). None: the agent's
     # visible_to. The runner refuses a draft that names a role outside the agent's.
     visible_to: tuple[Role, ...] | None = None
+    # The person whose own actions the finding is about (an audit finding about their
+    # decisions); recorded on the Finding, and that person may never decide it.
+    actor_under_review: Annotated[str, Field(min_length=1, max_length=128)] | None = None
 
     @field_validator("visible_to")
     @classmethod

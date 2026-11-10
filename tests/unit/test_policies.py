@@ -32,6 +32,7 @@ def test_every_zone_has_a_policy_and_two_agents_have_their_own() -> None:
         "rbqm.narrator",
         "safety.sae_reconciler",
         "safety.local_model",
+        "quality.audit_trail",
     }
     assert sorted(p.name.removesuffix(".yaml") for p in COMMITTED.glob("*.yaml")) == sorted(
         policies.ALL_POLICIES

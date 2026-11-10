@@ -1,12 +1,30 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, type KeyboardEvent, type SyntheticEvent } from "react";
+import {
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type SyntheticEvent,
+} from "react";
 import { Link, useLocation, useParams } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
-import { ErrorNote, Loading, SeverityChip, StatusChip, Time, isStatus } from "../components/common";
+import {
+  ErrorNote,
+  Loading,
+  SeverityChip,
+  StatusChip,
+  Time,
+  isStatus,
+} from "../components/common";
 import { ROLE_LABELS, useIdentity } from "../identity";
-import { FALLBACK_FROM, FindingLink, WithTimes, isFrom } from "../components/text";
+import {
+  FALLBACK_FROM,
+  FindingLink,
+  WithTimes,
+  isFrom,
+} from "../components/text";
 import { useApi } from "../queries";
+import { RaiseObservation } from "../components/Observation";
 import { PolicyPair } from "./Fleet";
 
 type Detail = Schemas["FindingDetail"];
@@ -21,15 +39,21 @@ const ACTIONS: { value: Action; label: string }[] = [
 const CLOSED = new Set(["accepted", "dismissed"]);
 
 /** One line for a closed finding: who closed it, when, why, and where in the ledger. */
-export function ClosedLine({ decision }: { decision: Schemas["DecisionView"] }) {
+export function ClosedLine({
+  decision,
+}: {
+  decision: Schemas["DecisionView"];
+}) {
   const { people } = useIdentity();
-  const who = people.find((p) => p.actor === decision.actor)?.name ?? decision.actor;
+  const who =
+    people.find((p) => p.actor === decision.actor)?.name ?? decision.actor;
   const verb = decision.action === "accepted" ? "Accepted" : "Dismissed";
   return (
     <p className="message" data-testid="closed-line">
-      {verb} by {who} ({ROLE_LABELS[decision.role]}) on <Time iso={decision.recorded_at} />
-      {decision.reason ? `: ${decision.reason}` : ", no reason given"}. Ledger seq{" "}
-      <span className="mono">{decision.seq}</span>.
+      {verb} by {who} ({ROLE_LABELS[decision.role]}) on{" "}
+      <Time iso={decision.recorded_at} />
+      {decision.reason ? `: ${decision.reason}` : ", no reason given"}. Ledger
+      seq <span className="mono">{decision.seq}</span>.
     </p>
   );
 }
@@ -38,10 +62,12 @@ export function DecisionForm({
   findingId,
   status,
   closing,
+  blocked = null,
 }: {
   findingId: string;
   status: string;
   closing: Schemas["DecisionView"] | undefined;
+  blocked?: string | null;
 }) {
   const { person } = useIdentity();
   const queryClient = useQueryClient();
@@ -54,7 +80,10 @@ export function DecisionForm({
       unwrap(
         api.POST("/api/v1/findings/{finding_id}/decisions", {
           params: { path: { finding_id: findingId } },
-          body: { action: chosen, reason: reason.trim() === "" ? null : reason },
+          body: {
+            action: chosen,
+            reason: reason.trim() === "" ? null : reason,
+          },
         }),
       ),
     onSuccess: () => {
@@ -70,6 +99,13 @@ export function DecisionForm({
     return (
       <p className="message" data-testid="qa-note">
         QA auditors review findings and the record, but cannot make decisions.
+      </p>
+    );
+  }
+  if (blocked) {
+    return (
+      <p className="message" data-testid="decide-blocked">
+        You may not decide this finding: {blocked}.
       </p>
     );
   }
@@ -96,7 +132,12 @@ export function DecisionForm({
   };
 
   return (
-    <form className="decision" onSubmit={submit} onKeyDown={guardEnter} aria-label="Record a decision">
+    <form
+      className="decision"
+      onSubmit={submit}
+      onKeyDown={guardEnter}
+      aria-label="Record a decision"
+    >
       <fieldset>
         <legend className="label">Decision</legend>
         {ACTIONS.map((a) => (
@@ -127,7 +168,11 @@ export function DecisionForm({
           }}
         />
       </label>
-      <button type="submit" className="btn primary" disabled={action === null || decide.isPending}>
+      <button
+        type="submit"
+        className="btn primary"
+        disabled={action === null || decide.isPending}
+      >
         Record decision as {person.name}
       </button>
       <div aria-live="polite">
@@ -155,7 +200,11 @@ const VERDICT_TEXT: Record<string, string> = {
   no: "probably different events",
   unsure: "cannot tell",
 };
-const VERDICT_CLASS: Record<string, string> = { yes: "warning", no: "good", unsure: "" };
+const VERDICT_CLASS: Record<string, string> = {
+  yes: "warning",
+  no: "good",
+  unsure: "",
+};
 
 /** The local model's same-event judgements about this finding. A judgement only: it
  * never changes, closes or supersedes a finding. Rejected or failed answers show their
@@ -172,7 +221,9 @@ export function Assessments({ detail }: { detail: Detail }) {
     <section className="panel" aria-labelledby="assess-title">
       <div className="panel-head">
         <h2 id="assess-title">Same-event assessment</h2>
-        <span className="src">local model, for a person to read; the finding is unchanged</span>
+        <span className="src">
+          local model, for a person to read; the finding is unchanged
+        </span>
       </div>
       <div className="stack">
         {accepted.map((a) => (
@@ -195,17 +246,27 @@ export function Assessments({ detail }: { detail: Detail }) {
                   .{" "}
                 </>
               ) : null}
-              {a.agent_id} {a.agent_version}, local model <span className="mono">{a.model}</span>
+              {a.agent_id} {a.agent_version}, local model{" "}
+              <span className="mono">{a.model}</span>
               {a.model_digest ? (
                 <>
                   {" "}
-                  (<Hash value={a.model_digest} label={`model digest of assessment ${a.seq}`} />)
+                  (
+                  <Hash
+                    value={a.model_digest}
+                    label={`model digest of assessment ${a.seq}`}
+                  />
+                  )
                 </>
               ) : null}
-              , ledger seq <span className="mono">{a.seq}</span>, <Time iso={a.recorded_at} />
+              , ledger seq <span className="mono">{a.seq}</span>,{" "}
+              <Time iso={a.recorded_at} />
             </p>
             {a.answers.length > 0 ? (
-              <ul className="stack" aria-label={`answers of assessment ${a.seq}`}>
+              <ul
+                className="stack"
+                aria-label={`answers of assessment ${a.seq}`}
+              >
                 {a.answers.map((x) => (
                   <li key={x.model} data-testid="assessment-answer">
                     <p className="muted">
@@ -213,7 +274,12 @@ export function Assessments({ detail }: { detail: Detail }) {
                       {x.model_digest ? (
                         <>
                           {" "}
-                          (<Hash value={x.model_digest} label={`digest of ${x.model}`} />)
+                          (
+                          <Hash
+                            value={x.model_digest}
+                            label={`digest of ${x.model}`}
+                          />
+                          )
                         </>
                       ) : null}
                       {": "}
@@ -236,7 +302,10 @@ export function Assessments({ detail }: { detail: Detail }) {
           <p className="muted" data-testid="assessment-not-shown">
             {other.length} answer{other.length === 1 ? "" : "s"} not shown:{" "}
             {other
-              .map((a) => `${a.status} (${a.rejection_reasons.join(", ") || (a.error ?? "").split(":")[0]})`)
+              .map(
+                (a) =>
+                  `${a.status} (${a.rejection_reasons.join(", ") || (a.error ?? "").split(":")[0]})`,
+              )
               .join("; ")}
             .
           </p>
@@ -277,14 +346,17 @@ function Traceability({ detail }: { detail: Detail }) {
           />
           {suspended?.applied_policy_sha256 && !suspended.policy_file_sha256 ? (
             <span className="muted" data-testid="policy-file-note">
-              Recorded before runs named their policy file: match the applied policy sha256 on the Agent fleet
-              page.
+              Recorded before runs named their policy file: match the applied
+              policy sha256 on the Agent fleet page.
             </span>
           ) : null}
         </dd>
         <dt>Inputs manifest sha256</dt>
         <dd>
-          <Hash value={suspended?.inputs_manifest_sha256} label="inputs manifest sha256" />
+          <Hash
+            value={suspended?.inputs_manifest_sha256}
+            label="inputs manifest sha256"
+          />
         </dd>
         <dt>Finding event</dt>
         <dd>
@@ -294,7 +366,9 @@ function Traceability({ detail }: { detail: Detail }) {
         <dt>Run events</dt>
         <dd className="mono">
           {run?.woke ? `woke at seq ${run.woke.seq}` : "no woke event"}
-          {suspended ? `, finished at seq ${suspended.seq}` : ", no finished event"}
+          {suspended
+            ? `, finished at seq ${suspended.seq}`
+            : ", no finished event"}
         </dd>
       </dl>
     </section>
@@ -305,24 +379,35 @@ export function FindingDetail() {
   const { findingId = "" } = useParams();
   const location = useLocation();
   const state: unknown = location.state;
-  const carried = typeof state === "object" && state !== null ? (state as { from?: unknown }).from : undefined;
+  const carried =
+    typeof state === "object" && state !== null
+      ? (state as { from?: unknown }).from
+      : undefined;
   const from = isFrom(carried) ? carried : FALLBACK_FROM;
   const detail = useApi(["finding", findingId], () =>
-    unwrap(api.GET("/api/v1/findings/{finding_id}", { params: { path: { finding_id: findingId } } })),
+    unwrap(
+      api.GET("/api/v1/findings/{finding_id}", {
+        params: { path: { finding_id: findingId } },
+      }),
+    ),
   );
   if (detail.isPending) {
     return <Loading what="the finding" />;
   }
   if (detail.isError) {
     return isStatus(detail.error, 404) ? (
-      <p className="message">This finding does not exist, or your role cannot see it.</p>
+      <p className="message">
+        This finding does not exist, or your role cannot see it.
+      </p>
     ) : (
       <ErrorNote error={detail.error} />
     );
   }
   const d = detail.data;
   const f = d.finding;
-  const accepted = [...d.narratives].reverse().find((n) => n.status === "accepted");
+  const accepted = [...d.narratives]
+    .reverse()
+    .find((n) => n.status === "accepted");
   return (
     <article className="stack" aria-labelledby="finding-title">
       <p>
@@ -337,7 +422,9 @@ export function FindingDetail() {
             <span>{f.site_id ? `Site ${f.site_id}` : "Study-wide"}</span>
             <span className="mono">{f.cut_id}</span>
             <span className="chip">{f.scope} cut</span>
-            {f.visibility === "restricted" ? <span className="chip restricted">restricted</span> : null}
+            {f.visibility === "restricted" ? (
+              <span className="chip restricted">restricted</span>
+            ) : null}
           </div>
           <h1 id="finding-title">
             <WithTimes text={f.title} />
@@ -347,8 +434,10 @@ export function FindingDetail() {
           </p>
           {f.retired ? (
             <p className="message">
-              Retired: version <span className="mono">{f.retired_by_version}</span> of this agent ran on
-              this cut and did not raise it again. It stays in the record.
+              Retired: version{" "}
+              <span className="mono">{f.retired_by_version}</span> of this agent
+              ran on this cut and did not raise it again. It stays in the
+              record.
             </p>
           ) : null}
           {f.superseded ? (
@@ -368,7 +457,8 @@ export function FindingDetail() {
               <span className="src" data-testid="narrator-source">
                 {accepted.narrator_id === LOCAL_NARRATOR ? (
                   <>
-                    local model <span className="mono">{accepted.model}</span>, narrator {accepted.narrator_version}
+                    local model <span className="mono">{accepted.model}</span>,
+                    narrator {accepted.narrator_version}
                   </>
                 ) : (
                   <>narrator {accepted.narrator_version}</>
@@ -387,8 +477,9 @@ export function FindingDetail() {
             </>
           ) : f.agent_id.startsWith("safety.") ? (
             <p className="muted" data-testid="safety-summary-note">
-              Safety findings are never sent to the cloud language model. They are summarised by a local model on
-              this machine, and no local summary of this finding has been accepted yet.
+              Safety findings are never sent to the cloud language model. They
+              are summarised by a local model on this machine, and no local
+              summary of this finding has been accepted yet.
             </p>
           ) : (
             <p className="muted">No accepted narrative for this finding.</p>
@@ -402,7 +493,9 @@ export function FindingDetail() {
       <section className="panel" aria-labelledby="evidence-title">
         <div className="panel-head">
           <h2 id="evidence-title">Evidence</h2>
-          <span className="src">Primary evidence is what the finding rests on</span>
+          <span className="src">
+            Primary evidence is what the finding rests on
+          </span>
         </div>
         <table className="evidence">
           <thead>
@@ -416,10 +509,18 @@ export function FindingDetail() {
             {d.evidence.map((e, i) => (
               <tr key={`${e.statistic}-${i}`}>
                 <td className="ev-role">
-                  <span className={`chip ${e.role === "primary" ? "outline" : ""}`}>{e.role ?? "not stated"}</span>
+                  <span
+                    className={`chip ${e.role === "primary" ? "outline" : ""}`}
+                  >
+                    {e.role ?? "not stated"}
+                  </span>
                 </td>
                 <td className="ev-value">
-                  {e.display ? <WithTimes text={e.display} /> : <span className="mono">{e.value}</span>}
+                  {e.display ? (
+                    <WithTimes text={e.display} />
+                  ) : (
+                    <span className="mono">{e.value}</span>
+                  )}
                   <span className="ev-key mono">{e.statistic}</span>
                 </td>
                 <td className="ev-source mono">
@@ -439,11 +540,31 @@ export function FindingDetail() {
           </div>
           {f.scope === "evaluation" && !CLOSED.has(f.status) ? (
             <p className="message" data-testid="evaluation-note">
-              This finding comes from evaluation data, not the study's current data. A decision here is
-              recorded in the ledger but does not change anything for the study.
+              This finding comes from evaluation data, not the study's current
+              data. A decision here is recorded in the ledger but does not
+              change anything for the study.
             </p>
           ) : null}
-          <DecisionForm findingId={f.finding_id} status={f.status} closing={d.decisions.at(-1)} />
+          <DecisionForm
+            findingId={f.finding_id}
+            status={f.status}
+            closing={d.decisions.at(-1)}
+            blocked={f.may_decide ? null : (f.decide_blocked_reason ?? null)}
+          />
+          {f.raised_by ? (
+            <p className="muted" data-testid="raised-by">
+              Raised by <span className="mono">{f.raised_by}</span>, not by an
+              agent.
+            </p>
+          ) : null}
+          {f.actor_under_review ? (
+            <p className="muted" data-testid="under-review">
+              About the actions of{" "}
+              <span className="mono">{f.actor_under_review}</span>, who may not
+              decide it.
+            </p>
+          ) : null}
+          <RaiseObservation refersTo={{ finding_id: f.finding_id }} />
         </section>
         <section className="panel" aria-labelledby="history-title">
           <div className="panel-head">
@@ -478,7 +599,9 @@ export function FindingDetail() {
                         <br />
                         <span className="muted">{ROLE_LABELS[h.role]}</span>
                       </td>
-                      <td>{h.reason ?? <span className="muted">none given</span>}</td>
+                      <td>
+                        {h.reason ?? <span className="muted">none given</span>}
+                      </td>
                       <td>
                         <span className="mono">seq {h.seq}</span>
                         <br />

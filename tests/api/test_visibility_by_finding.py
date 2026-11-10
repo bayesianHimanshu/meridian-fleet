@@ -330,7 +330,10 @@ def test_no_get_response_shows_anything_of_a_finding_the_role_cannot_open(
 
 
 def old_redact_with_findings(
-    role: Role, entry: LedgerEntry, visible_finding_ids: Collection[str]
+    role: Role,
+    entry: LedgerEntry,
+    visible_finding_ids: Collection[str],
+    visible_observation_ids: Collection[str] = (),
 ) -> LedgerEntry:
     """The ledger redaction before the fix: restricted events only, nothing by finding."""
     return visibility.redact(role, entry)

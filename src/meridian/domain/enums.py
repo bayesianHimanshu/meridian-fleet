@@ -30,6 +30,8 @@ class FindingKind(StrEnum):
     UNDER_REPORTING = "under_reporting"
     SAE_RECONCILIATION = "sae_reconciliation"
     TMF = "tmf"
+    AUDIT = "audit"
+    QA_OBSERVATION = "qa_observation"
 
 
 class EventType(StrEnum):
@@ -43,6 +45,8 @@ class EventType(StrEnum):
     FINDING_NARRATIVE = "finding_narrative"
     FINDING_ASSESSMENT = "finding_assessment"
     HUMAN_DECISION = "human_decision"
+    AUDIT_REVIEW_REQUESTED = "audit_review_requested"
+    QUALITY_OBSERVATION = "quality_observation"
 
 
 class DecisionAction(StrEnum):

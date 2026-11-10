@@ -1,0 +1,46 @@
+{
+  "case": "inprocess_run_on_evaluation_cut",
+  "description": "An in-process run (no image, no policy) on an evaluation cut.",
+  "through_seq": 3,
+  "rows": [
+    {
+      "SEQ": 1,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:00:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-1a2b3c4d",
+      "CUT_SCOPE": "evaluation"
+    },
+    {
+      "SEQ": 2,
+      "TYPE": "actor_woke",
+      "RECORDED_AT": "2026-11-07T10:01:00+00:00",
+      "ACTOR": "rbqm.csm",
+      "AGENT": "rbqm.csm",
+      "VERSION": "2.1.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-1a2b3c4d",
+      "CUT_SCOPE": "evaluation",
+      "EXECUTOR": "inprocess",
+      "RUN_STATUS": "started"
+    },
+    {
+      "SEQ": 3,
+      "TYPE": "actor_suspended",
+      "RECORDED_AT": "2026-11-07T10:02:00+00:00",
+      "ACTOR": "rbqm.csm",
+      "AGENT": "rbqm.csm",
+      "VERSION": "2.1.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-1a2b3c4d",
+      "CUT_SCOPE": "evaluation",
+      "EXECUTOR": "inprocess",
+      "RUN_STATUS": "completed"
+    }
+  ],
+  "ideal": "Nothing: evaluation cuts may run in process.",
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": []
+  }
+}

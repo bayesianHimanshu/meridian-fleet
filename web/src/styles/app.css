@@ -1065,3 +1065,50 @@ dl.policy-pair dd {
   outline: var(--focus);
   outline-offset: 2px;
 }
+
+/* Quality page tabs and the observation form (phase 3 step 4b). */
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  border-bottom: var(--hairline);
+}
+.tab {
+  font: inherit;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: var(--space-2) var(--space-3);
+  color: var(--muted);
+  cursor: pointer;
+}
+.tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+.tab:focus-visible {
+  outline: var(--focus);
+  outline-offset: 2px;
+}
+form.observation {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  max-width: 560px;
+}
+form.observation input,
+form.observation textarea,
+form.observation select {
+  width: 100%;
+  font: inherit;
+  color: var(--fg);
+}
+.observation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.row-observe {
+  margin-top: var(--space-1);
+}

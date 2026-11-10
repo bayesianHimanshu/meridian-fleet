@@ -31,8 +31,9 @@ class DraftsDocument(BaseModel):
     def dumps(self) -> str:
         data = self.model_dump(mode="json")
         for draft in data["drafts"]:
-            if draft["visible_to"] is None:
-                del draft["visible_to"]  # documents of agents without it stay as they were
+            for key in ("visible_to", "actor_under_review"):
+                if draft[key] is None:
+                    del draft[key]  # documents of agents without it stay as they were
         return canonical_json(data)
 
     @classmethod

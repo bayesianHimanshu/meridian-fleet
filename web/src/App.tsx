@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 import { Navigate, NavLink, Route, Routes } from "react-router";
 import { api, unwrap, type Role } from "./api/client";
 import { ROLE_LABELS, useIdentity } from "./identity";
@@ -11,7 +17,7 @@ import { SafetyView } from "./views/Safety";
 import { RbqmView } from "./views/Rbqm";
 import { ReviewQueue } from "./views/ReviewQueue";
 import { StudyView } from "./views/Study";
-import { TmfView } from "./views/Tmf";
+import { QualityView } from "./views/Quality";
 import { UnblindedView } from "./views/Unblinded";
 
 /** Where each role lands: decision-making roles on the review queue. */
@@ -96,7 +102,9 @@ interface NavItem {
 
 function Nav({ onNavigate }: { onNavigate?: () => void }) {
   const { person } = useIdentity();
-  const queue = useApi(["review-queue", "count"], () => unwrap(api.GET("/api/v1/review-queue")));
+  const queue = useApi(["review-queue", "count"], () =>
+    unwrap(api.GET("/api/v1/review-queue")),
+  );
   const unblinded = person.role === "unblinded_statistician";
   const groups: [string, NavItem[]][] = [
     [
@@ -125,7 +133,11 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
     ],
     [
       "Restricted",
-      [unblinded ? { to: "/unblinded", label: "Unblinded zone", restricted: true } : { label: "Unblinded zone" }],
+      [
+        unblinded
+          ? { to: "/unblinded", label: "Unblinded zone", restricted: true }
+          : { label: "Unblinded zone" },
+      ],
     ],
   ];
   return (
@@ -143,7 +155,10 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
               >
                 {item.label}
                 {item.to === "/review" && queue.data ? (
-                  <span className="count" aria-label={`${queue.data.items.length} open`}>
+                  <span
+                    className="count"
+                    aria-label={`${queue.data.items.length} open`}
+                  >
                     {queue.data.items.length}
                   </span>
                 ) : null}
@@ -178,10 +193,21 @@ function NavPanel({ onClose }: { onClose: () => void }) {
   return (
     <div className="nav-overlay">
       <div className="nav-backdrop" aria-hidden="true" onClick={onClose} />
-      <div id="nav-panel" className="nav-panel" role="dialog" aria-modal="true" aria-label="Menu">
+      <div
+        id="nav-panel"
+        className="nav-panel"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Menu"
+      >
         <div className="nav-panel-head">
           <span className="label">Menu</span>
-          <button ref={closeButton} type="button" className="btn" onClick={onClose}>
+          <button
+            ref={closeButton}
+            type="button"
+            className="btn"
+            onClick={onClose}
+          >
             Close
           </button>
         </div>
@@ -216,18 +242,24 @@ export function App() {
         <Nav />
         <main id="main" tabIndex={-1}>
           <Routes>
-            <Route path="/" element={<Navigate to={homeFor(person.role)} replace />} />
+            <Route
+              path="/"
+              element={<Navigate to={homeFor(person.role)} replace />}
+            />
             <Route path="/review" element={<ReviewQueue />} />
             <Route path="/findings/:findingId" element={<FindingDetail />} />
             <Route path="/rbqm" element={<RbqmView />} />
             <Route path="/safety" element={<SafetyView />} />
-            <Route path="/quality" element={<TmfView />} />
+            <Route path="/quality" element={<QualityView />} />
             <Route path="/study" element={<StudyView />} />
             <Route path="/ledger" element={<LedgerView />} />
             <Route path="/fleet" element={<FleetView />} />
             <Route path="/portfolio" element={<PortfolioView />} />
             <Route path="/unblinded" element={<UnblindedView />} />
-            <Route path="*" element={<p className="message">This page does not exist.</p>} />
+            <Route
+              path="*"
+              element={<p className="message">This page does not exist.</p>}
+            />
           </Routes>
         </main>
       </div>

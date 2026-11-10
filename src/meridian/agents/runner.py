@@ -1,6 +1,6 @@
 """One runner pass: wake each enabled agent once per DataCut and record what it finds."""
 
-from collections.abc import Collection
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -9,16 +9,19 @@ import structlog
 from meridian.agents.base import FindingDraft
 from meridian.agents.registry import AgentRegistry, RegisteredAgent
 from meridian.data.datacut import Ledger, data_cut_events
+from meridian.domain.audit import LEDGER_SCOPE
 from meridian.domain.dedup import dedup_prefix
-from meridian.domain.enums import EventType, Visibility
+from meridian.domain.enums import EventType, Role, Visibility
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
+    AuditReviewRequested,
     DataCut,
     Event,
     EventDraft,
     EventPayload,
     FindingRaised,
+    LedgerEntry,
 )
 from meridian.domain.findings import Finding
 from meridian.ledger.store import DuplicateDedupKeyError
@@ -58,6 +61,9 @@ class AgentExecutor(Protocol):
     def drain(self) -> None:
         """Block until background work (sandbox deletion) has finished."""
         ...
+
+
+AUDIT_ACTOR = "meridian.audit"  # the host component that requests an audit review
 
 
 class SandboxRequiredError(RuntimeError):
@@ -171,10 +177,57 @@ class AgentRunner:
                 f"--executor {self._operational_executor}, or limit the pass to evaluation cuts."
             )
 
-    def _run_one(self, registered: RegisteredAgent, trigger: Event, report: RunReport) -> None:
+    def run_audit_review(
+        self,
+        prepare: Callable[[Event, Sequence[LedgerEntry]], object],
+        through_seq: int | None = None,
+    ) -> RunReport:
+        """One audit review: append its trigger (AuditReviewRequested, seq 1 through
+        through_seq, by default every event before it), let prepare write the audit
+        extract for that trigger, and run every enabled agent that wakes on it. The ledger
+        is operational data: only the operational executor may run it."""
+        if self._executor.name != self._operational_executor:
+            raise SandboxRequiredError(
+                f"an audit review reads the operational ledger and may only run in the "
+                f"{self._operational_executor} executor, not {self._executor.name}. Nothing "
+                "was run."
+            )
+        reviewers = [
+            r
+            for r in self._registry.enabled()
+            if EventType.AUDIT_REVIEW_REQUESTED in r.agent.subscribes_to
+        ]
+        report = RunReport()
+        if not reviewers:
+            return report
+        entries = self._ledger.read(viewer_role=Role.UNBLINDED_STATISTICIAN)
+        last = entries[-1].seq if entries else 0
+        through = last if through_seq is None else through_seq
+        if not 1 <= through <= last:
+            raise ValueError(f"through_seq {through} is outside the ledger (1 to {last})")
+        trigger = self._append(
+            AUDIT_ACTOR,
+            Visibility.BLINDED,
+            AuditReviewRequested(study_id=self._study_id, from_seq=1, through_seq=through),
+        )
+        prepare(trigger, entries)
+        for registered in reviewers:
+            self._run_one(registered, trigger, report, LEDGER_SCOPE, (1, through))
+        self._executor.drain()
+        return report
+
+    def _run_one(
+        self,
+        registered: RegisteredAgent,
+        trigger: Event,
+        report: RunReport,
+        cut_id: str | None = None,
+        review: tuple[int, int] | None = None,
+    ) -> None:
         agent = registered.agent
-        assert isinstance(trigger.payload, DataCut)
-        cut_id = trigger.payload.cut_id
+        if cut_id is None:
+            assert isinstance(trigger.payload, DataCut)
+            cut_id = trigger.payload.cut_id
         log = self._log.bind(
             agent_id=agent.agent_id,
             agent_version=agent.version,
@@ -189,6 +242,8 @@ class AgentRunner:
                 agent_version=agent.version,
                 trigger_seq=trigger.seq,
                 executor=self._executor.name,
+                review_from_seq=None if review is None else review[0],
+                review_to_seq=None if review is None else review[1],
             ),
         )
         try:
@@ -251,6 +306,7 @@ class AgentRunner:
             visibility=agent.visibility,
             visible_to=visible_to,
             score=draft.score,
+            actor_under_review=draft.actor_under_review,
         )
         try:
             self._append(

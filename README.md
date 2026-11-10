@@ -68,6 +68,9 @@ uv run python scripts/narrator_rerun_table.py       # live 1.1.0 vs 1.0.0
 
 ## Phase 3 status
 
+Phase 3 is complete: [docs/phase3-summary.md](docs/phase3-summary.md) (what was built, the
+evidence by ledger seq, the evaluation including the misses, known gaps and lessons).
+
 Step 1: the Fleet API, the read and decision layer for the Command Center. Development
 identity only (headers checked against config/people.toml; not authentication), on
 127.0.0.1. Contract: [openapi/meridian-api.json](openapi/meridian-api.json). Notes:
@@ -122,6 +125,17 @@ uv run meridian tmf run [--set dev]          # in OpenShell sandboxes (DC-BASE w
 uv run meridian tmf eval --set dev           # precision and recall per check
 PYTHONPATH=. uv run python scripts/tmf_stress.py   # the hand-written stress set (run once)
 uv run python scripts/term_adjudicator_rerun.py    # term adjudicator 1.1.1 on the dev pairs
+```
+
+Step 4b: quality.audit_trail_reviewer 1.0.0 reviews the ledger itself from an audit
+extract (identifiers and hashes only, staged as /stage/audit for policies/quality.audit_trail.yaml),
+and the QA auditor raises observations that someone else decides. Nobody decides a finding
+about their own actions. Notes: [docs/audit-notes.md](docs/audit-notes.md); evaluation:
+[docs/audit-eval.md](docs/audit-eval.md).
+
+```sh
+uv run meridian audit review                      # one review of the whole ledger, sandboxed
+PYTHONPATH=. uv run python scripts/audit_stress.py   # the hand-written audit stress set (run once)
 ```
 
 ## Setup

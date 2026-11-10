@@ -16,7 +16,7 @@ Repository functions call these; no route handler filters anything itself.
 
 from collections.abc import Collection, Iterable
 
-from meridian.domain.enums import Role, Visibility
+from meridian.domain.enums import FindingKind, Role, Visibility
 from meridian.domain.events import (
     Event,
     FindingAssessment,
@@ -24,6 +24,7 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    QualityObservation,
     RedactedEvent,
 )
 from meridian.domain.findings import Finding
@@ -90,15 +91,33 @@ def can_see_assessment(assessment: FindingAssessment, visible_finding_ids: Colle
     return all(f in visible_finding_ids for f in assessment.finding_ids)
 
 
+def observation_id_of(finding: Finding) -> str | None:
+    """The observation a qa_observation finding records (its OBSERVATION_ID evidence)."""
+    if finding.kind is not FindingKind.QA_OBSERVATION:
+        return None
+    for e in finding.evidence:
+        if e.selector.startswith("OBSERVATION_ID="):
+            return e.selector.removeprefix("OBSERVATION_ID=")
+    return None
+
+
 def redact_with_findings(
-    role: Role, entry: LedgerEntry, visible_finding_ids: Collection[str]
+    role: Role,
+    entry: LedgerEntry,
+    visible_finding_ids: Collection[str],
+    visible_observation_ids: Collection[str] = (),
 ) -> LedgerEntry:
     """redact, and also redact any event about a finding outside visible_finding_ids
-    (the findings this role may see)."""
+    (the findings this role may see). A QualityObservation event is shown exactly when its
+    qa_observation finding is (visible_observation_ids); fail closed when none is given."""
     shown = redact(role, entry)
-    if isinstance(shown, Event) and any(
-        f not in visible_finding_ids for f in finding_ids_of(shown)
-    ):
+    if not isinstance(shown, Event):
+        return shown
+    hidden = any(f not in visible_finding_ids for f in finding_ids_of(shown))
+    p = shown.payload
+    if isinstance(p, QualityObservation) and p.observation_id not in visible_observation_ids:
+        hidden = True
+    if hidden:
         return RedactedEvent(
             seq=shown.seq,
             event_type=shown.event_type,
@@ -133,6 +152,58 @@ def can_see_site_metrics(role: Role) -> bool:
 
 def can_see_study_data(role: Role) -> bool:
     return role in SITE_METRIC_ROLES
+
+
+# Who may decide a finding, by kind (phase 3 step 4b, segregation of duties). Any other
+# kind may be decided by every role that sees it except qa_auditor, which never decides.
+DECIDERS: dict[FindingKind, frozenset[Role]] = {
+    FindingKind.AUDIT: frozenset({Role.CLINICAL_OPS_LEAD}),
+    FindingKind.QA_OBSERVATION: frozenset({Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR}),
+}
+NEVER_DECIDES = Role.QA_AUDITOR
+
+
+def can_decide(role: Role, finding: Finding) -> bool:
+    """Whether role may decide finding (seeing it is checked first, by the caller)."""
+    if role is NEVER_DECIDES:
+        return False
+    deciders = DECIDERS.get(finding.kind)
+    return deciders is None or role in deciders
+
+
+def self_decision(actor: str, finding: Finding) -> str | None:
+    """Why actor may not decide finding although the role may, or None. A person never
+    decides a finding about their own actions, nor one they raised."""
+    if finding.actor_under_review is not None and finding.actor_under_review == actor:
+        return (
+            f"{finding.finding_id} is about the actions of {actor}: a person may not decide a "
+            "finding that names them as the actor under review"
+        )
+    if finding.raised_by is not None and finding.raised_by == actor:
+        return f"{finding.finding_id} was raised by {actor}: it is decided by someone else"
+    return None
+
+
+def can_raise_observation(role: Role) -> bool:
+    return role is Role.QA_AUDITOR
+
+
+# A QA observation is a finding no agent raised: its agent id names the source, and
+# raised_by names the auditor. It reaches these roles (fewer when what it refers to reaches
+# fewer: nobody learns of a finding through an observation about it).
+OBSERVATION_SOURCE = "human.observation"
+OBSERVATION_VERSION = "1"
+OBSERVATION_VISIBLE_TO = frozenset({Role.QA_AUDITOR, Role.CLINICAL_OPS_LEAD, Role.MEDICAL_MONITOR})
+
+
+def can_see_observations(role: Role) -> bool:
+    return role in OBSERVATION_VISIBLE_TO
+
+
+def can_see_audit(role: Role, agent_visible_to: Collection[Role]) -> bool:
+    """The Audit tab (review range, chain result, counts per check): exactly the roles
+    quality.audit_trail_reviewer's findings reach."""
+    return role in agent_visible_to
 
 
 def can_see_tmf(role: Role, agent_visible_to: Collection[Role]) -> bool:

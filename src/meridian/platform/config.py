@@ -21,6 +21,7 @@ from pydantic_settings import (
 
 from meridian.data.ops_synth import OpsSynthParams
 from meridian.platform.agent_settings import (
+    AuditTrailReviewerConfig,
     CsmConfig,
     KriMonitorConfig,
     QtlDetectorConfig,
@@ -39,6 +40,7 @@ DEFAULT_FINDING_ID_PREFIXES: dict[str, str] = {
     "preclinical": "PRE",
     "tmf": "TMF",
     "unblinded": "DSMB",
+    "human": "OBS",  # findings raised by a person (QA observations), not an agent
 }
 
 PILOT_BASE_URL = (
@@ -70,6 +72,7 @@ class AgentsSettings(BaseModel):
     csm: CsmConfig = Field(default_factory=CsmConfig)
     sae_reconciler: SaeReconcilerConfig = Field(default_factory=SaeReconcilerConfig)
     tmf_completeness: TmfCompletenessConfig = Field(default_factory=TmfCompletenessConfig)
+    audit_trail_reviewer: AuditTrailReviewerConfig = Field(default_factory=AuditTrailReviewerConfig)
 
 
 class RuntimeSettings(BaseModel):
@@ -209,6 +212,8 @@ class Settings(BaseSettings):
     safety_root: Path = Path("data/safety_db")
     # The synthetic eTMF index: one snapshot per cut (meridian.tmf).
     etmf_root: Path = Path("data/etmf")
+    # Audit extracts of the ledger, one folder per review (<audit_root>/<trigger seq>/audit).
+    audit_root: Path = Path("var/audit")
     evals_dir: Path = Path("data/evals")
     pilot: PilotSource = Field(default_factory=PilotSource)
     ops_synth: OpsSynthParams = Field(default_factory=OpsSynthParams)

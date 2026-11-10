@@ -4,7 +4,7 @@ import json
 import re
 import sqlite3
 import uuid
-from collections.abc import Callable, Collection, Iterator, Mapping
+from collections.abc import Callable, Collection, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
@@ -269,6 +269,26 @@ class SqliteLedger:
             raise
         conn.execute("COMMIT")
         return event
+
+    def append_many_guarded(
+        self, drafts: Sequence[EventDraft], guard: Callable[[], None]
+    ) -> list[Event]:
+        """Append every draft, in order, in one write transaction, or none of them: guard
+        runs first in the same transaction, as in append_guarded."""
+        conn = self._ready()
+        conn.execute("BEGIN IMMEDIATE")
+        events: list[Event] = []
+        try:
+            guard()
+            for draft in drafts:
+                event = self._seal(conn, draft)
+                conn.execute(_INSERT_SQL, _row_values(event))
+                events.append(event)
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+        conn.execute("COMMIT")
+        return events
 
     def _seal(self, conn: sqlite3.Connection, draft: EventDraft) -> Event:
         last = conn.execute("SELECT seq, hash FROM events ORDER BY seq DESC LIMIT 1").fetchone()

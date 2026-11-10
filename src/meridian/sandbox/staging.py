@@ -23,7 +23,7 @@ from meridian.data.cut_writer import BLINDED_AREA, OPS_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, write_manifest
 from meridian.domain.events import Event
 from meridian.ledger.hashing import canonical_json
-from meridian.sandbox.policies import META, STAGE_ROOT, TMF, stage_path
+from meridian.sandbox.policies import AUDIT, META, STAGE_ROOT, TMF, stage_path
 
 STAGE_NAME = "cut"
 TRIGGER_FILE = "trigger.json"
@@ -90,6 +90,20 @@ def stage_cut(
     (stage / META / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
     write_manifest(stage, at=stage / META / MANIFEST_FILE)  # last: it covers the rest
     assert_clean_stage(stage, areas)
+    return stage
+
+
+def stage_audit(extract_dir: Path, trigger: Event, dest_root: Path) -> Path:
+    """Stage an audit review: meta/ (the trigger and the inputs manifest) and audit/ (the
+    audit extract), nothing of any cut."""
+    stage = dest_root / STAGE_NAME
+    stage.mkdir(parents=True, exist_ok=False)
+    (stage / AUDIT).mkdir()
+    _copy_area(extract_dir, stage / AUDIT, AUDIT)
+    (stage / META).mkdir()
+    (stage / META / TRIGGER_FILE).write_text(canonical_json(trigger.model_dump(mode="json")))
+    write_manifest(stage, at=stage / META / MANIFEST_FILE)
+    assert_clean_stage(stage, (AUDIT,))
     return stage
 
 

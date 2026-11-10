@@ -117,6 +117,13 @@ class FindingSummary(BaseModel):
     latest_narrative: LatestNarrative | None
     # Display strings of the primary evidence (described the same way for old findings).
     primary_evidence: list[str]
+    # Phase 3 step 4b. raised_by: the person who raised it (a QA observation), else null.
+    # actor_under_review: the person whose own actions it is about, else null. may_decide:
+    # whether the caller may record a decision on it; decide_blocked_reason says why not.
+    raised_by: str | None = None
+    actor_under_review: str | None = None
+    may_decide: bool = False
+    decide_blocked_reason: str | None = None
 
 
 class FindingPage(BaseModel):
@@ -642,3 +649,69 @@ class TmfCompletenessView(BaseModel):
     trial: list[TmfCell]  # one per trial-level artifact
     sites: list[TmfSiteRow]
     findings: list[TmfFindingItem]
+
+
+# ---- Quality observations and the audit trail review (phase 3 step 4b)
+
+
+class ObservationRequest(BaseModel):
+    model_config = _FROZEN
+
+    title: Annotated[str, Field(min_length=1, max_length=200)]
+    description: Annotated[str, Field(min_length=1, max_length=4000)]
+    severity: Severity
+    finding_id: Annotated[str, Field(pattern=r"^[A-Z]+-[0-9]{4}$")] | None = None
+    ledger_seq: Annotated[int, Field(ge=1)] | None = None
+
+
+class ObservationResponse(BaseModel):
+    model_config = _FROZEN
+
+    observation_id: str
+    observation_seq: int
+    finding_id: str
+    finding_seq: int
+
+
+class ObservationItem(BaseModel):
+    model_config = _FROZEN
+
+    finding_id: str
+    seq: int
+    recorded_at: datetime
+    raised_by: str
+    severity: Severity
+    status: FindingStatus
+    title: str
+    refers_to_finding_id: str | None
+    refers_to_seq: int | None
+
+
+class AuditFindingItem(BaseModel):
+    model_config = _FROZEN
+
+    finding_id: str
+    check: str
+    severity: Severity
+    status: FindingStatus
+    title: str
+    actor_under_review: str | None  # the person whose decisions it is about, if any
+
+
+class AuditView(BaseModel):
+    """The Audit tab: the last audit review and the current audit findings the caller may
+    see. chain_linkage: intact, broken, or not_reviewed (no completed review yet)."""
+
+    model_config = _FROZEN
+
+    agent_id: str
+    agent_version: str | None
+    last_review_seq: int | None  # the ActorWoke of the last review
+    last_review_at: datetime | None
+    review_from_seq: int | None
+    review_to_seq: int | None
+    review_completed: bool
+    chain_linkage: Literal["intact", "broken", "not_reviewed"]
+    chain_findings: int
+    by_check: list[CheckCount]
+    findings: list[AuditFindingItem]

@@ -60,6 +60,12 @@ class Finding(BaseModel):
     visibility: Visibility
     visible_to: frozenset[Role]
     score: FiniteFloat
+    # Phase 3 step 4b, null on older findings. raised_by: the person who raised it, for a
+    # finding no agent raised (a QA observation; agent_id is then "human.observation").
+    # actor_under_review: the person whose own actions the finding is about (an audit
+    # finding about their decisions); that person may never decide it.
+    raised_by: ActorId | None = None
+    actor_under_review: ActorId | None = None
 
 
 class Decision(BaseModel):
