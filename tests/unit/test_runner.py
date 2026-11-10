@@ -1,3 +1,4 @@
+import dataclasses
 from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
@@ -14,11 +15,18 @@ from meridian.agents.base import (
     make_dedup_key,
 )
 from meridian.agents.registry import AgentRegistry
-from meridian.agents.runner import AgentRunner, SandboxRequiredError
+from meridian.agents.runner import AgentRunner, RunPlan, SandboxRequiredError
 from meridian.data.datacut import record_data_cut
 from meridian.data.study_store import StudyReader
 from meridian.domain.enums import EventType, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import ActorSuspended, ActorWoke, Event, EventDraft, FindingRaised
+from meridian.domain.events import (
+    ActorSuspended,
+    ActorWoke,
+    Event,
+    EventDraft,
+    FindingRaised,
+    SubstrateRun,
+)
 from meridian.domain.findings import Evidence
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
@@ -363,7 +371,13 @@ class _NamedExecutor:
         self._inner = inner
         self.name = name
 
-    def run(self, agent_id: str, trigger: Event, cut_id: str) -> Any:
+    def executor_name(self, agent_id: str) -> str:
+        return self.name
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan:
+        return RunPlan(self.name)
+
+    def run(self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None) -> Any:
         return self._inner.run(agent_id, trigger, cut_id)
 
     def drain(self) -> None:
@@ -424,8 +438,14 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_ask
 
     settings = Settings(ledger_path=tmp_path / "l.sqlite3")
     assert settings.cuts.operational == ("DC-BASE",)
-    assert settings.cuts.operational_executor == "openshell"
-    assert settings.runtime.executor == "openshell"
+    assert settings.cuts.operational_executors == ("openshell", "substrate")
+    assert settings.runtime.executor == "zoned"
+    assert settings.runtime.executors == {
+        "rbqm": "substrate",
+        "safety.sae_reconciler": "substrate",
+        "quality": "substrate",
+        "quality.audit_trail": "substrate",
+    }
     with Container.build(settings, FixedClock(T0)) as c:
         c.ledger.initialize()
         _cut(c.ledger, "DC-BASE", study=settings.study_id)
@@ -434,3 +454,98 @@ def test_the_runner_the_container_builds_refuses_in_process_for_dc_base_when_ask
         with pytest.raises(SandboxRequiredError, match="DC-BASE"):
             inprocess.run_pending()
         assert c.ledger.read(event_types=[EventType.ACTOR_WOKE]) == []
+
+
+# ---- phase 4a: a substrate placement is recorded on both run events
+
+
+class _SubstrateLike(_NamedExecutor):
+    """Plans a substrate placement and returns it, with the actor uid, after the run."""
+
+    def __init__(self, inner: InProcessExecutor, fail_plan: bool = False) -> None:
+        super().__init__(inner, "substrate")
+        self.fail_plan = fail_plan
+
+    def _placement(self, uid: str | None) -> SubstrateRun:
+        return SubstrateRun(
+            version="v1.0.0",
+            commit="b" * 40,
+            atespace="meridian",
+            template="rbqm-x",
+            template_sha256="7" * 64,
+            template_file="deploy/substrate/templates/rbqm.yaml",
+            template_file_sha256="6" * 64,
+            image="localhost:5001/meridian-agent@sha256:" + "c" * 64,
+            worker_pool="meridian/meridian",
+            sandbox_class="gvisor",
+            actor="mer-fk-1-0",
+            golden_tag="t",
+            golden_snapshot="g",
+            actor_uid=uid,
+        )
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan:
+        if self.fail_plan:
+            raise RuntimeError("template has no golden snapshot yet")
+        return RunPlan("substrate", self._placement(None))
+
+    def run(self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None) -> Any:
+        assert plan is not None
+        assert plan.substrate is not None
+        out = self._inner.run(agent_id, trigger, cut_id)
+        return dataclasses.replace(out, executor="substrate", substrate=self._placement("uid-1"))
+
+
+def _substrate_runner(ledger: SqliteLedger, fail_plan: bool = False) -> AgentRunner:
+    registry = AgentRegistry()
+    registry.register(FakeAgent(sites=["1001"]), AgentConfig())
+    inner = InProcessExecutor(
+        registry=registry, reader_factory=StubReader, log=structlog.get_logger()
+    )
+    return AgentRunner(
+        ledger=ledger,
+        registry=registry,
+        executor=_SubstrateLike(inner, fail_plan),
+        clock=FixedClock(T0),
+        study_id=STUDY,
+        log=structlog.get_logger(),
+        operational_cuts=("DC-BASE",),
+    )
+
+
+def test_substrate_may_process_an_operational_cut_and_both_events_record_it(
+    ledger: SqliteLedger,
+) -> None:
+    _cut(ledger, "DC-BASE")
+    report = _substrate_runner(ledger).run_pending()
+    assert len(report.completed) == 1
+    events = [e for e in ledger.read() if isinstance(e, Event)]
+    (woke,) = [e.payload for e in events if isinstance(e.payload, ActorWoke)]
+    (done,) = [e.payload for e in events if isinstance(e.payload, ActorSuspended)]
+    assert woke.executor == done.executor == "substrate"
+    assert woke.substrate is not None
+    assert woke.substrate.actor_uid is None  # planned, not yet created
+    assert done.substrate is not None
+    assert done.substrate.actor_uid == "uid-1"
+    assert done.substrate.golden_snapshot == woke.substrate.golden_snapshot
+
+
+def test_a_plan_that_fails_records_nothing_and_reports_the_failure(ledger: SqliteLedger) -> None:
+    _cut(ledger, "DC-BASE")
+    before = len(ledger.read())
+    report = _substrate_runner(ledger, fail_plan=True).run_pending()
+    assert report.completed == []
+    assert "golden snapshot" in report.failed[0][2]
+    assert len(ledger.read()) == before
+
+
+def test_rerun_runs_completed_pairs_again_and_skips_their_findings(ledger: SqliteLedger) -> None:
+    _cut(ledger, "DC-A")
+    agent = FakeAgent(sites=["1001"])
+    first = _runner(ledger, agent).run_pending()
+    assert len(first.findings_appended) == 1
+    assert _runner(ledger, agent).run_pending().completed == []
+    again = _runner(ledger, agent).run_pending(cuts={"DC-A"}, rerun=True)
+    assert len(again.completed) == 1
+    assert again.findings_appended == []
+    assert again.findings_skipped == first.findings_appended
