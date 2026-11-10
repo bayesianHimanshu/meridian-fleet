@@ -52,11 +52,15 @@ deviation_categories = [
 screen_failure_rate_mean = 0.3
 screen_failure_concentration = 20.0
 
-# Where agents run. openshell (the default): one OpenShell sandbox per run, from the agent
-# image, with policies/<zone>.yaml. inprocess: in the runner's process; only when asked for
-# (--executor inprocess), and never for an operational cut ([cuts] below).
+# Where agents run. zoned (the default since phase 4a): each committed policy's executor
+# from [runtime.executors] below, openshell for any policy not listed. openshell: one
+# OpenShell sandbox per run, from the agent image, with policies/<zone>.yaml. substrate:
+# one Agent Substrate actor per run, cloned from its zone template's golden snapshot
+# (deploy/substrate, docs/substrate-design.md); only for policies without network rules.
+# inprocess: in the runner's process; only when asked for (--executor inprocess), and
+# never for an operational cut ([cuts] below).
 [runtime]
-executor = "openshell"
+executor = "zoned"
 image = ""  # empty: meridian-agent:<package version>
 exec_timeout_seconds = 120
 keep_failed = false
@@ -65,6 +69,29 @@ delete_workers = 4  # background deletion threads; 0 deletes synchronously
 delete_confirm_seconds = 60.0  # until a deleted sandbox must be gone from sandbox list
 sandboxes_log = "var/sandboxes.jsonl"
 conformance_log_timeout_seconds = 30.0  # wait for the NET:OPEN DENIED line
+
+# The policies that run in Agent Substrate. The narrator (rbqm.narrator) and the local
+# model (safety.local_model) have network rules and stay on OpenShell.
+[runtime.executors]
+rbqm = "substrate"
+"safety.sae_reconciler" = "substrate"
+quality = "substrate"
+"quality.audit_trail" = "substrate"
+
+# Agent Substrate on the local kind cluster (phase 4a). version and commit pin the release
+# ate-system was deployed from; the install record must name the same version.
+[substrate]
+version = "v1.0.0"
+commit = "b34fbee742906494b5eb4f1f36987176bf8770a4"
+context = "kind-kind"
+atespace = "meridian"
+namespace = "meridian"
+worker_pool = "meridian"
+workers = 2
+sandbox_class = "gvisor"
+registry = "localhost:5001"
+deploy_dir = "deploy/substrate"
+actors_log = "var/actors.jsonl"
 
 # The model the narrator (rbqm.narrator) calls, through the OpenShell provider only.
 [llm]
@@ -111,9 +138,9 @@ max_calls_per_pass = 20
 # queue shows by default; every other cut (null, faulted, holdout, sweep) is evaluation.
 [cuts]
 operational = ["DC-BASE"]
-# Operational cuts are processed in OpenShell sandboxes only: the runner refuses the
-# in-process executor for them (evaluation cuts may use either).
-operational_executor = "openshell"
+# Operational cuts are processed in OpenShell sandboxes or Substrate actors only: the
+# runner refuses the in-process executor for them (evaluation cuts may use any).
+operational_executors = ["openshell", "substrate"]
 
 # The Fleet API (phase 3): `meridian api serve`. Binds to 127.0.0.1 only; identity is
 # development-only (config/people.toml), not authentication.
@@ -196,7 +223,8 @@ last_subject_field = "RFENDTC"
 visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
 
 [agents.audit_trail_reviewer]
-# quality.audit_trail_reviewer 1.0.0 (phase 3 step 4b), deterministic. It reads the audit
+# quality.audit_trail_reviewer 1.1.0 (1.0.0 phase 3 step 4b; 1.1.0 phase 4a: substrate is a
+# sandboxed executor), deterministic. It reads the audit
 # extract of the ledger (no evidence, narratives or subject ids), staged only for
 # policies/quality.audit_trail.yaml. Thresholds (docs/audit-notes.md):
 rapid_decisions = 10        # 10 or more decisions by one person ...

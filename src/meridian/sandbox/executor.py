@@ -21,6 +21,7 @@ from pydantic import ValidationError
 from meridian.agents.base import FindingDraft, zone_of
 from meridian.agents.execute import DraftsDocument, run_agent
 from meridian.agents.registry import AgentRegistry
+from meridian.agents.runner import RunPlan as RunPlan
 from meridian.data.cut_writer import BLINDED_AREA
 from meridian.data.inputs_manifest import MANIFEST_FILE, build_manifest
 from meridian.data.study_store import (
@@ -30,7 +31,7 @@ from meridian.data.study_store import (
     LayeredStudyReader,
     StudyReader,
 )
-from meridian.domain.events import AuditReviewRequested, DataCut, Event
+from meridian.domain.events import AuditReviewRequested, DataCut, Event, SubstrateRun
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
@@ -75,15 +76,84 @@ class ExecutionResult:
     inputs_manifest_sha256: str | None = None
     policy_file: str | None = None
     policy_file_sha256: str | None = None
+    substrate: SubstrateRun | None = None
+    # Wall-clock milliseconds of each step of the run (not recorded in the ledger).
+    phases_ms: tuple[tuple[str, int], ...] = ()
 
 
 class Executor(Protocol):
     @property
     def name(self) -> str: ...
 
-    def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult: ...
+    def executor_name(self, agent_id: str) -> str: ...
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan: ...
+
+    def run(
+        self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
+    ) -> ExecutionResult: ...
 
     def drain(self) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StagedRun:
+    """A run's inputs, staged on the host exactly as the zone's policy allows."""
+
+    stage: Path
+    areas: tuple[str, ...]
+    inputs_manifest_sha256: str
+
+
+def stage_run(
+    *,
+    agent_id: str,
+    trigger: Event,
+    cut_id: str,
+    policy_name: str,
+    dest: Path,
+    study_root: Path,
+    safety_root: Path | None,
+    etmf_root: Path | None,
+    audit_root: Path | None,
+) -> StagedRun:
+    """Stage meta/ and the cut areas the policy reads (or the audit extract) under dest,
+    check the stage and the inputs manifest, and return it. Shared by the OpenShell and
+    Substrate executors, so both receive the same files."""
+    policy = ALL_POLICIES[policy_name]
+    audit = AUDIT in policy.reads
+    if audit:
+        if not isinstance(trigger.payload, AuditReviewRequested):
+            raise ExecutionError(f"trigger {trigger.seq} is not an audit review")
+        if audit_root is None:
+            raise ExecutionError("an audit review needs the audit extract folder")
+    elif not isinstance(trigger.payload, DataCut) or trigger.payload.cut_id != cut_id:
+        raise ExecutionError(f"trigger {trigger.seq} is not the DataCut of {cut_id}")
+    extra = (
+        [safety_root / cut_id / BLINDED_AREA]
+        if zone_of(agent_id) in SAFETY_DB_ZONES and safety_root is not None
+        else []
+    )
+    tmf = None
+    if not audit and TMF in policy.reads:
+        if etmf_root is None:
+            raise ExecutionError(f"{agent_id} reads the eTMF index; no eTMF store is set")
+        tmf = etmf_root / cut_id / BLINDED_AREA
+        if not tmf.is_dir():
+            raise ExecutionError(f"no eTMF snapshot for cut {cut_id}")
+    areas = (AUDIT,) if audit else cut_areas_for(policy.reads)
+    staged = (*areas, TMF) if tmf is not None else areas
+    if audit:
+        assert audit_root is not None
+        stage = stage_audit(audit_root / str(trigger.seq) / AUDIT, trigger, dest)
+    else:
+        stage = stage_cut(study_root / cut_id, trigger, dest, extra, areas, tmf)
+    assert_clean_stage(stage, staged)  # again, right before it leaves the host
+    recomputed = build_manifest(stage)
+    written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")
+    if written != recomputed.dumps():
+        raise ExecutionError("staged files changed after the inputs manifest was written")
+    return StagedRun(stage=stage, areas=(*staged, META), inputs_manifest_sha256=recomputed.sha256())
 
 
 def _ms(start: float) -> int:
@@ -120,7 +190,15 @@ class InProcessExecutor:
             return LayeredStudyReader(reader, self._tmf_reader_factory(cut_id))
         return reader
 
-    def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult:
+    def executor_name(self, agent_id: str) -> str:
+        return self.name
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan:
+        return RunPlan(self.name)
+
+    def run(
+        self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
+    ) -> ExecutionResult:
         start = time.perf_counter()
         registered = self._registry.get(agent_id)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, cut_id=cut_id)
@@ -219,49 +297,36 @@ class OpenShellExecutor:
         self._staging_dir = staging_dir
         self._name_factory = name_factory
 
-    def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult:
+    def executor_name(self, agent_id: str) -> str:
+        return self.name
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan:
+        return RunPlan(self.name)
+
+    def run(
+        self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
+    ) -> ExecutionResult:
         start = time.perf_counter()
         registered = self._registry.get(agent_id)
         policy_name = policy_for_agent(agent_id)
         policy = ALL_POLICIES[policy_name]
         policy_file = policy_path(policy_name, self._policies_dir)
-        audit = AUDIT in policy.reads
-        if audit:
-            if not isinstance(trigger.payload, AuditReviewRequested):
-                raise ExecutionError(f"trigger {trigger.seq} is not an audit review")
-            if self._audit_root is None:
-                raise ExecutionError("an audit review needs the audit extract folder")
-        elif not isinstance(trigger.payload, DataCut) or trigger.payload.cut_id != cut_id:
-            raise ExecutionError(f"trigger {trigger.seq} is not the DataCut of {cut_id}")
-        extra = (
-            [self._safety_root / cut_id / BLINDED_AREA]
-            if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_root is not None
-            else []
-        )
-        tmf = None
-        if not audit and TMF in policy.reads:
-            if self._etmf_root is None:
-                raise ExecutionError(f"{agent_id} reads the eTMF index; no eTMF store is set")
-            tmf = self._etmf_root / cut_id / BLINDED_AREA
-            if not tmf.is_dir():
-                raise ExecutionError(f"no eTMF snapshot for cut {cut_id}")
         name = self._name_factory(agent_id, trigger.seq)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, sandbox=name)
-        areas = (AUDIT,) if audit else cut_areas_for(policy.reads)
-        staged = (*areas, TMF) if tmf is not None else areas
         with tempfile.TemporaryDirectory(prefix="meridian-stage-", dir=self._staging_dir) as tmp:
-            if audit:
-                assert self._audit_root is not None
-                extract = self._audit_root / str(trigger.seq) / AUDIT
-                stage = stage_audit(extract, trigger, Path(tmp))
-            else:
-                stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra, areas, tmf)
-            assert_clean_stage(stage, staged)  # again, right before it leaves the host
-            recomputed = build_manifest(stage)
-            written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")
-            if written != recomputed.dumps():
-                raise ExecutionError("staged files changed after the inputs manifest was written")
-            inputs_sha = recomputed.sha256()
+            staged = stage_run(
+                agent_id=agent_id,
+                trigger=trigger,
+                cut_id=cut_id,
+                policy_name=policy_name,
+                dest=Path(tmp),
+                study_root=self._study_root,
+                safety_root=self._safety_root,
+                etmf_root=self._etmf_root,
+                audit_root=self._audit_root,
+            )
+            stage = staged.stage
+            inputs_sha = staged.inputs_manifest_sha256
             ok = False
             # Recorded before the call: a failed create or upload can leave it behind.
             self._tracker.record(name, "created")

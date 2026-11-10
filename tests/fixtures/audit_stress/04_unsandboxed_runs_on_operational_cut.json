@@ -73,6 +73,10 @@
     "1.0.0": [
       "audit_unsandboxed_operational_run:rbqm.csm/2.1.0/1",
       "audit_unsandboxed_operational_run:rbqm.qtl_detector/2.1.0/1"
+    ],
+    "1.1.0": [
+      "audit_unsandboxed_operational_run:rbqm.csm/2.1.0/1",
+      "audit_unsandboxed_operational_run:rbqm.qtl_detector/2.1.0/1"
     ]
   }
 }

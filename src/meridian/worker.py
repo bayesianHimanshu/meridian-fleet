@@ -1,6 +1,8 @@
 """meridian-worker: run one agent on one staged cut and print its drafts.
 
     meridian-worker run --agent AGENT_ID --trigger /stage/meta/trigger.json --cut-dir /stage
+    meridian-worker serve --areas meta,blinded,ops     (a Substrate actor: meridian.worker_serve)
+    meridian-worker probe                               (conformance only: meridian.worker_probe)
 
 This is what runs inside a sandbox. It reads a trigger (a DataCut event as JSON) and a
 cut directory holding meta/ (the trigger and inputs_manifest.json) and the cut areas
@@ -68,12 +70,21 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--agent", required=True, help="agent id, for example rbqm.csm")
     run.add_argument("--trigger", required=True, type=Path, help="DataCut event as JSON")
     run.add_argument("--cut-dir", required=True, type=Path, help="holds blinded/ and ops/")
-    run.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help=f"TOML config (default: ${CONFIG_FILE_ENV}, else {IMAGE_CONFIG})",
+    serve = sub.add_parser("serve", help="serve exactly one run over HTTP (a Substrate actor)")
+    serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument(
+        "--areas", required=True, help="the stage areas this zone may receive, comma separated"
     )
+    serve.add_argument("--max-bytes", type=int, default=512 * 1024 * 1024)
+    probe = sub.add_parser("probe", help="answer fixed containment checks (conformance only)")
+    probe.add_argument("--port", type=int, default=8080)
+    for p in (run, serve):
+        p.add_argument(
+            "--config",
+            type=Path,
+            default=None,
+            help=f"TOML config (default: ${CONFIG_FILE_ENV}, else {IMAGE_CONFIG})",
+        )
     return parser
 
 
@@ -113,57 +124,84 @@ def _config_path(given: Path | None) -> Path:
     return Path(env) if env else IMAGE_CONFIG
 
 
-def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    log = _logger()
+def execute(
+    agent_id: str,
+    trigger_file: Path,
+    cut_dir: Path,
+    config: Path,
+    log: structlog.typing.FilteringBoundLogger,
+) -> tuple[int, str | None]:
+    """One run on a staged cut: (exit code, drafts document or None). Shared by `run`
+    (the OpenShell sandbox) and `serve` (a Substrate actor)."""
     try:
-        registry = build_registry(load_agents_settings(_config_path(args.config)))
-        registered = registry.get(args.agent)
+        registry = build_registry(load_agents_settings(config))
+        registered = registry.get(agent_id)
     except KeyError:
-        log.error("worker.unknown_agent", agent=args.agent)
-        return EXIT_BAD_ARGS
+        log.error("worker.unknown_agent", agent=agent_id)
+        return EXIT_BAD_ARGS, None
     except (OSError, tomllib.TOMLDecodeError, ValidationError, RegistrationError) as exc:
         log.error("worker.bad_config", error=f"{type(exc).__name__}: {exc}")
-        return EXIT_BAD_ARGS
+        return EXIT_BAD_ARGS, None
     try:
         # Before any data is read: the staged files must be exactly the host's manifest,
         # which sits in meta/ (the sandbox cannot list the stage root itself).
-        verify_manifest(args.cut_dir, at=args.cut_dir / META / MANIFEST_FILE)
+        verify_manifest(cut_dir, at=cut_dir / META / MANIFEST_FILE)
     except InputsManifestError as exc:
         log.error("worker.inputs_rejected", error=str(exc))
-        return EXIT_DATA
+        return EXIT_DATA, None
     try:
-        trigger = Event.model_validate_json(args.trigger.read_bytes())
+        trigger = Event.model_validate_json(trigger_file.read_bytes())
         study: StudyReader
         if isinstance(trigger.payload, AuditReviewRequested):
             # An audit review reads only the audit extract staged under audit/.
             study = AuditStageReader.at_cut_dir(
-                args.cut_dir, cut_id=LEDGER_SCOPE, study_id=trigger.payload.study_id
+                cut_dir, cut_id=LEDGER_SCOPE, study_id=trigger.payload.study_id
             )
         elif isinstance(trigger.payload, DataCut):
             ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}
-            study = ParquetStudyReader.at_cut_dir(args.cut_dir, **ids)
-            if zone_of(args.agent) in TMF_ZONES and (args.cut_dir / TMF_STAGE_AREA).is_dir():
+            study = ParquetStudyReader.at_cut_dir(cut_dir, **ids)
+            if zone_of(agent_id) in TMF_ZONES and (cut_dir / TMF_STAGE_AREA).is_dir():
                 # The quality zone also reads the eTMF index staged under tmf/.
-                study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(args.cut_dir, **ids))
+                study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(cut_dir, **ids))
         else:
             raise ValueError(f"trigger is a {trigger.payload.type}, not a data_cut")
     except (OSError, ValidationError, ValueError, StudyAccessError) as exc:
         log.error("worker.bad_input", error=f"{type(exc).__name__}: {exc}")
-        return EXIT_DATA
-    bound = log.bind(agent_id=args.agent, trigger_seq=trigger.seq, cut_id=study.cut_id)
+        return EXIT_DATA, None
+    bound = log.bind(agent_id=agent_id, trigger_seq=trigger.seq, cut_id=study.cut_id)
     try:
         drafts = run_agent(registered, trigger, study, bound)
     except DATA_ERRORS as exc:
         bound.error("worker.data_error", error=f"{type(exc).__name__}: {exc}")
-        return EXIT_DATA
+        return EXIT_DATA, None
     except Exception as exc:  # any other failure is the agent's
         bound.error("worker.agent_error", error=f"{type(exc).__name__}: {exc}")
-        return EXIT_AGENT
-    sys.stdout.write(drafts_document(registered, drafts))
-    sys.stdout.flush()
+        return EXIT_AGENT, None
     bound.info("worker.done", drafts=len(drafts))
-    return EXIT_OK
+    return EXIT_OK, drafts_document(registered, drafts)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if args.command == "serve":
+        from meridian.worker_serve import serve
+
+        return serve(
+            port=args.port,
+            areas=tuple(a for a in args.areas.split(",") if a),
+            config=_config_path(args.config),
+            max_bytes=args.max_bytes,
+        )
+    if args.command == "probe":
+        from meridian.worker_probe import probe
+
+        return probe(port=args.port)
+    log = _logger()
+    code, document = execute(args.agent, args.trigger, args.cut_dir, _config_path(args.config), log)
+    if document is not None:
+        sys.stdout.write(document)
+        sys.stdout.flush()
+    return code
 
 
 def entry() -> None:

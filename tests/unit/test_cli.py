@@ -6,6 +6,7 @@ import pytest
 from typer.testing import CliRunner
 
 from meridian.agents.base import FindingDraft
+from meridian.agents.runner import RunPlan
 from meridian.cli import app
 from meridian.domain.events import Event
 
@@ -61,6 +62,7 @@ class _Outcome:
     inputs_manifest_sha256: str | None = None
     policy_file: str | None = None
     policy_file_sha256: str | None = None
+    substrate: None = None
 
 
 class _FakeOpenShell:
@@ -69,12 +71,24 @@ class _FakeOpenShell:
     def __init__(self) -> None:
         self.runs: list[tuple[str, str]] = []
 
-    def run(self, agent_id: str, trigger: Event, cut_id: str) -> _Outcome:
+    def executor_name(self, agent_id: str) -> str:
+        return self.name
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan:
+        return RunPlan(self.name)
+
+    def run(
+        self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
+    ) -> _Outcome:
         self.runs.append((agent_id, cut_id))
         return _Outcome()
 
     def drain(self) -> None:
         return None
+
+
+class _FakeSubstrate(_FakeOpenShell):
+    name = "substrate"
 
 
 def _pending_dc_base(ledger_env: Path) -> None:
@@ -99,23 +113,33 @@ def _pending_dc_base(ledger_env: Path) -> None:
         )
 
 
-def test_a_plain_agents_run_uses_openshell(
+def test_a_plain_agents_run_uses_each_zones_executor(
     ledger_env: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """[runtime] executor zoned: every enabled agent's policy is in [runtime.executors] as
+    substrate, so DC-BASE runs go to substrate; nothing runs in process."""
     from meridian.platform.container import Container
 
-    fake = _FakeOpenShell()
+    openshell, substrate = _FakeOpenShell(), _FakeSubstrate()
 
     def no_inprocess(*args: object, **kwargs: object) -> None:
         raise AssertionError("the in-process executor was built without being asked for")
 
-    monkeypatch.setattr(Container, "openshell_executor", lambda self, log: fake)
+    monkeypatch.setattr(Container, "openshell_executor", lambda self, log: openshell)
+    monkeypatch.setattr(Container, "substrate_executor", lambda self, log: substrate)
     monkeypatch.setattr(Container, "inprocess_executor", no_inprocess)
     _pending_dc_base(ledger_env)
     result = runner.invoke(app, ["agents", "run"])
     assert result.exit_code == 0, result.output
-    assert fake.runs
-    assert {cut for _, cut in fake.runs} == {"DC-BASE"}
+    assert openshell.runs == []
+    assert {cut for _, cut in substrate.runs} == {"DC-BASE"}
+    assert {a for a, _ in substrate.runs} == {
+        "rbqm.csm",
+        "rbqm.kri_monitor",
+        "rbqm.qtl_detector",
+        "safety.sae_reconciler",
+        "quality.tmf_completeness",
+    }
     shown = runner.invoke(app, ["ledger", "show", "--role", "qa_auditor"])
     woke = [
         json.loads(line)
@@ -123,7 +147,20 @@ def test_a_plain_agents_run_uses_openshell(
         if json.loads(line)["payload"]["type"] == "actor_woke"
     ]
     assert woke
-    assert {w["payload"]["executor"] for w in woke} == {"openshell"}
+    assert {w["payload"]["executor"] for w in woke} == {"substrate"}
+
+
+def test_agents_run_with_executor_openshell_sends_everything_to_openshell(
+    ledger_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meridian.platform.container import Container
+
+    fake = _FakeOpenShell()
+    monkeypatch.setattr(Container, "openshell_executor", lambda self, log: fake)
+    _pending_dc_base(ledger_env)
+    result = runner.invoke(app, ["agents", "run", "--executor", "openshell"])
+    assert result.exit_code == 0, result.output
+    assert {cut for _, cut in fake.runs} == {"DC-BASE"}
 
 
 def test_agents_run_in_process_on_dc_base_is_refused(

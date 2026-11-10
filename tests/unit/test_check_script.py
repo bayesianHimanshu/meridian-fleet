@@ -46,7 +46,7 @@ def test_every_check_passing_exits_zero(tmp_path: Path) -> None:
     assert "uv run ruff format --check" in calls
     assert "uv run ruff check" in calls
     assert "uv run mypy" in calls
-    assert "uv run pytest -q -m not slow and not openshell" in calls
+    assert "uv run pytest -q -m not slow and not openshell and not substrate" in calls
     assert "npm --prefix web run --silent check:api" in calls
     assert "check: all passed" in result.stdout
 

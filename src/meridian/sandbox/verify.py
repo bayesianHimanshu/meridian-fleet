@@ -4,7 +4,7 @@ Runs each enabled agent on each cut through both executors directly (nothing is 
 to the ledger) and compares the canonical JSON of the drafts documents.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass
 
 from meridian.agents.execute import DraftsDocument
@@ -44,12 +44,17 @@ def verify(
     inprocess: Executor,
     sandboxed: Executor,
     cuts: Sequence[str],
+    agents: Collection[str] | None = None,
 ) -> list[VerifyRow]:
+    """inprocess and sandboxed are any two executors (phase 4a: openshell and substrate);
+    agents limits the comparison to some enabled agents."""
     rows: list[VerifyRow] = []
     for cut_id in cuts:
         trigger = trigger_for(ledger, study_id, cut_id)
         for registered in registry.enabled():
             agent = registered.agent
+            if agents is not None and agent.agent_id not in agents:
+                continue
             here = inprocess.run(agent.agent_id, trigger, cut_id)
             there = sandboxed.run(agent.agent_id, trigger, cut_id)
             a = document(agent.agent_id, agent.version, here)
@@ -65,5 +70,6 @@ def verify(
                     policy_sha256=there.policy_sha256,
                 )
             )
+    inprocess.drain()
     sandboxed.drain()
     return rows

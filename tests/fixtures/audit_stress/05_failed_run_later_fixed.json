@@ -57,6 +57,7 @@
   "ideal": "Nothing: the failure was resolved by a later successful run of the same agent on the same cut.",
   "ideal_findings": [],
   "actual": {
-    "1.0.0": []
+    "1.0.0": [],
+    "1.1.0": []
   }
 }

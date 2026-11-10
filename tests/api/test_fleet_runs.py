@@ -129,3 +129,77 @@ def test_fleet_and_runs_show_the_same_policy_pair(fx: Fixture) -> None:
     assert safety["policy_file_sha256"] != policies.file_sha256("safety", REPO_ROOT / "policies")
     assert safety["applied_policy_sha256"] == policies.applied_sha256("safety")
     assert by_id["rbqm.narrator"]["applied_policy_sha256"] != rbqm["applied_policy_sha256"]
+
+
+# ---- phase 4a: runs in Agent Substrate
+
+
+def _placement(actor: str, uid: str | None) -> Any:
+    from meridian.domain.events import SubstrateRun
+
+    return SubstrateRun(
+        version="v1.0.0",
+        commit="b34fbee742906494b5eb4f1f36987176bf8770a4",
+        atespace="meridian",
+        template="rbqm-ccc1d3aa3a7b",
+        template_sha256="7" * 64,
+        template_file="deploy/substrate/templates/rbqm.yaml",
+        template_file_sha256="6" * 64,
+        image="localhost:5001/meridian-agent@sha256:" + "c" * 64,
+        worker_pool="meridian/meridian",
+        sandbox_class="gvisor",
+        actor=actor,
+        golden_tag="aa7b3ef7-873c-4f20-8e0b-9e3957f78f3f",
+        golden_snapshot="f52e7bb5-6906-4f56-87df-c546b858d8b3",
+        actor_uid=uid,
+        worker_pod=None if uid is None else "meridian-abc",
+    )
+
+
+def test_the_fleet_shows_each_agents_executor_and_its_last_substrate_placement(
+    fx: Fixture,
+) -> None:
+    import dataclasses
+
+    from fastapi.testclient import TestClient
+
+    from meridian.api.app import create_app
+    from meridian.platform.config import Settings
+
+    qtl = "rbqm.qtl_detector"
+    _at(
+        fx,
+        timedelta(minutes=1),
+        ActorWoke(
+            agent_id=qtl,
+            agent_version="2.1.0",
+            trigger_seq=1,
+            executor="substrate",
+            substrate=_placement("mer-qd-1-x", None),
+        ),
+    )
+    _at(
+        fx,
+        timedelta(minutes=2),
+        ActorSuspended(
+            agent_id=qtl,
+            agent_version="2.1.0",
+            trigger_seq=1,
+            executor="substrate",
+            image_digest="sha256:" + "d" * 64,
+            substrate=_placement("mer-qd-1-x", "uid-1"),
+        ),
+    )
+    settings = Settings()
+    ctx = dataclasses.replace(
+        fx.context(),
+        executors=tuple(sorted(settings.runtime.executors.items())),
+        default_executor="openshell",
+    )
+    by_id = {a["agent_id"]: a for a in _get(TestClient(create_app(ctx)), "/api/v1/fleet")["agents"]}
+    assert by_id[qtl]["executor"] == "substrate"
+    assert by_id[qtl]["substrate"]["actor_uid"] == "uid-1"
+    assert by_id[qtl]["substrate"]["golden_snapshot"] == "f52e7bb5-6906-4f56-87df-c546b858d8b3"
+    assert by_id["rbqm.narrator"]["executor"] == "openshell"
+    assert by_id["safety.term_adjudicator"]["executor"] == "openshell"
+    assert by_id["rbqm.csm"]["substrate"] is None  # no substrate run of it yet

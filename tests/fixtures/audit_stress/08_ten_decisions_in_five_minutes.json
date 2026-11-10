@@ -168,6 +168,9 @@
   "actual": {
     "1.0.0": [
       "audit_rapid_decisions:asha.rao/6"
+    ],
+    "1.1.0": [
+      "audit_rapid_decisions:asha.rao/6"
     ]
   }
 }

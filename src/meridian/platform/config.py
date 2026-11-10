@@ -81,8 +81,12 @@ class RuntimeSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # openshell by default; inprocess only when asked for, and only for evaluation cuts
-    # ([cuts] operational_executor).
-    executor: Literal["inprocess", "openshell"] = "openshell"
+    # ([cuts] operational_executors). zoned: each policy's executor from `executors`.
+    executor: Literal["inprocess", "openshell", "zoned"] = "openshell"
+    # With executor = "zoned": the executor of each committed policy (rbqm,
+    # safety.sae_reconciler, ...). A policy not listed runs in openshell. Only a policy
+    # without network rules may name substrate (meridian.sandbox.zoned checks it).
+    executors: dict[str, Literal["openshell", "substrate"]] = Field(default_factory=dict)
     # The agent image; empty means meridian-agent:<package version>.
     image: str = ""
     exec_timeout_seconds: int = Field(120, ge=1)
@@ -177,9 +181,45 @@ class CutsSettings(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     operational: tuple[str, ...] = ("DC-BASE",)
-    # The only executor that may process an operational cut: the runner refuses any other
-    # (InProcessExecutor runs agent code in this process, outside any sandbox policy).
-    operational_executor: Literal["openshell"] = "openshell"
+    # The only executors that may process an operational cut: the runner refuses any
+    # other (InProcessExecutor runs agent code in this process, outside any sandbox).
+    operational_executors: tuple[Literal["openshell", "substrate"], ...] = (
+        "openshell",
+        "substrate",
+    )
+
+
+class SubstrateSettings(BaseModel):
+    """Agent Substrate on the local kind cluster ([substrate] in TOML).
+
+    version and commit pin the release the control plane was deployed from (the runner
+    refuses to start if ate-setup's install record names another version); the worker
+    image and the agent image are pinned by digest in deploy/substrate.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    version: str = "v1.0.0"
+    commit: str = Field("b34fbee742906494b5eb4f1f36987176bf8770a4", pattern=r"^[0-9a-f]{40}$")
+    install_record: Path = Path("~/.cache/ate-setup/installs/kind-kind.yaml")
+    context: str = "kind-kind"
+    kubectl: str = "kubectl"
+    atespace: str = "meridian"
+    namespace: str = "meridian"  # the Kubernetes namespace of the WorkerPool
+    worker_pool: str = "meridian"
+    workers: int = Field(2, ge=1, le=16)  # WorkerPool replicas: one actor per worker
+    # ateworker-gvisor built with ko from the pinned release (docs/substrate-eval.md).
+    worker_image: str = Field(
+        "localhost:5001/ateworker-gvisor@sha256:"
+        "ad6957f41bccaa8bb5f3eb5b34b7812babb862f1a3187a11578c21a7d799491c",
+        pattern=r"^[^@\s]+@sha256:[0-9a-f]{64}$",
+    )
+    sandbox_class: Literal["gvisor"] = "gvisor"
+    registry: str = "localhost:5001"
+    deploy_dir: Path = Path("deploy/substrate")
+    port: int = Field(8080, ge=1024, le=65535)  # what meridian-worker serve listens on
+    request_timeout_seconds: float = Field(180.0, gt=0)
+    actors_log: Path = Path("var/actors.jsonl")
 
 
 class ApiSettings(BaseModel):
@@ -224,6 +264,7 @@ class Settings(BaseSettings):
     local_model: LocalModelSettings | None = None
     api: ApiSettings = Field(default_factory=ApiSettings)
     cuts: CutsSettings = Field(default_factory=CutsSettings)
+    substrate: SubstrateSettings = Field(default_factory=SubstrateSettings)
 
     @classmethod
     def settings_customise_sources(

@@ -26,6 +26,8 @@ function agent(over: Partial<Schemas["FleetAgent"]>): Schemas["FleetAgent"] {
     failed_7d: 0,
     last_failure_at: null,
     run_event_types: ["actor_woke", "actor_suspended"],
+    executor: "openshell",
+    substrate: null,
     ...over,
   };
 }

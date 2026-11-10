@@ -30,6 +30,7 @@ from meridian.platform.config import LocalModelSettings, Settings
 from meridian.sandbox import image
 from meridian.sandbox.executor import (
     OPENSHELL,
+    ExecutionError,
     Executor,
     InProcessExecutor,
     OpenShellExecutor,
@@ -38,7 +39,15 @@ from meridian.sandbox.image import default_image
 from meridian.sandbox.local_model import OpenShellLocalModelExecutor
 from meridian.sandbox.narration import OpenShellNarrationExecutor
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
+from meridian.sandbox.substrate import KubectlAteClient, SubstrateClient, read_install_record
+from meridian.sandbox.substrate_executor import (
+    SUBSTRATE,
+    SubstrateExecutor,
+    ZoneTemplate,
+    load_template,
+)
 from meridian.sandbox.tracking import BackgroundDeleter, SandboxTracker
+from meridian.sandbox.zoned import ZONED, ZonedExecutor
 
 
 @dataclass(frozen=True, slots=True)
@@ -269,10 +278,79 @@ class Container:
     def sandbox_tracker(self) -> SandboxTracker:
         return SandboxTracker(self.settings.runtime.sandboxes_log, self.clock)
 
+    def substrate_client(self) -> KubectlAteClient:
+        s = self.settings.substrate
+        return KubectlAteClient(
+            s.atespace,
+            kubectl=s.kubectl,
+            context=s.context,
+            timeout_seconds=s.request_timeout_seconds,
+        )
+
+    def substrate_policies(self) -> list[str]:
+        """The policies [runtime] executors sends to substrate."""
+        return sorted(p for p, e in self.settings.runtime.executors.items() if e == SUBSTRATE)
+
+    def check_substrate_release(self) -> None:
+        """Refuse to run if ate-setup's install record names another release."""
+        s = self.settings.substrate
+        record = read_install_record(s.install_record.expanduser())
+        if record.get("substrateVersion") != s.version or record.get("outcome") != "succeeded":
+            raise ExecutionError(
+                f"ate-setup's install record ({s.install_record}) says "
+                f"{record.get('substrateVersion')} ({record.get('outcome')}), not {s.version}"
+            )
+
+    def substrate_templates(
+        self, client: SubstrateClient, policies: Sequence[str] | None = None
+    ) -> dict[str, ZoneTemplate]:
+        deploy_dir = self.settings.substrate.deploy_dir
+        wanted = self.substrate_policies() if policies is None else list(policies)
+        return {p: load_template(client, deploy_dir, p) for p in wanted}
+
+    def substrate_executor(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        client: SubstrateClient | None = None,
+        policies: Sequence[str] | None = None,
+    ) -> SubstrateExecutor:
+        from meridian.sandbox.substrate_deploy import registry_config_digest
+
+        self.check_substrate_release()
+        resolved = client or self.substrate_client()
+        templates = self.substrate_templates(resolved, policies)
+        images = {t.image for t in templates.values()}
+        if len(images) != 1:
+            raise ExecutionError(f"the substrate templates name {len(images)} images: {images}")
+        return SubstrateExecutor(
+            client=resolved,
+            registry=self.agent_registry(),
+            settings=self.settings.substrate,
+            templates=templates,
+            image_digest=registry_config_digest(images.pop()),
+            study_root=self.settings.curated_root / self.settings.study_id,
+            tracker=SandboxTracker(self.settings.substrate.actors_log, self.clock),
+            log=log,
+            safety_root=self.settings.safety_root / self.settings.study_id,
+            etmf_root=self.settings.etmf_root / self.settings.study_id,
+            audit_root=self.settings.audit_root,
+            delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
+        )
+
+    def zoned_executor(self, log: structlog.typing.FilteringBoundLogger) -> ZonedExecutor:
+        """openshell for every policy, except those [runtime] executors sends to substrate."""
+        choice = dict(self.settings.runtime.executors)
+        executors: dict[str, Executor] = {OPENSHELL: self.openshell_executor(log)}
+        if SUBSTRATE in choice.values():
+            executors[SUBSTRATE] = self.substrate_executor(log)
+        return ZonedExecutor(executors=executors, choice=choice, default=OPENSHELL)
+
     def executor(self, log: structlog.typing.FilteringBoundLogger) -> Executor:
         """The executor [runtime] executor names."""
         if self.settings.runtime.executor == OPENSHELL:
             return self.openshell_executor(log)
+        if self.settings.runtime.executor == ZONED:
+            return self.zoned_executor(log)
         return self.inprocess_executor(log)
 
     def agent_runner(
@@ -286,7 +364,7 @@ class Container:
             study_id=self.settings.study_id,
             log=log,
             operational_cuts=self.settings.cuts.operational,
-            operational_executor=self.settings.cuts.operational_executor,
+            operational_executors=self.settings.cuts.operational_executors,
         )
 
     def registered_versions(self) -> dict[str, str]:

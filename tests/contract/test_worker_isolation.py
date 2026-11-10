@@ -1,6 +1,9 @@
 """The workers' import closures.
 
-meridian-worker: no ledger store, faults, evals, ingest or network.
+meridian-worker: no ledger store, faults, evals, ingest or network. Since phase 4a two of its
+modules serve HTTP inside a Substrate actor: meridian.worker_serve (one run) and
+meridian.worker_probe (conformance checks). Only they may import the network, only from the
+standard library (http.server, socket), and no module an agent run reaches imports them.
 meridian-narrator-worker: none of those either, no study data and no detection code; it
 reaches the network only through meridian.llm.client.
 meridian-local-model-worker: the same, and not the cloud client either; it reaches the
@@ -81,10 +84,34 @@ def test_worker_reaches_no_forbidden_meridian_module() -> None:
     assert reached == []
 
 
-@pytest.mark.parametrize("module", sorted(_closure()))
+SERVERS = {
+    "meridian.worker_serve": {"http.server"},
+    "meridian.worker_probe": {"http.server", "socket"},
+}
+
+
+@pytest.mark.parametrize("module", sorted(set(_closure()) - set(SERVERS)))
 def test_no_meridian_module_on_the_worker_path_imports_the_network(module: str) -> None:
     direct = sorted(m for m in _closure()[module] if _hit(m, NETWORK))
     assert direct == [], f"{module} imports {direct}"
+
+
+@pytest.mark.parametrize("server", sorted(SERVERS))
+def test_the_actor_servers_use_only_the_standard_library_network(server: str) -> None:
+    direct = {m for m in _closure()[server] if _hit(m, NETWORK)}
+    assert direct == SERVERS[server]
+
+
+def test_no_agent_code_reaches_the_actor_servers() -> None:
+    """The agents and the run path (meridian.agents, meridian.data) never import them."""
+    closure = _closure()
+    importers = sorted(
+        m
+        for m, direct in closure.items()
+        if m.startswith(("meridian.agents", "meridian.data", "meridian.domain"))
+        and any(d in SERVERS for d in direct)
+    )
+    assert importers == []
 
 
 NARRATOR_FORBIDDEN = (

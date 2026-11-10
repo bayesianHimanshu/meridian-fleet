@@ -1,4 +1,4 @@
-"""quality.audit_trail_reviewer 1.0.0: a review of the audit trail itself. Deterministic.
+"""quality.audit_trail_reviewer 1.1.0: a review of the audit trail itself. Deterministic.
 
 Input: the audit extract of the ledger from from_seq through through_seq (the trigger's,
 an AuditReviewRequested), staged as /stage/audit under policies/quality.audit_trail.yaml.
@@ -12,7 +12,9 @@ The checks (docs/audit-notes.md), one finding per occurrence, kind audit:
   reaches through_seq. Linkage only: restricted payloads are not exported, so hashes are
   not recomputed here; full verification stays on the host (`meridian ledger verify`).
 * audit_unsandboxed_operational_run (high): a run on an operational cut whose executor is
-  not openshell, or whose completion lacks the image digest or the applied policy hash.
+  not a sandboxed one (openshell or, since 1.1.0, substrate), or whose completion lacks
+  the image digest and, for openshell, the applied policy hash or, for substrate, the
+  template spec hash and the golden snapshot id.
 * audit_failed_run_unresolved (medium): a run on an operational cut that never completed
   (an ActorWoke with no ActorSuspended for the same agent, version and trigger before that
   key's next ActorWoke), with no later completed run of the same agent on the same cut.
@@ -51,7 +53,7 @@ from meridian.ledger.hashing import GENESIS_HASH
 from meridian.platform.agent_settings import AuditTrailReviewerConfig
 
 AGENT_ID = "quality.audit_trail_reviewer"
-VERSION = "1.0.0"
+VERSION = "1.1.0"  # 1.1.0: substrate is a sandboxed executor (phase 4a step 2)
 VISIBLE_TO_MAX = frozenset({Role.CLINICAL_OPS_LEAD, Role.QA_AUDITOR})
 SEVERITY: dict[str, Severity] = {
     a.CHAIN_LINKAGE: Severity.HIGH,
@@ -64,6 +66,16 @@ SEVERITY: dict[str, Severity] = {
 }
 SCORE = {Severity.HIGH: 1.0, Severity.MEDIUM: 0.5, Severity.LOW: 0.2}
 OPENSHELL = "openshell"
+SUBSTRATE = "substrate"
+# What a sandboxed run's completion must record, by executor.
+SANDBOX_RECORD: dict[str, tuple[tuple[str, str], ...]] = {
+    OPENSHELL: ((a.IMAGE_DIGEST, "image digest"), (a.POLICY_SHA256, "applied policy hash")),
+    SUBSTRATE: (
+        (a.IMAGE_DIGEST, "image digest"),
+        (a.TEMPLATE_SHA256, "template spec hash"),
+        (a.GOLDEN_SNAPSHOT, "golden snapshot id"),
+    ),
+}
 SOURCE = a.AUDIT_EXTRACT
 LINKAGE_NOTE = (
     "Linkage only: the extract carries no payloads of restricted events, so hashes are not "
@@ -349,16 +361,25 @@ def runs(p: Parsed, cfg: AuditTrailReviewerConfig, now: datetime) -> list[Hit]:
         record = f"{agent}/{version}/{trig}"
         problems = []
         for at in attempts:
-            if at.woke is not None and at.woke.get(a.EXECUTOR) != OPENSHELL:
+            if at.woke is not None and at.woke.get(a.EXECUTOR) not in SANDBOX_RECORD:
                 problems.append(f"started with executor {at.woke.get(a.EXECUTOR) or 'none'}")
             d = at.done
             if d is not None:
-                if d.get(a.EXECUTOR) != OPENSHELL:
-                    problems.append(f"completed with executor {d.get(a.EXECUTOR) or 'none'}")
-                if not d.get(a.IMAGE_DIGEST):
-                    problems.append("no image digest")
-                if not d.get(a.POLICY_SHA256):
-                    problems.append("no applied policy hash")
+                executor = d.get(a.EXECUTOR)
+                if executor not in SANDBOX_RECORD:
+                    problems.append(f"completed with executor {executor or 'none'}")
+                for column, label in SANDBOX_RECORD.get(executor or "", SANDBOX_RECORD[OPENSHELL]):
+                    if not d.get(column):
+                        problems.append(f"no {label}")
+                if (
+                    at.woke is not None
+                    and at.woke.get(a.EXECUTOR) in SANDBOX_RECORD
+                    and executor in SANDBOX_RECORD
+                    and at.woke.get(a.EXECUTOR) != executor
+                ):
+                    problems.append(
+                        f"started in {at.woke.get(a.EXECUTOR)}, completed in {executor}"
+                    )
         if problems:
             first = attempts[0].woke or attempts[0].done
             assert first is not None
@@ -369,8 +390,9 @@ def runs(p: Parsed, cfg: AuditTrailReviewerConfig, now: datetime) -> list[Hit]:
                     record,
                     f"{agent} {version} ran on operational cut {cut} without the sandbox record",
                     f"The run of {agent} {version} on {cut} (trigger seq {trig}): {what}. "
-                    "Operational cuts may only be processed in an OpenShell sandbox, with the "
-                    "image and the applied policy recorded.",
+                    "Operational cuts may only be processed in an OpenShell sandbox (with the "
+                    "image and the applied policy recorded) or a Substrate actor (with the "
+                    "image, the template spec and the golden snapshot recorded).",
                     (
                         _ev(
                             f"SEQ={first.seq}; AGENT={agent}; TRIGGER_SEQ={trig}",

@@ -428,7 +428,8 @@ ExecutorOption = Annotated[
     typer.Option(
         "--executor",
         help=(
-            "openshell (the default, [runtime] executor) or inprocess. inprocess runs agent "
+            "zoned (the default, [runtime] executor: per policy, [runtime.executors]), "
+            "openshell or inprocess. inprocess runs agent "
             "code outside any sandbox and is refused for operational cuts (DC-BASE)."
         ),
     ),
@@ -445,6 +446,16 @@ def agents_run(
             help="Only evaluation cuts (operational cuts stay pending; they need openshell).",
         ),
     ] = False,
+    only_cuts: Annotated[
+        list[str] | None, typer.Option("--cut", help="Only these cuts; repeatable.")
+    ] = None,
+    rerun: Annotated[
+        bool,
+        typer.Option(
+            "--rerun",
+            help="With --cut: also run pairs already completed (findings dedup as skipped).",
+        ),
+    ] = False,
 ) -> None:
     """One runner pass over every pending (agent, DataCut) pair."""
     from meridian.data.datacut import data_cut_events
@@ -452,7 +463,7 @@ def agents_run(
 
     settings = Settings()
     if executor is not None:
-        if executor not in ("inprocess", "openshell"):
+        if executor not in ("inprocess", "openshell", "zoned"):
             typer.echo(f"error: unknown executor {executor!r}", err=True)
             raise typer.Exit(code=2)
         runtime = settings.runtime.model_copy(update={"executor": executor})
@@ -467,8 +478,13 @@ def agents_run(
                 if isinstance(e.payload, DataCut)
                 and e.payload.cut_id not in settings.cuts.operational
             }
+        if rerun and not only_cuts:
+            typer.echo("error: --rerun needs --cut", err=True)
+            raise typer.Exit(code=2)
+        if only_cuts:
+            cuts = set(only_cuts) if cuts is None else cuts & set(only_cuts)
         try:
-            report = c.agent_runner(log).run_pending(cuts=cuts)
+            report = c.agent_runner(log).run_pending(cuts=cuts, rerun=rerun)
         except SandboxRequiredError as exc:
             typer.echo(f"error: {exc}", err=True)
             raise typer.Exit(code=2) from exc
@@ -1031,10 +1047,28 @@ def sandbox_conformance(
         list[str] | None,
         typer.Option("--policy", help="An agent policy to check (rbqm.narrator); repeatable."),
     ] = None,
+    executor: Annotated[
+        str,
+        typer.Option(
+            "--executor",
+            help="openshell, or substrate: the same zones in Agent Substrate actors "
+            "(meridian substrate conformance).",
+        ),
+    ] = "openshell",
 ) -> None:
     """Check committed policies in real sandboxes and record the results."""
     from meridian.sandbox.conformance import ledger_drafts, run_conformance
     from meridian.sandbox.openshell import SubprocessOpenShellClient
+
+    if executor == "substrate":
+        from meridian.cli_substrate import substrate_conformance
+
+        chosen = list(policy_names or []) + ([] if zones == ["all"] else list(zones or []))
+        substrate_conformance(zones=chosen or None, record=True)
+        return
+    if executor != "openshell":
+        typer.echo(f"error: unknown executor {executor!r}", err=True)
+        raise typer.Exit(code=2)
 
     selected = sorted(policies.POLICIES) if zones == ["all"] else list(zones or [])
     selected += list(policy_names or [])
@@ -1445,3 +1479,8 @@ def audit_review(
             typer.echo(f"  FAILED {agent_id} on AuditReviewRequested seq {seq}: {error}")
         if report.failed:
             raise typer.Exit(code=1)
+
+
+from meridian.cli_substrate import substrate_app  # noqa: E402 (registered last: it imports cli lazily)
+
+app.add_typer(substrate_app, name="substrate")

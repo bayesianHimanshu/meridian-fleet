@@ -142,6 +142,8 @@ def extract_rows(
                     a.IMAGE_DIGEST: p.image_digest,
                     a.POLICY_SHA256: p.policy_sha256,
                     a.POLICY_FILE_SHA256: p.policy_file_sha256,
+                    a.TEMPLATE_SHA256: None if p.substrate is None else p.substrate.template_sha256,
+                    a.GOLDEN_SNAPSHOT: None if p.substrate is None else p.substrate.golden_snapshot,
                 }
         elif isinstance(p, FindingRaised):
             parts = parse_dedup_key(p.dedup_key)

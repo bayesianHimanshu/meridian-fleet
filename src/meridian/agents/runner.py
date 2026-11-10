@@ -22,6 +22,7 @@ from meridian.domain.events import (
     EventPayload,
     FindingRaised,
     LedgerEntry,
+    SubstrateRun,
 )
 from meridian.domain.findings import Finding
 from meridian.ledger.store import DuplicateDedupKeyError
@@ -49,6 +50,17 @@ class RunOutcome(Protocol):
     @property
     def policy_file_sha256(self) -> str | None: ...
 
+    @property
+    def substrate(self) -> SubstrateRun | None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class RunPlan:
+    """What an executor knows before a run starts, recorded on ActorWoke."""
+
+    executor: str
+    substrate: SubstrateRun | None = None
+
 
 class AgentExecutor(Protocol):
     """Where a run happens (meridian.sandbox.executor.Executor)."""
@@ -56,7 +68,15 @@ class AgentExecutor(Protocol):
     @property
     def name(self) -> str: ...
 
-    def run(self, agent_id: str, trigger: Event, cut_id: str) -> RunOutcome: ...
+    def executor_name(self, agent_id: str) -> str:
+        """The executor a run of this agent goes to (a zoned executor picks per policy)."""
+        ...
+
+    def plan(self, agent_id: str, trigger: Event) -> RunPlan: ...
+
+    def run(
+        self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
+    ) -> RunOutcome: ...
 
     def drain(self) -> None:
         """Block until background work (sandbox deletion) has finished."""
@@ -89,13 +109,14 @@ class AgentRunner:
         study_id: str,
         log: structlog.typing.FilteringBoundLogger,
         operational_cuts: Collection[str],
-        operational_executor: str = "openshell",
+        operational_executors: Collection[str] = ("openshell", "substrate"),
     ) -> None:
-        """operational_cuts ([cuts] operational) may only be processed by
-        operational_executor ([cuts] operational_executor): run_pending refuses any other
-        executor for them before it records anything."""
+        """operational_cuts ([cuts] operational) may only be processed by one of
+        operational_executors ([cuts] operational_executors), decided per run (a zoned
+        executor picks per policy): run_pending refuses any other executor for them
+        before it records anything."""
         self._operational = frozenset(operational_cuts)
-        self._operational_executor = operational_executor
+        self._operational_executors = tuple(operational_executors)
         self._ledger = ledger
         self._registry = registry
         self._executor = executor
@@ -131,9 +152,12 @@ class AgentRunner:
         self,
         agents: Collection[str] | None = None,
         cuts: Collection[str] | None = None,
+        rerun: bool = False,
     ) -> RunReport:
         """Every pending (enabled agent, DataCut) pair; optionally only some agents and
-        cuts (the rest stay pending for a later pass)."""
+        cuts (the rest stay pending for a later pass). rerun also runs pairs already
+        completed (for example DC-BASE again after the executor of a zone changed): their
+        findings are skipped as duplicates and the new run events record the executor."""
         report = RunReport()
         triggers = [
             t
@@ -147,7 +171,8 @@ class AgentRunner:
             if EventType.DATA_CUT in registered.agent.subscribes_to
             and (agents is None or registered.agent.agent_id in agents)
             for trigger in triggers
-            if (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
+            if rerun
+            or (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
         ]
         self._require_sandbox(pending)
         for registered, trigger in pending:
@@ -155,26 +180,30 @@ class AgentRunner:
         self._executor.drain()  # a pass ends only when every sandbox is torn down
         return report
 
+    def _allowed(self) -> str:
+        return " or ".join(self._operational_executors)
+
     def _require_sandbox(self, pending: list[tuple[RegisteredAgent, Event]]) -> None:
-        """Refuse the whole pass, before any event, if an operational cut is pending and
-        the executor is not the required one."""
-        if self._executor.name == self._operational_executor:
-            return
+        """Refuse the whole pass, before any event, if an operational cut is pending for
+        a run whose executor is not one of the allowed ones."""
         refused = sorted(
             {
-                (t.payload.cut_id, r.agent.agent_id)
+                (t.payload.cut_id, r.agent.agent_id, executor)
                 for r, t in pending
-                if isinstance(t.payload, DataCut) and t.payload.cut_id in self._operational
+                if isinstance(t.payload, DataCut)
+                and t.payload.cut_id in self._operational
+                and (executor := self._executor.executor_name(r.agent.agent_id))
+                not in self._operational_executors
             }
         )
         if refused:
-            cuts = sorted({c for c, _ in refused})
-            pairs = ", ".join(f"{a} on {c}" for c, a in refused)
+            cuts = sorted({c for c, _, _ in refused})
+            pairs = ", ".join(f"{a} on {c} ({e})" for c, a, e in refused)
             raise SandboxRequiredError(
                 f"operational cut(s) {', '.join(cuts)} may only be processed by the "
-                f"{self._operational_executor} executor, not {self._executor.name} "
-                f"([cuts] operational_executor); pending: {pairs}. Nothing was run. Use "
-                f"--executor {self._operational_executor}, or limit the pass to evaluation cuts."
+                f"{self._allowed()} executor ([cuts] operational_executors); pending: "
+                f"{pairs}. Nothing was run. Use --executor openshell or zoned, or limit the "
+                "pass to evaluation cuts."
             )
 
     def run_audit_review(
@@ -186,17 +215,18 @@ class AgentRunner:
         through_seq, by default every event before it), let prepare write the audit
         extract for that trigger, and run every enabled agent that wakes on it. The ledger
         is operational data: only the operational executor may run it."""
-        if self._executor.name != self._operational_executor:
-            raise SandboxRequiredError(
-                f"an audit review reads the operational ledger and may only run in the "
-                f"{self._operational_executor} executor, not {self._executor.name}. Nothing "
-                "was run."
-            )
         reviewers = [
             r
             for r in self._registry.enabled()
             if EventType.AUDIT_REVIEW_REQUESTED in r.agent.subscribes_to
         ]
+        for r in reviewers:
+            executor = self._executor.executor_name(r.agent.agent_id)
+            if executor not in self._operational_executors:
+                raise SandboxRequiredError(
+                    f"an audit review reads the operational ledger and may only run in the "
+                    f"{self._allowed()} executor, not {executor}. Nothing was run."
+                )
         report = RunReport()
         if not reviewers:
             return report
@@ -234,6 +264,12 @@ class AgentRunner:
             trigger_seq=trigger.seq,
             cut_id=cut_id,
         )
+        try:
+            plan = self._executor.plan(agent.agent_id, trigger)
+        except Exception as exc:  # no template, no golden snapshot: nothing is recorded
+            log.error("agent.plan_failed", error=f"{type(exc).__name__}: {exc}")
+            report.failed.append((agent.agent_id, trigger.seq, f"{type(exc).__name__}: {exc}"))
+            return
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
@@ -241,13 +277,14 @@ class AgentRunner:
                 agent_id=agent.agent_id,
                 agent_version=agent.version,
                 trigger_seq=trigger.seq,
-                executor=self._executor.name,
+                executor=plan.executor,
                 review_from_seq=None if review is None else review[0],
                 review_to_seq=None if review is None else review[1],
+                substrate=plan.substrate,
             ),
         )
         try:
-            outcome = self._executor.run(agent.agent_id, trigger, cut_id)
+            outcome = self._executor.run(agent.agent_id, trigger, cut_id, plan)
             drafts = list(outcome.drafts)
             prefix = dedup_prefix(agent.agent_id, agent.version)
             for draft in drafts:
@@ -276,12 +313,13 @@ class AgentRunner:
                 agent_id=agent.agent_id,
                 agent_version=agent.version,
                 trigger_seq=trigger.seq,
-                executor=self._executor.name,
+                executor=plan.executor,
                 image_digest=outcome.image_digest,
                 policy_sha256=outcome.policy_sha256,
                 inputs_manifest_sha256=outcome.inputs_manifest_sha256,
                 policy_file=outcome.policy_file,
                 policy_file_sha256=outcome.policy_file_sha256,
+                substrate=outcome.substrate,
             ),
         )
         report.completed.append((agent.agent_id, trigger.seq))

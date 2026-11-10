@@ -75,10 +75,11 @@ warn_required_dynamic_aliases = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-q --strict-markers -m 'not slow and not openshell'"
+addopts = "-q --strict-markers -m 'not slow and not openshell and not substrate'"
 # fastapi's TestClient (starlette) suggests httpx2; httpx is the dependency in use.
 filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]
 markers = [
     "slow: needs network and real CDISC pilot data; run with -m slow",
     "openshell: needs the openshell CLI, a gateway and the agent image; run with -m openshell",
+    "substrate: needs the kind cluster with Agent Substrate and meridian's templates; run with -m substrate",
 ]

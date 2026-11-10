@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Every check CI runs that needs nothing but this checkout: ruff format --check, ruff
-# check, mypy --strict (src, tests, scripts), pytest without the slow and openshell marks,
+# check, mypy --strict (src, tests, scripts), pytest without the slow, openshell and
+# substrate marks,
 # the policies rendering to the committed files, and the web checks (typecheck, lint,
 # tests, generated API types). Exits non-zero on the first failing check.
 #
@@ -44,7 +45,7 @@ policies_current() {
 step "ruff format --check" uv run ruff format --check
 step "ruff check" uv run ruff check
 step "mypy --strict" uv run mypy
-step "pytest (not slow, not openshell)" uv run pytest -q -m "not slow and not openshell"
+step "pytest (not slow, openshell or substrate)" uv run pytest -q -m "not slow and not openshell and not substrate"
 step "policies render to the committed files" policies_current
 
 if [[ "${web}" -eq 1 ]]; then

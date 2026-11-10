@@ -45,6 +45,10 @@ class ApiContext:
     safety_root: Path = Path("data/safety_db")
     etmf_root: Path = Path("data/etmf")
     run_timeout_seconds: int = 120  # [runtime] exec_timeout_seconds
+    # Policy to executor ([runtime] executors when [runtime] executor is zoned); a policy
+    # not listed runs on default_executor.
+    executors: tuple[tuple[str, str], ...] = ()
+    default_executor: str = "openshell"
 
     def tmf_reader(self, cut_id: str) -> StudyReader:
         """Blinded DM of the cut, layered with its eTMF snapshot (index, visits, export)."""
@@ -113,6 +117,8 @@ def repository(
             portfolio=ctx.portfolio,
             operational_cuts=ctx.operational_cuts,
             run_timeout_seconds=ctx.run_timeout_seconds,
+            executors=dict(ctx.executors),
+            default_executor=ctx.default_executor,
         )
     finally:
         ledger.close()

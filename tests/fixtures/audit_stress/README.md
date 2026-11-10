@@ -21,7 +21,13 @@ Each file has:
   decisions), `<decision seq>` or `<actor>/reused/<first seq>` (reason quality),
   `<decision seq>` (decision on a retired or superseded finding);
 - `actual`: per agent version, what the agent reported when the set was run once at the end
-  of step 4b (docs/audit-eval.md). Empty until then.
+  of step 4b (1.0.0) and once in phase 4a step 2 (1.1.0) (docs/audit-eval.md). Empty until
+  then.
+
+Phase 4a step 2 added two cases, 17_clean_substrate_runs and
+18_substrate_run_records_incomplete, written by hand with their ideals before 1.1.0 was run
+on them: 1.1.0 accepts substrate as a sandboxed executor when its completion records the
+image, the template spec hash and the golden snapshot id.
 
 Thresholds assumed by the ideals (the agent's documented defaults): 10 decisions within 5
 minutes (inclusive) by one actor is rapid; a dismissal reason shorter than 12 characters or

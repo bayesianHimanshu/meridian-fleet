@@ -81,6 +81,12 @@ def context_from_settings(
         safety_root=settings.safety_root,
         etmf_root=settings.etmf_root,
         run_timeout_seconds=settings.runtime.exec_timeout_seconds,
+        executors=tuple(sorted(settings.runtime.executors.items()))
+        if settings.runtime.executor == "zoned"
+        else (),
+        default_executor="openshell"
+        if settings.runtime.executor == "zoned"
+        else settings.runtime.executor,
     )
 
 
