@@ -3,6 +3,7 @@ import { type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router";
 import { api, unwrap, type Schemas } from "../api/client";
 import { Hash } from "../components/Hash";
+import { RaiseObservation } from "../components/Observation";
 import { ErrorNote, Loading, Time } from "../components/common";
 import { FindingLink as Linked, WithTimes } from "../components/text";
 import { ROLE_LABELS, useIdentity, type Person } from "../identity";
@@ -33,11 +34,7 @@ export function isRedacted(entry: Entry): entry is Schemas["RedactedEvent"] {
 }
 
 function FindingLink({ id }: { id: string | null | undefined }) {
-  return id ? (
-    <Linked id={id} className="mono" />
-  ) : (
-    <span>Finding</span>
-  );
+  return id ? <Linked id={id} className="mono" /> : <span>Finding</span>;
 }
 
 /** One line on what the event says, in plain words. A person is named once, from
@@ -54,7 +51,8 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
     case "finding_raised":
       return (
         <>
-          <FindingLink id={p.finding.finding_id} />: <WithTimes text={p.finding.title} />
+          <FindingLink id={p.finding.finding_id} />:{" "}
+          <WithTimes text={p.finding.title} />
         </>
       );
     case "finding_narrative":
@@ -83,7 +81,8 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
       const name = people.find((x) => x.actor === d.actor)?.name ?? d.actor;
       return (
         <>
-          <FindingLink id={d.finding_id} /> {d.action} by {name} ({ROLE_LABELS[d.role]})
+          <FindingLink id={d.finding_id} /> {d.action} by {name} (
+          {ROLE_LABELS[d.role]})
         </>
       );
     }
@@ -97,7 +96,9 @@ export function describe(entry: Schemas["Event"], people: Person[]): ReactNode {
 }
 
 function VerifyPanel() {
-  const run = useMutation({ mutationFn: () => unwrap(api.GET("/api/v1/ledger/verify")) });
+  const run = useMutation({
+    mutationFn: () => unwrap(api.GET("/api/v1/ledger/verify")),
+  });
   return (
     <div className="stack" style={{ gap: "8px" }}>
       <div>
@@ -131,7 +132,9 @@ export function LedgerView() {
   // Filters live in the URL so another page can link to them (the fleet page links to an
   // agent's run events): ?agent=<agent id>&type=<event type>, type repeatable.
   const [params, setParams] = useSearchParams();
-  const types = params.getAll("type").filter((t): t is EventType => (TYPES as string[]).includes(t));
+  const types = params
+    .getAll("type")
+    .filter((t): t is EventType => (TYPES as string[]).includes(t));
   const agent = params.get("agent");
   const type: EventType | "" = types.length === 1 ? (types[0] ?? "") : "";
   const setType = (value: EventType | "") => {
@@ -169,8 +172,9 @@ export function LedgerView() {
         <div>
           <h1 id="ledger-title">Event ledger</h1>
           <p>
-            Every event, newest first, as your role may see it. The ledger is append-only and hash-chained:
-            nothing is ever changed or deleted. Restricted events show only that they exist.
+            Every event, newest first, as your role may see it. The ledger is
+            append-only and hash-chained: nothing is ever changed or deleted.
+            Restricted events show only that they exist.
           </p>
         </div>
         <VerifyPanel />
@@ -184,7 +188,9 @@ export function LedgerView() {
               setType(e.target.value as EventType | "");
             }}
           >
-            <option value="">{types.length > 1 ? typesText(types) : "All types"}</option>
+            <option value="">
+              {types.length > 1 ? typesText(types) : "All types"}
+            </option>
             {TYPES.map((t) => (
               <option key={t} value={t}>
                 {t.replaceAll("_", " ")}
@@ -195,8 +201,9 @@ export function LedgerView() {
         {agent ? (
           <p className="message" data-testid="agent-filter">
             Only events of <span className="mono">{agent}</span>
-            {types.length > 0 ? ` (${typesText(types)})` : ""}. A run that started and never finished shows as
-            a started event with no finished one. <Link to="/ledger">Show every event</Link>
+            {types.length > 0 ? ` (${typesText(types)})` : ""}. A run that
+            started and never finished shows as a started event with no finished
+            one. <Link to="/ledger">Show every event</Link>
           </p>
         ) : null}
       </div>
@@ -220,19 +227,32 @@ export function LedgerView() {
               <tbody>
                 {entries.map((e) =>
                   isRedacted(e) ? (
-                    <tr key={e.seq} className="ledger-row redacted" data-testid="redacted-row">
+                    <tr
+                      key={e.seq}
+                      className="ledger-row redacted"
+                      data-testid="redacted-row"
+                    >
                       <td className="num">{e.seq}</td>
-                      <td className="mono"><Time iso={e.recorded_at} /></td>
+                      <td className="mono">
+                        <Time iso={e.recorded_at} />
+                      </td>
                       <td>{e.event_type.replaceAll("_", " ")}</td>
-                      <td>Redacted: a restricted event your role may not read.</td>
+                      <td>
+                        Redacted: a restricted event your role may not read.
+                      </td>
                       <td>
                         <Hash value={e.hash} label="event hash" />
                       </td>
                     </tr>
                   ) : (
-                    <tr key={e.seq} className={`ledger-row${e.visibility === "restricted" ? " restricted-row" : ""}`}>
+                    <tr
+                      key={e.seq}
+                      className={`ledger-row${e.visibility === "restricted" ? " restricted-row" : ""}`}
+                    >
                       <td className="num">{e.seq}</td>
-                      <td className="mono"><Time iso={e.recorded_at} /></td>
+                      <td className="mono">
+                        <Time iso={e.recorded_at} />
+                      </td>
                       <td>{e.payload.type.replaceAll("_", " ")}</td>
                       <td>
                         {describe(e, people)}
@@ -242,6 +262,9 @@ export function LedgerView() {
                             <span className="muted">by {e.actor}</span>
                           </>
                         )}
+                        <div className="row-observe">
+                          <RaiseObservation refersTo={{ ledger_seq: e.seq }} />
+                        </div>
                       </td>
                       <td>
                         <Hash value={e.hash} label="event hash" />
