@@ -242,7 +242,9 @@ def generate(dm: pl.DataFrame, ref: TmfReference, seed: int) -> Index:
         version += 1
         update += timedelta(days=365)
     mp = art["monitoring_plan"]
-    b.index.harmless[VERSIONS].append(b.document(mp, "", 2, first + _days(rng, (120, 240))))
+    mp_day = first + _days(rng, (120, 240))
+    if mp_day + timedelta(days=mp.file_within_days) < export:  # a short trial may not get one
+        b.index.harmless[VERSIONS].append(b.document(mp, "", 2, mp_day))
     amendments = sorted(
         day
         for day in (first + _days(rng, (90, 400)) for _ in range(int(rng.integers(*AMENDMENTS))))

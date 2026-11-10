@@ -128,7 +128,13 @@ openapi_file = "openapi/meridian-api.json"
 # Agents. enabled lists the agent ids the runner wakes; [agents.<name>] is each agent's
 # own configuration and is all the agent ever sees.
 [agents]
-enabled = ["rbqm.kri_monitor", "rbqm.qtl_detector", "rbqm.csm", "safety.sae_reconciler"]
+enabled = [
+    "rbqm.kri_monitor",
+    "rbqm.qtl_detector",
+    "rbqm.csm",
+    "safety.sae_reconciler",
+    "quality.tmf_completeness",
+]
 
 [agents.kri_monitor]
 alpha = 0.01

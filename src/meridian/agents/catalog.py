@@ -7,6 +7,7 @@ without importing the ledger store, ingestion, faults or evals.
 from typing import Any
 
 from meridian.agents.base import Agent, AgentConfig
+from meridian.agents.quality.tmf_completeness import TmfCompleteness
 from meridian.agents.rbqm.csm import Csm
 from meridian.agents.rbqm.kri_monitor import KriMonitor
 from meridian.agents.rbqm.qtl_detector import QtlDetector
@@ -22,6 +23,7 @@ def build_registry(cfg: AgentsSettings) -> AgentRegistry:
         (QtlDetector(), cfg.qtl_detector),
         (Csm(), cfg.csm),
         (SaeReconciler(), cfg.sae_reconciler),
+        (TmfCompleteness(), cfg.tmf_completeness),
     ]
     unknown = sorted(set(cfg.enabled) - {agent.agent_id for agent, _ in known})
     if unknown:

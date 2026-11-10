@@ -377,8 +377,8 @@ def cut_kind(cut_id: str, label: str | None) -> CutKind:
         return "sweep"
     if "HOLDOUT" in name or (label is not None and "holdout" in label.lower()):
         return "holdout"
-    if label is not None and label.startswith("safety_clean_"):
-        return "null"  # seeded clean safety cuts: nothing planted
+    if label is not None and label.startswith(("safety_clean_", "tmf_clean_")):
+        return "null"  # seeded clean safety and TMF cuts: nothing planted
     return "faulted"
 
 

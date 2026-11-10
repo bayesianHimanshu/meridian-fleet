@@ -6,4 +6,5 @@
 !config/default.toml
 !config/sites.toml
 !config/safety_terms.toml
+!config/tmf_expected.toml
 src/**/__pycache__

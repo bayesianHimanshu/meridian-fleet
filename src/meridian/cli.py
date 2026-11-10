@@ -1333,3 +1333,81 @@ def tmf_inject(set_name: TmfSetOption) -> None:
             typer.echo(
                 f"{r.scenario.label} {r.scenario.cut_id} {state} seq {r.event.seq}: {planted}"
             )
+
+
+@tmf_app.command("run")
+def tmf_run(
+    executor: ExecutorOption = None,
+    set_name: Annotated[
+        str | None,
+        typer.Option("--set", help="dev, holdout or clean; default DC-BASE."),
+    ] = None,
+) -> None:
+    """Run quality.tmf_completeness on DC-BASE or on one TMF evaluation set only."""
+    from meridian.agents.quality.tmf_completeness import AGENT_ID
+    from meridian.faults.tmf import set_cuts
+
+    settings = Settings()
+    if executor is not None:
+        runtime = settings.runtime.model_copy(update={"executor": executor})
+        settings = settings.model_copy(update={"runtime": runtime})
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        cuts = (
+            ["DC-BASE"]
+            if set_name is None
+            else set_cuts(settings.ground_truth_dir, _tmf_set(set_name))
+        )
+        try:
+            report = c.agent_runner(log).run_pending(agents={AGENT_ID}, cuts=set(cuts))
+        except SandboxRequiredError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(
+            f"completed {len(report.completed)} run(s) on {len(cuts)} cut(s), failed "
+            f"{len(report.failed)}, findings appended {len(report.findings_appended)}"
+        )
+        for agent_id, seq, error in report.failed:
+            typer.echo(f"  FAILED {agent_id} on DataCut seq {seq}: {error}")
+        if report.failed:
+            raise typer.Exit(code=1)
+
+
+@tmf_app.command("eval")
+def tmf_eval(
+    set_name: Annotated[str, typer.Option("--set", help="dev, holdout, clean or base (DC-BASE).")],
+) -> None:
+    """Precision and recall per check from the ledger; writes data/evals/tmf/<set>.json."""
+    from meridian.agents.quality.tmf_completeness import AGENT_ID, VERSION
+    from meridian.evals.tmf import evaluate, table
+    from meridian.faults.tmf import set_cuts
+
+    with _container() as c:
+        s = c.settings
+        cuts = (
+            ["DC-BASE"] if set_name == "base" else set_cuts(s.ground_truth_dir, _tmf_set(set_name))
+        )
+        result = evaluate(
+            name=set_name,
+            cuts=cuts,
+            ledger=c.ledger,
+            ground_truth_dir=s.ground_truth_dir,
+            etmf_study_root=s.etmf_root / s.study_id,
+            agent_id=AGENT_ID,
+            agent_version=VERSION,
+        )
+        out = s.evals_dir / "tmf" / f"{set_name}.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(result.to_json(), encoding="utf-8")
+        typer.echo(table([result]))
+        typer.echo(
+            f"cuts {len(cuts)}, without a run {len(result.runs_missing)}, "
+            f"findings {result.findings}"
+        )
+        typer.echo(f"harmless present {dict(result.harmless_present)}")
+        typer.echo(f"harmless flagged {dict(result.harmless_flagged)}")
+        for cut, check, record in result.false:
+            typer.echo(f"  false  {cut} {check} {record}")
+        for cut, check, record in result.missed:
+            typer.echo(f"  missed {cut} {check} {record}")
+        typer.echo(f"written to {out}")
