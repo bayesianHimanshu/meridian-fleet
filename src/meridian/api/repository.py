@@ -425,7 +425,11 @@ class Repository:
         ground_truth_dir: Path,
         portfolio: Sequence[PortfolioEntry],
         operational_cuts: Collection[str] = ("DC-BASE",),
+        run_timeout_seconds: int = 120,
     ) -> None:
+        # A started detector run without its ActorSuspended counts as running, not failed,
+        # until this many seconds after its ActorWoke ([runtime] exec_timeout_seconds).
+        self._run_timeout = timedelta(seconds=run_timeout_seconds)
         self._ledger = ledger
         self.person = person
         self.role = person.role
@@ -722,8 +726,16 @@ class Repository:
 
     def fleet(self) -> Fleet:
         snap = self.snapshot()
-        since = self._clock.now() - RUN_WINDOW
+        now = self._clock.now()
+        since = now - RUN_WINDOW
         runs = _runs(snap.woke, snap.suspended)
+
+        def running(r: _Run) -> bool:
+            return r.suspended is None and now - r.woke.recorded_at <= self._run_timeout
+
+        def failed(r: _Run) -> bool:
+            return r.suspended is None and not running(r)
+
         agents: list[FleetAgent] = []
         for registered in self._registry.all():
             a = registered.agent
@@ -733,7 +745,7 @@ class Repository:
             current = [r for r in mine if _woke(r).agent_version == a.version]
             last = current[-1] if current else None
             recent = [r for r in mine if r.woke.recorded_at >= since]
-            failures = [r for r in mine if r.suspended is None]
+            failures = [r for r in mine if failed(r)]
             agents.append(
                 FleetAgent(
                     agent_id=a.agent_id,
@@ -748,10 +760,14 @@ class Repository:
                     last_run_at=None if last is None else last.woke.recorded_at,
                     last_outcome=None
                     if last is None
-                    else ("completed" if last.suspended is not None else "not_completed"),
+                    else "completed"
+                    if last.suspended is not None
+                    else "running"
+                    if running(last)
+                    else "not_completed",
                     last_trigger_seq=None if last is None else _trigger(last.woke),
                     runs_7d=len(recent),
-                    failed_7d=sum(1 for r in recent if r.suspended is None),
+                    failed_7d=sum(1 for r in recent if failed(r)),
                     last_failure_at=failures[-1].woke.recorded_at if failures else None,
                     run_event_types=[EventType.ACTOR_WOKE, EventType.ACTOR_SUSPENDED],
                 )

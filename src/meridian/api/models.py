@@ -302,12 +302,14 @@ class FleetAgent(BaseModel):
     applied_policy_sha256: str
     last_run_at: datetime | None
     last_outcome: (
-        Literal["completed", "not_completed", "accepted", "rejected", "refused", "error"] | None
+        Literal["completed", "running", "not_completed", "accepted", "rejected", "refused", "error"]
+        | None
     )
     last_trigger_seq: int | None
     # Every version of the agent. A detector run failed when its ActorWoke has no
-    # ActorSuspended; a narrator or adjudicator run failed when it recorded status
-    # "error".
+    # ActorSuspended and it started longer ago than the run timeout ([runtime]
+    # exec_timeout_seconds); until then it is running, not failed. A narrator or
+    # adjudicator run failed when it recorded status "error".
     runs_7d: int
     failed_7d: int
     last_failure_at: datetime | None

@@ -44,6 +44,7 @@ class ApiContext:
     operational_cuts: tuple[str, ...] = ("DC-BASE",)
     safety_root: Path = Path("data/safety_db")
     etmf_root: Path = Path("data/etmf")
+    run_timeout_seconds: int = 120  # [runtime] exec_timeout_seconds
 
     def tmf_reader(self, cut_id: str) -> StudyReader:
         """Blinded DM of the cut, layered with its eTMF snapshot (index, visits, export)."""
@@ -111,6 +112,7 @@ def repository(
             ground_truth_dir=ctx.ground_truth_dir,
             portfolio=ctx.portfolio,
             operational_cuts=ctx.operational_cuts,
+            run_timeout_seconds=ctx.run_timeout_seconds,
         )
     finally:
         ledger.close()

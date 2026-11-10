@@ -1172,7 +1172,7 @@ export interface components {
             /** Last Failure At */
             last_failure_at: string | null;
             /** Last Outcome */
-            last_outcome: ("completed" | "not_completed" | "accepted" | "rejected" | "refused" | "error") | null;
+            last_outcome: ("completed" | "running" | "not_completed" | "accepted" | "rejected" | "refused" | "error") | null;
             /** Last Run At */
             last_run_at: string | null;
             /** Last Trigger Seq */

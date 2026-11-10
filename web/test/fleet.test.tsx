@@ -5,7 +5,8 @@ import type { Schemas } from "../src/api/client";
 import { renderApp } from "./render";
 import { BASE, POLICY, POLICY_FILE, seen, server } from "./server";
 
-const SAFETY_FILE = "8a23ec440fc55757080f8d5c4b14c0571cfbae940b1f35eac8b6e439297c407c";
+const SAFETY_FILE =
+  "8a23ec440fc55757080f8d5c4b14c0571cfbae940b1f35eac8b6e439297c407c";
 
 function agent(over: Partial<Schemas["FleetAgent"]>): Schemas["FleetAgent"] {
   return {
@@ -51,7 +52,9 @@ describe("agent fleet", () => {
   it("labels both policy hashes and counts failed runs, linking to the agent's run events", async () => {
     server.use(http.get(`${BASE}/fleet`, () => HttpResponse.json(fleet)));
     renderApp("/fleet");
-    const row = (await screen.findAllByText("safety.sae_reconciler"))[0]?.closest("tr");
+    const row = (
+      await screen.findAllByText("safety.sae_reconciler")
+    )[0]?.closest("tr");
     expect(row).toBeTruthy();
     const cells = within(row as HTMLElement);
     expect(cells.getByText("policy file sha256")).toBeTruthy();
@@ -68,11 +71,41 @@ describe("agent fleet", () => {
   });
 
   it("opens the ledger filtered to that agent's run events", async () => {
-    renderApp("/ledger?agent=safety.sae_reconciler&type=actor_woke&type=actor_suspended");
-    expect((await screen.findByTestId("agent-filter")).textContent).toContain("safety.sae_reconciler");
+    renderApp(
+      "/ledger?agent=safety.sae_reconciler&type=actor_woke&type=actor_suspended",
+    );
+    expect((await screen.findByTestId("agent-filter")).textContent).toContain(
+      "safety.sae_reconciler",
+    );
     const call = seen.find((s) => s.path.startsWith("/api/v1/ledger?"));
     expect(call?.path).toBe(
       "/api/v1/ledger?order=desc&limit=50&type=actor_woke&type=actor_suspended&agent=safety.sae_reconciler",
     );
+  });
+
+  it("shows a started run that is still within its timeout as running, not failed", async () => {
+    const running = agent({
+      agent_id: "quality.tmf_completeness",
+      version: "1.0.0",
+      zone: "quality",
+      policy: "quality",
+      policy_file: "policies/quality.yaml",
+      last_outcome: "running",
+      runs_7d: 1,
+      failed_7d: 0,
+    });
+    server.use(
+      http.get(`${BASE}/fleet`, () =>
+        HttpResponse.json({ agents: [running], containment: [] }),
+      ),
+    );
+    renderApp("/fleet");
+    const row = (
+      await screen.findAllByText("quality.tmf_completeness")
+    )[0]?.closest("tr");
+    const cells = within(row as HTMLElement);
+    const chip = cells.getByText("running");
+    expect(chip.className).not.toContain("critical");
+    expect(cells.queryByText("not completed")).toBeNull();
   });
 });
