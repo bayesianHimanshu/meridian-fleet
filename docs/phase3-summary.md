@@ -13,7 +13,7 @@ at seq 786: phase 3 is seq 787 onwards).
 | 3a | 15 to 18 | safety.sae_reconciler 1.0 to 1.1.1, synthetic safety database, Safety page |
 | 3b | 19, 20 | Local model (Ollama) for term adjudication and safety narration; pre-commit check |
 | 4a | 21 | quality.tmf_completeness 1.0.0, synthetic eTMF, TMF page; narrator selector_leak |
-| 4b | this | quality.audit_trail_reviewer 1.0.0, segregation of duties, QA observations |
+| 4b | 22 | quality.audit_trail_reviewer 1.0.0, segregation of duties, QA observations |
 
 ## What was built, and the evidence
 
