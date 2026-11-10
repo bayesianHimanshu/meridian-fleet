@@ -107,6 +107,23 @@ uv run python scripts/term_agreement_eval.py          # dev pairs: 1.0.0, agreem
 uv run meridian safety inject --set terms             # 10 cuts with recoded and look-alike terms
 ```
 
+Step 4a: the first quality agent, quality.tmf_completeness 1.0.0 (deterministic): is the
+Trial Master File complete and filed on time? It reads a synthetic eTMF index per cut
+(data/etmf, metadata only; staged as /stage/tmf, which only the quality zone reads) and
+blinded DM for site milestones. The expected records are config/tmf_expected.toml (TMF
+Reference Model names, no numbers). The Command Center's Quality and audit item shows the
+TMF page; the API serves `GET /api/v1/quality/{cut}/tmf`. Notes:
+[docs/tmf-notes.md](docs/tmf-notes.md); evaluation: [docs/tmf-eval.md](docs/tmf-eval.md).
+
+```sh
+uv run meridian tmf generate                 # a clean eTMF snapshot for every recorded cut
+uv run meridian tmf inject --set dev         # dev, holdout (30 cuts each) or clean (10)
+uv run meridian tmf run [--set dev]          # in OpenShell sandboxes (DC-BASE without --set)
+uv run meridian tmf eval --set dev           # precision and recall per check
+PYTHONPATH=. uv run python scripts/tmf_stress.py   # the hand-written stress set (run once)
+uv run python scripts/term_adjudicator_rerun.py    # term adjudicator 1.1.1 on the dev pairs
+```
+
 ## Setup
 
 ```sh
@@ -227,12 +244,13 @@ src/meridian/
   ledger/    hashing (canonical JSON, SHA-256 chain), SQLite store, verifier
   data/      fetch, XPT reader, pure CDISC transform, ops synthesis, cut writer, readers
   faults/    fault catalog, scenarios, injector and FullCutReader (never imported by agents)
-  agents/    agent protocol, registry, runner, and the rbqm agents (v2)
+  agents/    agent protocol, registry, runner; rbqm, safety and quality agents
   stats/     robust z, quasi-Poisson, expected-AE variants, Poisson GLM, rule values and
              check types, shared by agents and evals
   evals/     matching, metrics, condition truth, scorecards and the phase 1 report
              (never imports agents)
   sandbox/   staging, zone policies, the agent image, executors (in process, OpenShell)
+  tmf/       site milestones from DM and the synthetic eTMF index generator
   platform/  Clock, Settings, Container (explicit constructor wiring, no globals)
   cli.py     typer app exposed as the `meridian` console script
   worker.py  `meridian-worker`: one agent run on a staged cut (what runs in a sandbox)

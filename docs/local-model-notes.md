@@ -106,3 +106,7 @@ Every policy's conformance opens each area: allowed where listed, refused elsewh
   PRURITUS / PRURIGO "yes" answers of phi4-mini into "unsure".
 * safety.local_narrator 1.0.1: the host writes the opening (site, subject, check), dates
   are readable, filler sentences are rejected. 135 of 158 accepted (1.0.0: 16 of 77).
+* Step 4a: safety.term_adjudicator 1.1.1 accepts a reason of 2 sentences and 300
+  characters; on dev 57 of 75 right (1.1.0: 55), still 0 wrong "yes". Both narrators
+  (rbqm.narrator 1.1.1, safety.local_narrator 1.0.2) reject selector_leak: 12 of the 135
+  accepted 1.0.1 summaries had pasted selectors such as "CASEID=SC-..." and would now fail.

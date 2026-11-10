@@ -106,8 +106,10 @@ hash, and that a rule change moves both.
 version of the agent. A detector run is an ActorWoke; it failed when no ActorSuspended for
 the same agent, version and trigger follows it before that key's next ActorWoke (so a
 retry's success never closes the failed attempt before it). A narrator run is a
-FindingNarrative; it failed when its status is `error`. A run still in progress counts as
-failed until it ends. `run_event_types` and `GET /ledger?agent=<id>&type=...` give the
+FindingNarrative; it failed when its status is `error`. A started detector run without its
+ActorSuspended is `running` (last_outcome) and not counted as failed until
+`[runtime] exec_timeout_seconds` after its ActorWoke (step 4a); after that it is a failed
+run (`not_completed`). `run_event_types` and `GET /ledger?agent=<id>&type=...` give the
 filtered ledger the fleet page links to. The agent filter matches only events the caller
 reads in full, so it never tells which agent a redacted event belongs to. Failed events are
 not changed or hidden: they are the ActorWoke events with no ActorSuspended after them.
@@ -181,3 +183,16 @@ Step 3b2: an assessment of term adjudicator 1.1.0 (the agreement rule) also carr
 answer passed validation) and `text`, the raw answer as received. The page shows both raw
 answers under the agreed verdict. `model` is the two models joined by "+" and
 `model_digest` is null; each answer has its own digest. 1.0.0 assessments have no answers.
+
+## TMF completeness (phase 3 step 4a)
+
+`GET /quality/{cut}/tmf` serves the TMF of one cut: completeness and timely filing per site
+and for the trial, the expected-against-filed matrix (one cell per site and site-level
+artifact, plus the trial-level list) and the current quality.tmf_completeness findings the
+caller may see, each linked from its cell. Unlike the reconciliation view, it reads data as
+well as the ledger: the matrix is computed by the agent's own `assess()` from the cut's
+eTMF snapshot and blinded DM (site milestone dates only), so the page and the agent cannot
+disagree. Who may call it is decided in the visibility module (`can_see_tmf`): exactly the
+roles in the agent's `visible_to` (clinical_ops_lead, medical_monitor, qa_auditor,
+portfolio_lead). Others get 403, as for the RBQM site metrics; a cut without an eTMF
+snapshot is 404. Nothing in it names a subject.
