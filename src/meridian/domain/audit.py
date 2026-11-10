@@ -7,7 +7,8 @@ data.
 
 A row holds the envelope (seq, hashes, type, time, actor) and, per event type, the
 identifiers a review needs: the finding id, the cut id and its scope, the agent, version,
-executor, image digest and policy hashes of a run, and a decision's role, action and
+executor, image digest and policy hashes of a run (for a Substrate run, the template's
+spec hash and the golden snapshot id), and a decision's role, action and
 reason. Never evidence, narratives, subject ids, titles or summaries. A restricted event
 (or one about a restricted finding) keeps only seq, hashes, type and time, with REDACTED
 = "Y".
@@ -40,6 +41,10 @@ POLICY_FILE_SHA256 = "POLICY_FILE_SHA256"
 RUN_STATUS = "RUN_STATUS"  # ActorWoke: started; ActorSuspended: completed
 DECISION_ACTION = "DECISION_ACTION"
 DECISION_REASON = "DECISION_REASON"
+# Phase 4a: a run in Agent Substrate (ActorSuspended with executor substrate) records the
+# template's spec hash and the golden snapshot the actor was cloned from.
+TEMPLATE_SHA256 = "TEMPLATE_SHA256"
+GOLDEN_SNAPSHOT = "GOLDEN_SNAPSHOT"
 
 COLUMNS: tuple[str, ...] = (
     SEQ,
@@ -64,6 +69,8 @@ COLUMNS: tuple[str, ...] = (
     RUN_STATUS,
     DECISION_ACTION,
     DECISION_REASON,
+    TEMPLATE_SHA256,
+    GOLDEN_SNAPSHOT,
 )
 INT_COLUMNS: tuple[str, ...] = (SEQ, FINDING_GROUP, TRIGGER_SEQ)
 # The only columns a redacted row fills.

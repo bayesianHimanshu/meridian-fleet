@@ -99,6 +99,9 @@
   "actual": {
     "1.0.0": [
       "audit_decision_on_retired:7"
+    ],
+    "1.1.0": [
+      "audit_decision_on_retired:7"
     ]
   }
 }

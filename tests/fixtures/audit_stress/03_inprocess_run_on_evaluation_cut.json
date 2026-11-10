@@ -41,6 +41,7 @@
   "ideal": "Nothing: evaluation cuts may run in process.",
   "ideal_findings": [],
   "actual": {
-    "1.0.0": []
+    "1.0.0": [],
+    "1.1.0": []
   }
 }
