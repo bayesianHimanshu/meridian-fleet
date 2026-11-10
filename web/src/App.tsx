@@ -11,6 +11,7 @@ import { SafetyView } from "./views/Safety";
 import { RbqmView } from "./views/Rbqm";
 import { ReviewQueue } from "./views/ReviewQueue";
 import { StudyView } from "./views/Study";
+import { TmfView } from "./views/Tmf";
 import { UnblindedView } from "./views/Unblinded";
 
 /** Where each role lands: decision-making roles on the review queue. */
@@ -108,7 +109,11 @@ function Nav({ onNavigate }: { onNavigate?: () => void }) {
     ],
     [
       "Oversight",
-      [{ to: "/rbqm", label: "RBQM" }, { to: "/safety", label: "Safety" }, { label: "Quality and audit" }],
+      [
+        { to: "/rbqm", label: "RBQM" },
+        { to: "/safety", label: "Safety" },
+        { to: "/quality", label: "Quality and audit" },
+      ],
     ],
     ["Decisions", [{ to: "/review", label: "Review queue" }]],
     [
@@ -216,6 +221,7 @@ export function App() {
             <Route path="/findings/:findingId" element={<FindingDetail />} />
             <Route path="/rbqm" element={<RbqmView />} />
             <Route path="/safety" element={<SafetyView />} />
+            <Route path="/quality" element={<TmfView />} />
             <Route path="/study" element={<StudyView />} />
             <Route path="/ledger" element={<LedgerView />} />
             <Route path="/fleet" element={<FleetView />} />
