@@ -454,8 +454,13 @@ def agents_run(
         bool,
         typer.Option(
             "--rerun",
-            help="With --cut: also run pairs already completed (findings dedup as skipped).",
+            help="With --cut or --all-cuts: also run pairs already completed (findings "
+            "dedup as skipped).",
         ),
+    ] = False,
+    all_cuts: Annotated[
+        bool,
+        typer.Option("--all-cuts", help="With --rerun: every recorded cut, said explicitly."),
     ] = False,
 ) -> None:
     """One runner pass over every pending (agent, DataCut) pair."""
@@ -479,8 +484,11 @@ def agents_run(
                 if isinstance(e.payload, DataCut)
                 and e.payload.cut_id not in settings.cuts.operational
             }
-        if rerun and not only_cuts:
-            typer.echo("error: --rerun needs --cut", err=True)
+        if rerun and not only_cuts and not all_cuts:
+            typer.echo("error: --rerun needs --cut or --all-cuts", err=True)
+            raise typer.Exit(code=2)
+        if all_cuts and (only_cuts or not rerun):
+            typer.echo("error: --all-cuts goes with --rerun and without --cut", err=True)
             raise typer.Exit(code=2)
         if only_cuts:
             cuts = set(only_cuts) if cuts is None else cuts & set(only_cuts)

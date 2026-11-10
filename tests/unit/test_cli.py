@@ -173,3 +173,24 @@ def test_agents_run_in_process_on_dc_base_is_refused(
     result = runner.invoke(app, ["agents", "run", "--executor", "inprocess"])
     assert result.exit_code == 2
     assert "operational cut(s) DC-BASE" in result.output
+
+
+def test_a_rerun_of_every_cut_must_be_asked_for_explicitly(
+    ledger_env: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meridian.platform.container import Container
+
+    openshell, substrate = _FakeOpenShell(), _FakeSubstrate()
+    monkeypatch.setattr(Container, "openshell_executor", lambda self, log: openshell)
+    monkeypatch.setattr(Container, "substrate_executor", lambda self, log: substrate)
+    _pending_dc_base(ledger_env)
+    assert runner.invoke(app, ["agents", "run"]).exit_code == 0
+    first = len(substrate.runs)
+    assert runner.invoke(app, ["agents", "run"]).exit_code == 0
+    assert len(substrate.runs) == first  # nothing pending
+    assert runner.invoke(app, ["agents", "run", "--rerun"]).exit_code == 2
+    assert runner.invoke(app, ["agents", "run", "--all-cuts"]).exit_code == 2
+    again = runner.invoke(app, ["agents", "run", "--rerun", "--all-cuts"])
+    assert again.exit_code == 0, again.output
+    assert len(substrate.runs) == 2 * first
+    assert "runs per executor: substrate" in again.output

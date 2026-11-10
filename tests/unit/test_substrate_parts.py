@@ -89,14 +89,18 @@ def test_the_committed_templates_render_from_the_code(policy: str) -> None:
     path = template_path(DEPLOY, policy)
     image = committed_image(path)
     settings = Settings().substrate
-    assert path.read_text(encoding="utf-8") == render_template(policy, settings.atespace, image)
+    assert path.read_text(encoding="utf-8") == render_template(
+        policy, settings.atespace, image, settings.actor_memory_mib
+    )
     if policy != CONFORMANCE:
-        assert committed_name(path) == template_name(policy, image)
+        assert committed_name(path) == template_name(policy, image, settings.actor_memory_mib)
 
 
 def test_the_committed_pool_renders_from_the_code() -> None:
     s = Settings().substrate
-    pool = PoolSpec(s.namespace, s.worker_pool, s.workers, s.worker_image, s.sandbox_class)
+    pool = PoolSpec(
+        s.namespace, s.worker_pool, s.workers, s.worker_image, s.sandbox_class, s.worker_memory_mib
+    )
     assert (DEPLOY / POOL_FILE).read_text(encoding="utf-8") == render_pool(pool)
 
 

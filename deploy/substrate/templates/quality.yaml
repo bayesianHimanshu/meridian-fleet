@@ -3,7 +3,7 @@
 # src/meridian/sandbox/substrate_templates.py; do not edit by hand.
 metadata:
   atespace: meridian
-  name: quality-ce7bdedb6c8a
+  name: quality-ce7bdedb6c8a-m768
 workerSelector:
   matchLabels:
     workload: meridian

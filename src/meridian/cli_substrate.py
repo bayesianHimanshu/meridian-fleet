@@ -43,6 +43,7 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
         RUNNER_FILE,
         SUBSTRATE_POLICIES,
         PoolSpec,
+        check_sizes,
         render_access_policy,
         render_pool,
         render_runner,
@@ -51,12 +52,14 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
     )
 
     s = settings.substrate
+    check_sizes(s.actor_memory_mib, s.worker_memory_mib)
     root = s.deploy_dir
     written = []
     for policy in (*SUBSTRATE_POLICIES, CONFORMANCE):
         path = template_path(root, policy)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_template(policy, s.atespace, image_ref), encoding="utf-8")
+        text = render_template(policy, s.atespace, image_ref, s.actor_memory_mib)
+        path.write_text(text, encoding="utf-8")
         written.append(path)
     pool = PoolSpec(
         namespace=s.namespace,
@@ -64,6 +67,7 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
         replicas=s.workers,
         worker_image=s.worker_image,
         sandbox_class=s.sandbox_class,
+        worker_memory_mib=s.worker_memory_mib,
     )
     (root / POOL_FILE).write_text(render_pool(pool), encoding="utf-8")
     written.append(root / POOL_FILE)
@@ -528,11 +532,12 @@ def substrate_bench(
         "worker_memory_after": mem_after,
         **sb.report(results),
         "wall_ms_each": [r.wall_ms for r in results],
+        "runs_each": sb.each(results),
     }
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(line, sort_keys=True) + "\n")
-    shown = {k: v for k, v in line.items() if k not in ("wall_ms_each",)}
+    shown = {k: v for k, v in line.items() if k not in ("wall_ms_each", "runs_each")}
     typer.echo(json.dumps(shown, indent=1)[:4000])
     if line["failed"]:
         raise typer.Exit(code=1)
