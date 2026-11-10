@@ -134,7 +134,8 @@ def test_fleet_lists_agents_policies_runs_and_containment(fx: Fixture) -> None:
         narr["role"],
         narr["policy_file"].endswith("rbqm.narrator.yaml"),
         narr["last_outcome"],
-    ) == ("narrator", True, "accepted")
+        narr["runs_7d"],
+    ) == ("narrator", True, None, 1)  # the fixture's narrative is 1.1.0; 1.1.1 has not run
     assert [(c["policy"], c["passed"]) for c in fleet["containment"]] == [("rbqm", True)]
 
 

@@ -235,7 +235,7 @@ def test_a_pass_records_the_narrative_with_model_and_digest(
     p = event.payload
     assert (p.agent_id, p.agent_version, p.model, p.model_digest) == (
         "safety.local_narrator",
-        "1.0.1",
+        ln.VERSION,
         MODEL,
         DIGEST,
     )

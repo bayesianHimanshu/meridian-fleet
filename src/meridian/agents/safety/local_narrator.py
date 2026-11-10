@@ -1,4 +1,4 @@
-"""safety.local_narrator 1.0.1: a plain-language summary of one safety finding, by the
+"""safety.local_narrator 1.0.2: a plain-language summary of one safety finding, by the
 local model, checked before acceptance.
 
 The same contract as rbqm.narrator 1.1.0: the model sees the finding's kind, site,
@@ -28,6 +28,10 @@ the local model):
   rejected, with one code per kind: filler_sentence_severity, filler_sentence_status,
   filler_sentence_discrepancy.
 
+1.0.2 (step 4a): validator 1.1.1 of rbqm.narrator, so selector_leak applies here too
+(evidence selectors and field names such as "CASEID=SC-..." or "AESEQ 17.0, AESER = N"
+copied into the text are rejected).
+
 A reasoning trace is never read (thinking_present) and a truncated answer is rejected
 (truncated, as max_tokens for the cloud narrator).
 """
@@ -45,7 +49,7 @@ from meridian.ledger.hashing import canonical_json
 from meridian.llm.local import LocalModelOptions, LocalModelRequest, LocalModelResponse
 
 AGENT_ID = "safety.local_narrator"
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 NARRATES: dict[str, str] = {"safety.sae_reconciler": "1.1.1"}
 ZONES = frozenset({"safety"})
 SUBJECT_MASK = "the subject"
