@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meridian.data.stage_layout import (
+    AUDIT,
     BLINDED,
     LM,
     META,
@@ -43,6 +44,7 @@ from meridian.data.stage_layout import (
 )
 
 __all__ = [
+    "AUDIT",
     "BLINDED",
     "LM",
     "META",
@@ -239,8 +241,14 @@ AGENT_POLICIES: dict[str, ZonePolicy] = {
         LOCAL_ZONE, reads=(LM,), name=LOCAL_MODEL_POLICY, network=(OLLAMA_RULE,)
     ),
 }
+# quality.audit_trail: quality.audit_trail_reviewer reads the audit extract of the ledger
+# (/stage/audit) and its trigger, nothing of any cut, and has no network. It is the only
+# policy with the audit area.
+AUDIT_POLICY = "quality.audit_trail"
+AGENT_POLICIES[AUDIT_POLICY] = ZonePolicy("quality", reads=(META, AUDIT), name=AUDIT_POLICY)
 # The agents that run under a policy that is not named after them.
 AGENT_POLICY_OF: dict[str, str] = {
+    "quality.audit_trail_reviewer": AUDIT_POLICY,
     "safety.term_adjudicator": LOCAL_MODEL_POLICY,
     "safety.local_narrator": LOCAL_MODEL_POLICY,
 }
@@ -415,6 +423,8 @@ BOUNDARIES: dict[str, ZonePolicy] = {
         "narrator", reads=(NARR,), network=AGENT_POLICIES[NARRATOR_POLICY].network
     ),
     "local_model": ZonePolicy("local_model", reads=(LM,), network=(OLLAMA_RULE,)),
+    # The audit boundary: the trigger and the audit extract, no network.
+    "audit": ZonePolicy("audit", reads=(META, AUDIT)),
 }
 # The boundary each zone is proved against.
 ZONE_BOUNDARY: dict[str, str] = {
@@ -428,6 +438,7 @@ POLICY_BOUNDARY: dict[str, str] = {
     NARRATOR_POLICY: "narrator",
     RECONCILER_POLICY: "blinded",
     LOCAL_MODEL_POLICY: "local_model",
+    AUDIT_POLICY: "audit",
 }
 
 

@@ -141,6 +141,30 @@
             ],
             "title": "Executor"
           },
+          "review_from_seq": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review From Seq"
+          },
+          "review_to_seq": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review To Seq"
+          },
           "trigger_seq": {
             "exclusiveMinimum": 0.0,
             "title": "Trigger Seq",
@@ -538,6 +562,205 @@
           "text"
         ],
         "title": "AssetStatus",
+        "type": "object"
+      },
+      "AuditFindingItem": {
+        "additionalProperties": false,
+        "properties": {
+          "actor_under_review": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Under Review"
+          },
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "check",
+          "severity",
+          "status",
+          "title",
+          "actor_under_review"
+        ],
+        "title": "AuditFindingItem",
+        "type": "object"
+      },
+      "AuditReviewRequested": {
+        "additionalProperties": false,
+        "description": "The trigger of an audit review (phase 3 step 4b): quality.audit_trail_reviewer reads\nthe ledger from from_seq through through_seq, always below this event's own seq.",
+        "properties": {
+          "from_seq": {
+            "default": 1,
+            "exclusiveMinimum": 0.0,
+            "title": "From Seq",
+            "type": "integer"
+          },
+          "study_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Study Id",
+            "type": "string"
+          },
+          "through_seq": {
+            "exclusiveMinimum": 0.0,
+            "title": "Through Seq",
+            "type": "integer"
+          },
+          "type": {
+            "const": "audit_review_requested",
+            "default": "audit_review_requested",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "study_id",
+          "through_seq"
+        ],
+        "title": "AuditReviewRequested",
+        "type": "object"
+      },
+      "AuditView": {
+        "additionalProperties": false,
+        "description": "The Audit tab: the last audit review and the current audit findings the caller may\nsee. chain_linkage: intact, broken, or not_reviewed (no completed review yet).",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Version"
+          },
+          "by_check": {
+            "items": {
+              "$ref": "#/components/schemas/CheckCount"
+            },
+            "title": "By Check",
+            "type": "array"
+          },
+          "chain_findings": {
+            "title": "Chain Findings",
+            "type": "integer"
+          },
+          "chain_linkage": {
+            "enum": [
+              "intact",
+              "broken",
+              "not_reviewed"
+            ],
+            "title": "Chain Linkage",
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/AuditFindingItem"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "last_review_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Review At"
+          },
+          "last_review_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Review Seq"
+          },
+          "review_completed": {
+            "title": "Review Completed",
+            "type": "boolean"
+          },
+          "review_from_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review From Seq"
+          },
+          "review_to_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Review To Seq"
+          }
+        },
+        "required": [
+          "agent_id",
+          "agent_version",
+          "last_review_seq",
+          "last_review_at",
+          "review_from_seq",
+          "review_to_seq",
+          "review_completed",
+          "chain_linkage",
+          "chain_findings",
+          "by_check",
+          "findings"
+        ],
+        "title": "AuditView",
         "type": "object"
       },
       "CheckCount": {
@@ -1313,6 +1536,7 @@
               "mapping": {
                 "actor_suspended": "#/components/schemas/ActorSuspended",
                 "actor_woke": "#/components/schemas/ActorWoke",
+                "audit_review_requested": "#/components/schemas/AuditReviewRequested",
                 "containment_check_completed": "#/components/schemas/ContainmentCheckCompleted",
                 "data_cut": "#/components/schemas/DataCut",
                 "document_filed": "#/components/schemas/DocumentFiled",
@@ -1320,7 +1544,8 @@
                 "finding_narrative": "#/components/schemas/FindingNarrative",
                 "finding_raised": "#/components/schemas/FindingRaised",
                 "human_decision": "#/components/schemas/HumanDecision",
-                "policy_denied": "#/components/schemas/PolicyDenied"
+                "policy_denied": "#/components/schemas/PolicyDenied",
+                "quality_observation": "#/components/schemas/QualityObservation"
               },
               "propertyName": "type"
             },
@@ -1354,6 +1579,12 @@
               },
               {
                 "$ref": "#/components/schemas/HumanDecision"
+              },
+              {
+                "$ref": "#/components/schemas/AuditReviewRequested"
+              },
+              {
+                "$ref": "#/components/schemas/QualityObservation"
               }
             ],
             "title": "Payload"
@@ -1415,7 +1646,9 @@
           "containment_check_completed",
           "finding_narrative",
           "finding_assessment",
-          "human_decision"
+          "human_decision",
+          "audit_review_requested",
+          "quality_observation"
         ],
         "title": "EventType",
         "type": "string"
@@ -1522,6 +1755,19 @@
         "additionalProperties": false,
         "description": "Something an agent believes a human should look at.\n\nfinding_id is issued by the ledger when the finding is first recorded, so a\nfinding inside an EventDraft carries finding_id=None.",
         "properties": {
+          "actor_under_review": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Under Review"
+          },
           "agent_id": {
             "maxLength": 128,
             "minLength": 1,
@@ -1555,6 +1801,19 @@
           },
           "kind": {
             "$ref": "#/components/schemas/FindingKind"
+          },
+          "raised_by": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raised By"
           },
           "score": {
             "title": "Score",
@@ -1929,7 +2188,9 @@
           "site_data_anomaly",
           "under_reporting",
           "sae_reconciliation",
-          "tmf"
+          "tmf",
+          "audit",
+          "qa_observation"
         ],
         "title": "FindingKind",
         "type": "string"
@@ -2934,6 +3195,161 @@
         "title": "NarrativeView",
         "type": "object"
       },
+      "ObservationItem": {
+        "additionalProperties": false,
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "raised_by": {
+            "title": "Raised By",
+            "type": "string"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "refers_to_finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refers To Finding Id"
+          },
+          "refers_to_seq": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refers To Seq"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "seq",
+          "recorded_at",
+          "raised_by",
+          "severity",
+          "status",
+          "title",
+          "refers_to_finding_id",
+          "refers_to_seq"
+        ],
+        "title": "ObservationItem",
+        "type": "object"
+      },
+      "ObservationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]+-[0-9]{4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id"
+          },
+          "ledger_seq": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ledger Seq"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "severity"
+        ],
+        "title": "ObservationRequest",
+        "type": "object"
+      },
+      "ObservationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "finding_seq": {
+            "title": "Finding Seq",
+            "type": "integer"
+          },
+          "observation_id": {
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "observation_seq": {
+            "title": "Observation Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "observation_id",
+          "observation_seq",
+          "finding_id",
+          "finding_seq"
+        ],
+        "title": "ObservationResponse",
+        "type": "object"
+      },
       "PersonView": {
         "additionalProperties": false,
         "description": "A demo person from config/people.toml (development identity, not an account).",
@@ -3184,6 +3600,77 @@
           "treated"
         ],
         "title": "QtlView",
+        "type": "object"
+      },
+      "QualityObservation": {
+        "additionalProperties": false,
+        "description": "A QA auditor's observation (phase 3 step 4b), attributed to the auditor. The same\nwrite appends a qa_observation finding that names this observation_id.",
+        "properties": {
+          "description": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Description",
+            "type": "string"
+          },
+          "observation_id": {
+            "pattern": "^OB-[0-9a-f]{12}$",
+            "title": "Observation Id",
+            "type": "string"
+          },
+          "raised_by": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Raised By",
+            "type": "string"
+          },
+          "refers_to_finding_id": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Z]+-[0-9]{4}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refers To Finding Id"
+          },
+          "refers_to_seq": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refers To Seq"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "const": "quality_observation",
+            "default": "quality_observation",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "observation_id",
+          "raised_by",
+          "title",
+          "description",
+          "severity"
+        ],
+        "title": "QualityObservation",
         "type": "object"
       },
       "RbqmSites": {
@@ -5170,6 +5657,228 @@
         "summary": "Portfolio",
         "tags": [
           "portfolio"
+        ]
+      }
+    },
+    "/api/v1/quality/audit": {
+      "get": {
+        "description": "The last audit trail review and the current audit findings (qa_auditor and\nclinical_ops_lead only).",
+        "operationId": "quality_audit_api_v1_quality_audit_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Audit",
+        "tags": [
+          "quality"
+        ]
+      }
+    },
+    "/api/v1/quality/observations": {
+      "get": {
+        "description": "The QA observations the caller may see (qa_auditor, clinical_ops_lead, medical_monitor).",
+        "operationId": "observations_api_v1_quality_observations_get",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ObservationItem"
+                  },
+                  "title": "Response Observations Api V1 Quality Observations Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Observations",
+        "tags": [
+          "quality"
+        ]
+      },
+      "post": {
+        "description": "QA auditor only: record an observation (a QualityObservation event and a\nqa_observation finding raised by the auditor). A finding id or ledger seq it refers to\nmust exist and be visible to the auditor. Decided by clinical_ops_lead or\nmedical_monitor, never by the auditor who raised it.",
+        "operationId": "raise_observation_api_v1_quality_observations_post",
+        "parameters": [
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ObservationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObservationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Raise Observation",
+        "tags": [
+          "quality"
         ]
       }
     },

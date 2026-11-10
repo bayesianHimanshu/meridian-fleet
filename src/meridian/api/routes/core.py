@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query
 
 from meridian.api.deps import Caller, Context, Repo
 from meridian.api.models import (
+    AuditView,
     CutSummary,
     DecisionRequest,
     DecisionResponse,
@@ -15,6 +16,9 @@ from meridian.api.models import (
     Fleet,
     Health,
     LedgerPage,
+    ObservationItem,
+    ObservationRequest,
+    ObservationResponse,
     PersonView,
     Portfolio,
     RbqmSites,
@@ -187,6 +191,28 @@ def quality_tmf(cut: str, repo: Repo, ctx: Context) -> TmfCompletenessView:
     trial, the expected-against-filed matrix, and the current quality.tmf_completeness
     findings the caller may see. No subject data; the roles of the agent's config only."""
     return repo.tmf(cut, ctx.tmf_reader, ctx.agents.tmf_completeness)
+
+
+@router.post("/quality/observations", tags=["quality"], status_code=201)
+def raise_observation(body: ObservationRequest, repo: Repo) -> ObservationResponse:
+    """QA auditor only: record an observation (a QualityObservation event and a
+    qa_observation finding raised by the auditor). A finding id or ledger seq it refers to
+    must exist and be visible to the auditor. Decided by clinical_ops_lead or
+    medical_monitor, never by the auditor who raised it."""
+    return repo.raise_observation(body)
+
+
+@router.get("/quality/observations", tags=["quality"])
+def observations(repo: Repo) -> list[ObservationItem]:
+    """The QA observations the caller may see (qa_auditor, clinical_ops_lead, medical_monitor)."""
+    return repo.observations()
+
+
+@router.get("/quality/audit", tags=["quality"])
+def quality_audit(repo: Repo, ctx: Context) -> AuditView:
+    """The last audit trail review and the current audit findings (qa_auditor and
+    clinical_ops_lead only)."""
+    return repo.audit(ctx.agents.audit_trail_reviewer)
 
 
 @router.get("/portfolio", tags=["portfolio"])

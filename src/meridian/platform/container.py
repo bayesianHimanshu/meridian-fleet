@@ -1,6 +1,8 @@
 """Explicit wiring. Everything is constructed here and passed by constructor."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from types import TracebackType
 from typing import Self
 
@@ -13,8 +15,11 @@ from meridian.agents.registry import AgentRegistry
 from meridian.agents.runner import AgentRunner
 from meridian.agents.safety.adjudication import AdjudicatorRunner, reader_lookup
 from meridian.agents.safety.local_narration import LocalNarratorRunner
+from meridian.audit.extract import extract_rows, write_extract
 from meridian.data.ingest import IngestService
+from meridian.data.stage_layout import AUDIT
 from meridian.data.study_store import ParquetStudyReader, StudyReader
+from meridian.domain.events import AuditReviewRequested, Event, LedgerEntry
 from meridian.evals.scorecard import ScorecardStore
 from meridian.faults.inject import FaultInjector
 from meridian.faults.safety import SafetyInjector
@@ -63,6 +68,18 @@ class Container:
     def etmf_reader(self, cut_id: str) -> StudyReader:
         """The blinded area of one cut's eTMF snapshot: the index, visits and export date."""
         return ParquetStudyReader(self.settings.etmf_root / self.settings.study_id, cut_id)
+
+    def write_audit_extract(self, trigger: Event, entries: Sequence[LedgerEntry]) -> Path:
+        """The audit extract of an audit review, under <audit_root>/<trigger seq>/audit."""
+        p = trigger.payload
+        assert isinstance(p, AuditReviewRequested)
+        rows = extract_rows(
+            entries,
+            from_seq=p.from_seq,
+            through_seq=p.through_seq,
+            operational_cuts=self.settings.cuts.operational,
+        )
+        return write_extract(rows, self.settings.audit_root / str(trigger.seq) / AUDIT)
 
     def tmf_injector(self) -> TmfInjector:
         return TmfInjector(
@@ -114,6 +131,7 @@ class Container:
             reader_factory=self.study_reader,
             safety_reader_factory=self.safety_db_reader,
             tmf_reader_factory=self.etmf_reader,
+            audit_root=self.settings.audit_root,
             log=log,
         )
 
@@ -151,6 +169,7 @@ class Container:
             log=log,
             safety_root=self.settings.safety_root / self.settings.study_id,
             etmf_root=self.settings.etmf_root / self.settings.study_id,
+            audit_root=self.settings.audit_root,
         )
 
     def narrator_runner(

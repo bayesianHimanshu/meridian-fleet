@@ -85,6 +85,10 @@ tmf_app = typer.Typer(
     help="The synthetic eTMF index and quality.tmf_completeness (TMF completeness).",
 )
 app.add_typer(tmf_app, name="tmf")
+audit_app = typer.Typer(
+    no_args_is_help=True, help="Review the audit trail (quality.audit_trail_reviewer)."
+)
+app.add_typer(audit_app, name="audit")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -1411,3 +1415,33 @@ def tmf_eval(
         for cut, check, record in result.missed:
             typer.echo(f"  missed {cut} {check} {record}")
         typer.echo(f"written to {out}")
+
+
+@audit_app.command("review")
+def audit_review(
+    through_seq: Annotated[
+        int | None,
+        typer.Option("--through-seq", help="Review seq 1 to this one (default: every event)."),
+    ] = None,
+) -> None:
+    """One audit review in an OpenShell sandbox: an AuditReviewRequested event, the audit
+    extract under var/audit/<seq>/audit, and the reviewer's findings."""
+    settings = Settings()
+    with Container.build(settings) as c:
+        log = _configure_logging(c.clock)
+        try:
+            report = c.agent_runner(log).run_audit_review(c.write_audit_extract, through_seq)
+        except (SandboxRequiredError, ValueError) as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(code=2) from exc
+        typer.echo(
+            f"completed {len(report.completed)} review run(s), failed {len(report.failed)}, "
+            f"findings appended {len(report.findings_appended)}, skipped as duplicates "
+            f"{len(report.findings_skipped)}"
+        )
+        for agent_id, seq in report.completed:
+            typer.echo(f"  done   {agent_id} on AuditReviewRequested seq {seq}")
+        for agent_id, seq, error in report.failed:
+            typer.echo(f"  FAILED {agent_id} on AuditReviewRequested seq {seq}: {error}")
+        if report.failed:
+            raise typer.Exit(code=1)

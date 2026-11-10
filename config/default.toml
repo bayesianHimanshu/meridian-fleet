@@ -12,6 +12,7 @@ sites_file = "config/sites.toml"
 ground_truth_dir = "data/ground_truth"
 safety_root = "data/safety_db"  # the synthetic safety database, one snapshot per cut
 etmf_root = "data/etmf"  # the synthetic eTMF index, one snapshot per cut
+audit_root = "var/audit"  # audit extracts of the ledger, one folder per review
 evals_dir = "data/evals"
 
 # Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
@@ -22,6 +23,7 @@ quality = "QA"
 preclinical = "PRE"
 tmf = "TMF"
 unblinded = "DSMB"
+human = "OBS"  # QA observations: raised by a person (agent id "human.observation")
 
 # Source of the CDISC pilot SDTM transport files.
 [pilot]
@@ -134,6 +136,7 @@ enabled = [
     "rbqm.csm",
     "safety.sae_reconciler",
     "quality.tmf_completeness",
+    "quality.audit_trail_reviewer",
 ]
 
 [agents.kri_monitor]
@@ -191,3 +194,16 @@ last_subject_field = "RFENDTC"
 # No TMF finding carries subject data, so portfolio_lead may see them; not toxicologist,
 # and not the unblinded statistician (as for every blinded finding today).
 visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
+
+[agents.audit_trail_reviewer]
+# quality.audit_trail_reviewer 1.0.0 (phase 3 step 4b), deterministic. It reads the audit
+# extract of the ledger (no evidence, narratives or subject ids), staged only for
+# policies/quality.audit_trail.yaml. Thresholds (docs/audit-notes.md):
+rapid_decisions = 10        # 10 or more decisions by one person ...
+rapid_window_minutes = 5.0  # ... within 5 minutes is a signal of review without reading
+min_reason_chars = 12       # a dismissal reason shorter than this is too thin to check
+reuse_others = 3            # the same dismissal reason as 3 or more others by that person
+in_progress_seconds = 120   # a run started this recently may still be running
+# Segregation of duties: QA and clinical operations see audit findings; clinical_ops_lead
+# decides them, qa_auditor never does, and nobody decides a finding about their own actions.
+visible_to = ["clinical_ops_lead", "qa_auditor"]

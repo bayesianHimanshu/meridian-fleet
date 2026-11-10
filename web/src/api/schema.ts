@@ -178,6 +178,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quality/audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Quality Audit
+         * @description The last audit trail review and the current audit findings (qa_auditor and
+         *     clinical_ops_lead only).
+         */
+        get: operations["quality_audit_api_v1_quality_audit_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/quality/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Observations
+         * @description The QA observations the caller may see (qa_auditor, clinical_ops_lead, medical_monitor).
+         */
+        get: operations["observations_api_v1_quality_observations_get"];
+        put?: never;
+        /**
+         * Raise Observation
+         * @description QA auditor only: record an observation (a QualityObservation event and a
+         *     qa_observation finding raised by the auditor). A finding id or ledger seq it refers to
+         *     must exist and be visible to the auditor. Decided by clinical_ops_lead or
+         *     medical_monitor, never by the auditor who raised it.
+         */
+        post: operations["raise_observation_api_v1_quality_observations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/quality/{cut}/tmf": {
         parameters: {
             query?: never;
@@ -393,6 +441,10 @@ export interface components {
             agent_version?: string | null;
             /** Executor */
             executor?: string | null;
+            /** Review From Seq */
+            review_from_seq?: number | null;
+            /** Review To Seq */
+            review_to_seq?: number | null;
             /** Trigger Seq */
             trigger_seq: number;
             /**
@@ -526,6 +578,76 @@ export interface components {
             level: "good" | "warning" | "critical" | "info";
             /** Text */
             text: string;
+        };
+        /** AuditFindingItem */
+        AuditFindingItem: {
+            /** Actor Under Review */
+            actor_under_review: string | null;
+            /** Check */
+            check: string;
+            /** Finding Id */
+            finding_id: string;
+            severity: components["schemas"]["Severity"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "escalated" | "dismissed" | "retired";
+            /** Title */
+            title: string;
+        };
+        /**
+         * AuditReviewRequested
+         * @description The trigger of an audit review (phase 3 step 4b): quality.audit_trail_reviewer reads
+         *     the ledger from from_seq through through_seq, always below this event's own seq.
+         */
+        AuditReviewRequested: {
+            /**
+             * From Seq
+             * @default 1
+             */
+            from_seq: number;
+            /** Study Id */
+            study_id: string;
+            /** Through Seq */
+            through_seq: number;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "audit_review_requested";
+        };
+        /**
+         * AuditView
+         * @description The Audit tab: the last audit review and the current audit findings the caller may
+         *     see. chain_linkage: intact, broken, or not_reviewed (no completed review yet).
+         */
+        AuditView: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string | null;
+            /** By Check */
+            by_check: components["schemas"]["CheckCount"][];
+            /** Chain Findings */
+            chain_findings: number;
+            /**
+             * Chain Linkage
+             * @enum {string}
+             */
+            chain_linkage: "intact" | "broken" | "not_reviewed";
+            /** Findings */
+            findings: components["schemas"]["AuditFindingItem"][];
+            /** Last Review At */
+            last_review_at: string | null;
+            /** Last Review Seq */
+            last_review_seq: number | null;
+            /** Review Completed */
+            review_completed: boolean;
+            /** Review From Seq */
+            review_from_seq: number | null;
+            /** Review To Seq */
+            review_to_seq: number | null;
         };
         /** CheckCount */
         CheckCount: {
@@ -822,7 +944,7 @@ export interface components {
              */
             occurred_at: string;
             /** Payload */
-            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"];
+            payload: components["schemas"]["DataCut"] | components["schemas"]["DocumentFiled"] | components["schemas"]["ActorWoke"] | components["schemas"]["ActorSuspended"] | components["schemas"]["FindingRaised"] | components["schemas"]["PolicyDenied"] | components["schemas"]["ContainmentCheckCompleted"] | components["schemas"]["FindingNarrative"] | components["schemas"]["FindingAssessment"] | components["schemas"]["HumanDecision"] | components["schemas"]["AuditReviewRequested"] | components["schemas"]["QualityObservation"];
             /** Prev Hash */
             prev_hash: string;
             /**
@@ -840,7 +962,7 @@ export interface components {
          * EventType
          * @enum {string}
          */
-        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision";
+        EventType: "data_cut" | "document_filed" | "actor_woke" | "actor_suspended" | "finding_raised" | "policy_denied" | "containment_check_completed" | "finding_narrative" | "finding_assessment" | "human_decision" | "audit_review_requested" | "quality_observation";
         /**
          * Evidence
          * @description One measurable fact supporting a finding.
@@ -880,6 +1002,8 @@ export interface components {
          *     finding inside an EventDraft carries finding_id=None.
          */
         Finding: {
+            /** Actor Under Review */
+            actor_under_review?: string | null;
             /** Agent Id */
             agent_id: string;
             /** Agent Version */
@@ -889,6 +1013,8 @@ export interface components {
             /** Finding Id */
             finding_id?: string | null;
             kind: components["schemas"]["FindingKind"];
+            /** Raised By */
+            raised_by?: string | null;
             /** Score */
             score: number;
             severity: components["schemas"]["Severity"];
@@ -1010,7 +1136,7 @@ export interface components {
          * FindingKind
          * @enum {string}
          */
-        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf";
+        FindingKind: "kri_breach" | "qtl_breach" | "site_data_anomaly" | "under_reporting" | "sae_reconciliation" | "tmf" | "audit" | "qa_observation";
         /**
          * FindingNarrative
          * @description A plain-language explanation of one finding, by rbqm.narrator (phase 2 step 3).
@@ -1334,6 +1460,55 @@ export interface components {
              */
             status: "accepted" | "rejected" | "refused" | "error";
         };
+        /** ObservationItem */
+        ObservationItem: {
+            /** Finding Id */
+            finding_id: string;
+            /** Raised By */
+            raised_by: string;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            /** Refers To Finding Id */
+            refers_to_finding_id: string | null;
+            /** Refers To Seq */
+            refers_to_seq: number | null;
+            /** Seq */
+            seq: number;
+            severity: components["schemas"]["Severity"];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "escalated" | "dismissed" | "retired";
+            /** Title */
+            title: string;
+        };
+        /** ObservationRequest */
+        ObservationRequest: {
+            /** Description */
+            description: string;
+            /** Finding Id */
+            finding_id?: string | null;
+            /** Ledger Seq */
+            ledger_seq?: number | null;
+            severity: components["schemas"]["Severity"];
+            /** Title */
+            title: string;
+        };
+        /** ObservationResponse */
+        ObservationResponse: {
+            /** Finding Id */
+            finding_id: string;
+            /** Finding Seq */
+            finding_seq: number;
+            /** Observation Id */
+            observation_id: string;
+            /** Observation Seq */
+            observation_seq: number;
+        };
         /**
          * PersonView
          * @description A demo person from config/people.toml (development identity, not an account).
@@ -1404,6 +1579,31 @@ export interface components {
             status: ("within" | "approaching" | "breached") | null;
             /** Treated */
             treated: number;
+        };
+        /**
+         * QualityObservation
+         * @description A QA auditor's observation (phase 3 step 4b), attributed to the auditor. The same
+         *     write appends a qa_observation finding that names this observation_id.
+         */
+        QualityObservation: {
+            /** Description */
+            description: string;
+            /** Observation Id */
+            observation_id: string;
+            /** Raised By */
+            raised_by: string;
+            /** Refers To Finding Id */
+            refers_to_finding_id?: string | null;
+            /** Refers To Seq */
+            refers_to_seq?: number | null;
+            severity: components["schemas"]["Severity"];
+            /** Title */
+            title: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            type: "quality_observation";
         };
         /** RbqmSites */
         RbqmSites: {
@@ -2101,6 +2301,112 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Portfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quality_audit_api_v1_quality_audit_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    observations_api_v1_quality_observations_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationItem"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    raise_observation_api_v1_quality_observations_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ObservationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObservationResponse"];
                 };
             };
             /** @description Validation Error */

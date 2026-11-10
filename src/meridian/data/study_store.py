@@ -146,6 +146,24 @@ TMF_ZONES = frozenset({"quality"})
 TMF_STAGE_AREA = "tmf"
 
 
+AUDIT_STAGE_AREA = "audit"
+
+
+class AuditStageReader(_AreaReader):
+    """The audit extract under <dir>/audit (a review's own folder on the host, or the
+    stage inside a sandbox), nothing else. Its cut id is the ledger scope, not a cut."""
+
+    _areas = (AUDIT_STAGE_AREA,)
+
+    @classmethod
+    def at_cut_dir(cls, cut_dir: Path, *, cut_id: str, study_id: str) -> AuditStageReader:
+        if not _CUT_ID.fullmatch(cut_id):
+            raise StudyAccessError(f"invalid cut id {cut_id!r}")
+        reader = cls.__new__(cls)
+        reader._bind(cut_dir.resolve(strict=True), cut_id, study_id)
+        return reader
+
+
 class TmfStageReader(_AreaReader):
     """Inside a sandbox: the eTMF tables staged under <cut dir>/tmf, nothing else."""
 

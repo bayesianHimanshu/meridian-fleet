@@ -186,3 +186,42 @@ class TmfCompletenessConfig(AgentConfig):
         Role.PORTFOLIO_LEAD,
         Role.QA_AUDITOR,
     )
+
+
+class AuditTrailReviewerConfig(AgentConfig):
+    """quality.audit_trail_reviewer: thresholds of the audit checks, and who may see its
+    findings. Defaults are documented in config/default.toml and docs/audit-notes.md."""
+
+    # audit_rapid_decisions: at least this many decisions by one actor within this many
+    # minutes (first to last, inclusive).
+    rapid_decisions: int = Field(10, ge=2)
+    rapid_window_minutes: float = Field(5.0, gt=0)
+    # audit_reason_quality: a dismissal reason shorter than this many characters, one of
+    # these placeholders (compared lower case, without punctuation), or identical to at
+    # least reuse_others other dismissal reasons of the same actor.
+    min_reason_chars: int = Field(12, ge=1)
+    placeholder_reasons: tuple[str, ...] = (
+        "ok",
+        "okay",
+        "n/a",
+        "na",
+        "none",
+        "dismiss",
+        "dismissed",
+        "test",
+        "testing",
+        "fine",
+        "done",
+        "x",
+        "-",
+        "no issue",
+        "not an issue",
+        "false positive",
+    )
+    reuse_others: int = Field(3, ge=1)
+    # audit_failed_run_unresolved: a run that started at most this many seconds before the
+    # review may still be running ([runtime] exec_timeout_seconds), so it is not failed yet.
+    in_progress_seconds: int = Field(120, ge=0)
+    # Audit findings name people and runs, never subjects; segregation of duties keeps them
+    # to QA and clinical operations (clinical_ops_lead decides; qa_auditor never decides).
+    visible_to: tuple[Role, ...] = (Role.CLINICAL_OPS_LEAD, Role.QA_AUDITOR)

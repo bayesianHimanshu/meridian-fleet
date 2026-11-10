@@ -10,7 +10,8 @@ that two concurrent decisions on one finding cannot both pass the rules.
 import hashlib
 import json
 import re
-from collections import defaultdict
+import uuid
+from collections import Counter, defaultdict
 from collections.abc import Callable, Collection, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -18,7 +19,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from meridian.agents.base import zone_of
-from meridian.agents.quality import tmf_completeness
+from meridian.agents.quality import audit_trail_reviewer, tmf_completeness
 from meridian.agents.rbqm import narrator
 from meridian.agents.rbqm.describe import describe
 from meridian.agents.registry import AgentRegistry
@@ -32,6 +33,9 @@ from meridian.api.models import (
     AssessmentView,
     AssetLive,
     AssetStatic,
+    AuditFindingItem,
+    AuditView,
+    CheckCount,
     ContainmentCheckView,
     ContainmentView,
     CutKind,
@@ -49,6 +53,9 @@ from meridian.api.models import (
     LatestNarrative,
     LedgerPage,
     NarrativeView,
+    ObservationItem,
+    ObservationRequest,
+    ObservationResponse,
     Portfolio,
     PortfolioAsset,
     RbqmSites,
@@ -66,8 +73,10 @@ from meridian.api.models import (
 from meridian.api.sites import site_metrics
 from meridian.api.study import enrollment
 from meridian.data.study_store import MissingTableError, StudyAccessError, StudyReader
-from meridian.domain.dedup import parse_dedup_key
-from meridian.domain.enums import DecisionAction, EventType, Role
+from meridian.domain import audit
+from meridian.domain.audit import LEDGER_SCOPE
+from meridian.domain.dedup import make_dedup_key, parse_dedup_key
+from meridian.domain.enums import DecisionAction, EventType, FindingKind, Role, Visibility
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
@@ -80,11 +89,12 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    QualityObservation,
 )
-from meridian.domain.findings import Decision, Finding
+from meridian.domain.findings import Decision, Evidence, Finding
 from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
 from meridian.ledger.verify import verify
-from meridian.platform.agent_settings import TmfCompletenessConfig
+from meridian.platform.agent_settings import AuditTrailReviewerConfig, TmfCompletenessConfig
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
 from meridian.sandbox.policies import (
@@ -120,6 +130,10 @@ class InvalidDecisionError(Exception):
 
 class Ledger(LedgerReader, LedgerWriter, RawLedgerSource, Protocol):
     def append_guarded(self, draft: EventDraft, guard: Callable[[], None]) -> Event: ...
+
+    def append_many_guarded(
+        self, drafts: Sequence[EventDraft], guard: Callable[[], None]
+    ) -> list[Event]: ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -443,6 +457,10 @@ class Repository:
         self._snapshot: Snapshot | None = None
 
     def scope(self, cut_id: str) -> CutScope:
+        """A data cut's scope. Findings about the ledger itself (audit findings, QA
+        observations; cut "LEDGER") are about the live study: operational."""
+        if cut_id == LEDGER_SCOPE:
+            return "operational"
         return "operational" if cut_id in self._operational else "evaluation"
 
     # ---- reading
@@ -1063,6 +1081,216 @@ class Repository:
             ),
         )
 
+    def raise_observation(self, body: ObservationRequest) -> ObservationResponse:
+        """A QA auditor's observation: a QualityObservation event attributed to the auditor
+        and a qa_observation finding raised by that person, appended together. A finding or
+        a ledger seq it refers to must exist and be visible to the auditor (else 404)."""
+        if not visibility.can_raise_observation(self.role):
+            raise ForbiddenError("only qa_auditor raises quality observations")
+        snap = self.snapshot()
+        visible_to = set(visibility.OBSERVATION_VISIBLE_TO)
+        actor_under_review: str | None = None
+        refers: list[Evidence] = []
+        if body.finding_id is not None:
+            referred = self._visible(body.finding_id)
+            # Nobody may learn of a finding through an observation about it.
+            visible_to &= set(referred.finding.visible_to) | {Role.QA_AUDITOR}
+            refers.append(
+                Evidence(
+                    source="ledger",
+                    selector=f"FINDING_ID={body.finding_id}",
+                    statistic="observation:refers_to_finding",
+                    value=float(referred.event.seq),
+                    display=body.finding_id,
+                )
+            )
+        if body.ledger_seq is not None:
+            entry = self._visible_entry(body.ledger_seq, snap)
+            p = entry.payload
+            if isinstance(p, HumanDecision):
+                actor_under_review = p.decision.actor
+            for fid in visibility.finding_ids_of(entry):
+                referred = snap.raised[fid]
+                visible_to &= set(referred.finding.visible_to) | {Role.QA_AUDITOR}
+            refers.append(
+                Evidence(
+                    source="ledger",
+                    selector=f"SEQ={body.ledger_seq}",
+                    statistic="observation:refers_to_seq",
+                    value=float(body.ledger_seq),
+                    display=f"ledger seq {body.ledger_seq} ({entry.event_type.value})",
+                )
+            )
+        observation_id = "OB-" + uuid.uuid4().hex[:12]
+        now = self._clock.now()
+        observation = QualityObservation(
+            observation_id=observation_id,
+            raised_by=self.person.actor,
+            title=body.title.strip(),
+            description=body.description.strip(),
+            severity=body.severity,
+            refers_to_finding_id=body.finding_id,
+            refers_to_seq=body.ledger_seq,
+        )
+        finding = Finding(
+            kind=FindingKind.QA_OBSERVATION,
+            agent_id=visibility.OBSERVATION_SOURCE,
+            agent_version=visibility.OBSERVATION_VERSION,
+            study_id=self._study_id,
+            site_id=None,
+            severity=body.severity,
+            title=observation.title,
+            summary=observation.description,
+            evidence=(
+                Evidence(
+                    source="quality_observation",
+                    selector=f"OBSERVATION_ID={observation_id}",
+                    statistic="observation:raised_by",
+                    value=0.0,
+                    display=f"raised by {self.person.actor} (qa_auditor)",
+                ),
+                *refers,
+            ),
+            visibility=Visibility.BLINDED,
+            visible_to=frozenset(visible_to),
+            score={"high": 1.0, "medium": 0.5, "low": 0.2}[body.severity.value],
+            raised_by=self.person.actor,
+            actor_under_review=actor_under_review,
+        )
+        key = make_dedup_key(
+            agent_id=finding.agent_id,
+            agent_version=finding.agent_version,
+            kind=finding.kind,
+            study_id=self._study_id,
+            site_id=None,
+            cut_id=LEDGER_SCOPE,
+            check=f"qa_observation:{observation_id}",
+        )
+        drafts = [
+            EventDraft(
+                occurred_at=now,
+                actor=self.person.actor,
+                study_id=self._study_id,
+                visibility=Visibility.BLINDED,
+                payload=p,
+            )
+            for p in (observation, FindingRaised(finding=finding, dedup_key=key))
+        ]
+        recorded, raised = self._ledger.append_many_guarded(drafts, lambda: None)
+        self._snapshot = None
+        assert isinstance(raised.payload, FindingRaised)
+        new_id = raised.payload.finding.finding_id
+        assert new_id is not None
+        return ObservationResponse(
+            observation_id=observation_id,
+            observation_seq=recorded.seq,
+            finding_id=new_id,
+            finding_seq=raised.seq,
+        )
+
+    def _visible_entry(self, seq: int, snap: Snapshot) -> Event:
+        """The ledger event at seq as this role reads it in full, or 404 (missing,
+        restricted, or about a finding the role may not see: never told apart)."""
+        entries = self._ledger.read(viewer_role=visibility.ledger_viewer(self.role))
+        entry = next((e for e in entries if e.seq == seq), None)
+        if entry is None:
+            raise NotFoundError("ledger event not found")
+        shown = visibility.redact_with_findings(self.role, entry, snap.raised)
+        if not isinstance(shown, Event):
+            raise NotFoundError("ledger event not found")
+        return shown
+
+    def observations(self) -> list[ObservationItem]:
+        """The QA observations this role may see, newest first."""
+        if not visibility.can_see_observations(self.role):
+            raise ForbiddenError(f"{self.role.value} does not review quality observations")
+        snap = self.snapshot()
+        out = []
+        for r in sorted(snap.raised.values(), key=lambda r: -r.event.seq):
+            f = r.finding
+            if f.kind is not FindingKind.QA_OBSERVATION:
+                continue
+            refers = {e.statistic: e.display or "" for e in f.evidence}
+            out.append(
+                ObservationItem(
+                    finding_id=r.finding_id,
+                    seq=r.event.seq,
+                    recorded_at=r.event.recorded_at,
+                    raised_by=f.raised_by or "",
+                    severity=f.severity,
+                    status=snap.status(r.finding_id),
+                    title=f.title,
+                    refers_to_finding_id=refers.get("observation:refers_to_finding"),
+                    refers_to_seq=next(
+                        (
+                            int(e.value)
+                            for e in f.evidence
+                            if e.statistic == "observation:refers_to_seq"
+                        ),
+                        None,
+                    ),
+                )
+            )
+        return out
+
+    def audit(self, cfg: AuditTrailReviewerConfig) -> AuditView:
+        """The Audit tab: the last review's seq range and run, its chain linkage result, and
+        the current audit findings this role may see, counted by check."""
+        if not visibility.can_see_audit(self.role, cfg.visible_to):
+            raise ForbiddenError(f"{self.role.value} does not review the audit trail")
+        snap = self.snapshot()
+        reviews = [
+            e
+            for e in snap.woke
+            if isinstance(e.payload, ActorWoke)
+            and e.payload.agent_id == audit_trail_reviewer.AGENT_ID
+            and e.payload.review_to_seq is not None
+        ]
+        last = reviews[-1] if reviews else None
+        completed = False
+        if last is not None:
+            assert isinstance(last.payload, ActorWoke)
+            completed = any(
+                isinstance(e.payload, ActorSuspended)
+                and e.payload.agent_id == audit_trail_reviewer.AGENT_ID
+                and e.payload.trigger_seq == last.payload.trigger_seq
+                for e in snap.suspended
+            )
+        current = [
+            r
+            for r in sorted(snap.raised.values(), key=lambda r: r.event.seq)
+            if r.finding.agent_id == audit_trail_reviewer.AGENT_ID and snap.current(r.finding_id)
+        ]
+        by_check = Counter(r.check.partition(":")[0] for r in current)
+        chain = [r for r in current if r.check.startswith(audit.CHAIN_LINKAGE)]
+        lw = last.payload if last is not None else None
+        assert lw is None or isinstance(lw, ActorWoke)
+        return AuditView(
+            agent_id=audit_trail_reviewer.AGENT_ID,
+            agent_version=None if lw is None else lw.agent_version,
+            last_review_seq=None if last is None else last.seq,
+            last_review_at=None if last is None else last.recorded_at,
+            review_from_seq=None if lw is None else lw.review_from_seq,
+            review_to_seq=None if lw is None else lw.review_to_seq,
+            review_completed=completed,
+            chain_linkage="not_reviewed"
+            if last is None or not completed
+            else ("broken" if chain else "intact"),
+            chain_findings=len(chain),
+            by_check=[CheckCount(check=c, count=by_check.get(c, 0)) for c in audit.CHECKS],
+            findings=[
+                AuditFindingItem(
+                    finding_id=r.finding_id,
+                    check=r.check.partition(":")[0],
+                    severity=r.finding.severity,
+                    status=snap.status(r.finding_id),
+                    title=r.finding.title,
+                    actor_under_review=r.finding.actor_under_review,
+                )
+                for r in current
+            ],
+        )
+
     def unblinded_cases(self, counter: Callable[[str], tuple[int, int]]) -> UnblindedCases:
         """The unblinded statistician only: how many cases of the operational cut carry the
         treatment field. counter(cut) gives (cases, cases with treatment)."""
@@ -1107,6 +1335,15 @@ class Repository:
         r = self._visible(finding_id)  # 404 before anything else: existence is not leaked
         if self.role is Role.QA_AUDITOR:
             raise ForbiddenError("qa_auditor may review findings but may never make a decision")
+        if not visibility.can_decide(self.role, r.finding):
+            deciders = ", ".join(sorted(visibility.DECIDERS.get(r.finding.kind, ())))
+            raise ForbiddenError(
+                f"{self.role.value} may not decide {r.finding.kind.value} findings; "
+                f"{deciders} decide them"
+            )
+        conflict = visibility.self_decision(self.person.actor, r.finding)
+        if conflict is not None:
+            raise ForbiddenError(conflict)
         if action is DecisionAction.DISMISSED and (reason is None or not reason.strip()):
             raise InvalidDecisionError("a dismissal needs a non-empty reason")
         decision = Decision(

@@ -26,13 +26,15 @@ from meridian.data.inputs_manifest import MANIFEST_FILE, build_manifest
 from meridian.data.study_store import (
     SAFETY_DB_ZONES,
     TMF_ZONES,
+    AuditStageReader,
     LayeredStudyReader,
     StudyReader,
 )
-from meridian.domain.events import DataCut, Event
+from meridian.domain.events import AuditReviewRequested, DataCut, Event
 from meridian.sandbox.openshell import OpenShellClient, OpenShellError
 from meridian.sandbox.policies import (
     ALL_POLICIES,
+    AUDIT,
     META,
     TMF,
     expected_effective,
@@ -46,6 +48,7 @@ from meridian.sandbox.staging import (
     SANDBOX_TRIGGER,
     assert_clean_stage,
     cut_areas_for,
+    stage_audit,
     stage_cut,
     uploads,
 )
@@ -100,7 +103,9 @@ class InProcessExecutor:
         log: structlog.typing.FilteringBoundLogger,
         safety_reader_factory: Callable[[str], StudyReader] | None = None,
         tmf_reader_factory: Callable[[str], StudyReader] | None = None,
+        audit_root: Path | None = None,
     ) -> None:
+        self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
         self._registry = registry
         self._reader_factory = reader_factory
         self._safety_reader_factory = safety_reader_factory
@@ -119,7 +124,17 @@ class InProcessExecutor:
         start = time.perf_counter()
         registered = self._registry.get(agent_id)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, cut_id=cut_id)
-        drafts = run_agent(registered, trigger, self._reader(agent_id, cut_id), log)
+        if isinstance(trigger.payload, AuditReviewRequested):
+            if self._audit_root is None:
+                raise ExecutionError("an audit review needs the audit extract folder")
+            reader: StudyReader = AuditStageReader.at_cut_dir(
+                self._audit_root / str(trigger.seq),
+                cut_id=cut_id,
+                study_id=trigger.payload.study_id,
+            )
+        else:
+            reader = self._reader(agent_id, cut_id)
+        drafts = run_agent(registered, trigger, reader, log)
         return ExecutionResult(
             drafts=tuple(drafts),
             executor=self.name,
@@ -185,7 +200,9 @@ class OpenShellExecutor:
         name_factory: Callable[[str, int], str] = sandbox_name,
         safety_root: Path | None = None,
         etmf_root: Path | None = None,
+        audit_root: Path | None = None,
     ) -> None:
+        self._audit_root = audit_root  # <audit_root>/<trigger seq>/audit: one per review
         self._safety_root = safety_root  # <safety_root>/<study>: snapshots by cut id
         self._etmf_root = etmf_root  # <etmf_root>/<study>: eTMF snapshots by cut id
         self._client = client
@@ -205,18 +222,24 @@ class OpenShellExecutor:
     def run(self, agent_id: str, trigger: Event, cut_id: str) -> ExecutionResult:
         start = time.perf_counter()
         registered = self._registry.get(agent_id)
-        if not isinstance(trigger.payload, DataCut) or trigger.payload.cut_id != cut_id:
-            raise ExecutionError(f"trigger {trigger.seq} is not the DataCut of {cut_id}")
         policy_name = policy_for_agent(agent_id)
         policy = ALL_POLICIES[policy_name]
         policy_file = policy_path(policy_name, self._policies_dir)
+        audit = AUDIT in policy.reads
+        if audit:
+            if not isinstance(trigger.payload, AuditReviewRequested):
+                raise ExecutionError(f"trigger {trigger.seq} is not an audit review")
+            if self._audit_root is None:
+                raise ExecutionError("an audit review needs the audit extract folder")
+        elif not isinstance(trigger.payload, DataCut) or trigger.payload.cut_id != cut_id:
+            raise ExecutionError(f"trigger {trigger.seq} is not the DataCut of {cut_id}")
         extra = (
             [self._safety_root / cut_id / BLINDED_AREA]
             if zone_of(agent_id) in SAFETY_DB_ZONES and self._safety_root is not None
             else []
         )
         tmf = None
-        if TMF in policy.reads:
+        if not audit and TMF in policy.reads:
             if self._etmf_root is None:
                 raise ExecutionError(f"{agent_id} reads the eTMF index; no eTMF store is set")
             tmf = self._etmf_root / cut_id / BLINDED_AREA
@@ -224,10 +247,15 @@ class OpenShellExecutor:
                 raise ExecutionError(f"no eTMF snapshot for cut {cut_id}")
         name = self._name_factory(agent_id, trigger.seq)
         log = self._log.bind(agent_id=agent_id, trigger_seq=trigger.seq, sandbox=name)
-        areas = cut_areas_for(policy.reads)
+        areas = (AUDIT,) if audit else cut_areas_for(policy.reads)
         staged = (*areas, TMF) if tmf is not None else areas
         with tempfile.TemporaryDirectory(prefix="meridian-stage-", dir=self._staging_dir) as tmp:
-            stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra, areas, tmf)
+            if audit:
+                assert self._audit_root is not None
+                extract = self._audit_root / str(trigger.seq) / AUDIT
+                stage = stage_audit(extract, trigger, Path(tmp))
+            else:
+                stage = stage_cut(self._study_root / cut_id, trigger, Path(tmp), extra, areas, tmf)
             assert_clean_stage(stage, staged)  # again, right before it leaves the host
             recomputed = build_manifest(stage)
             written = (stage / META / MANIFEST_FILE).read_text(encoding="utf-8")

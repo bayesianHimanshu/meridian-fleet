@@ -68,6 +68,7 @@ def test_applied_hashes_now_differ_where_the_rules_differ() -> None:
     assert sorted(sorted(g) for g in groups.values()) == [
         ["portfolio", "preclinical", "rbqm", "study_ops"],
         ["quality"],
+        ["quality.audit_trail"],
         ["rbqm.narrator"],
         ["safety", "safety.sae_reconciler"],
         ["safety.local_model"],

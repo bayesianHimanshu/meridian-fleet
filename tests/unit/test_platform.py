@@ -38,6 +38,7 @@ def test_settings_load_from_toml(monkeypatch: pytest.MonkeyPatch) -> None:
         "preclinical": "PRE",
         "tmf": "TMF",
         "unblinded": "DSMB",
+        "human": "OBS",
     }
 
 

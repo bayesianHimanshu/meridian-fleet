@@ -4,10 +4,11 @@ from uuid import uuid7
 import pytest
 from pydantic import TypeAdapter, ValidationError
 
-from meridian.domain.enums import DecisionAction, EventType, Role, Visibility
+from meridian.domain.enums import DecisionAction, EventType, Role, Severity, Visibility
 from meridian.domain.events import (
     ActorSuspended,
     ActorWoke,
+    AuditReviewRequested,
     ContainmentCheck,
     ContainmentCheckCompleted,
     DataCut,
@@ -20,6 +21,7 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     PolicyDenied,
+    QualityObservation,
 )
 from meridian.domain.findings import Decision
 from tests.support import STUDY, T0, make_finding
@@ -141,6 +143,15 @@ PAYLOADS: list[EventPayload] = [
             role=Role.CLINICAL_OPS_LEAD,
         )
     ),
+    AuditReviewRequested(study_id="MRD-201", through_seq=41),
+    QualityObservation(
+        observation_id="OB-0123456789ab",
+        raised_by="nina.fernandes",
+        title="Dismissal reason too thin",
+        description="The dismissal of RBQM-0001 gives no reason a reviewer can check.",
+        severity=Severity.MEDIUM,
+        refers_to_finding_id="RBQM-0001",
+    ),
 ]
 
 ADAPTER: TypeAdapter[EventPayload] = TypeAdapter(EventPayload)
@@ -241,3 +252,22 @@ def _narrative(**changes: object) -> dict[str, object]:
 def test_finding_narrative_rules(changes: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         FindingNarrative.model_validate(_narrative(**changes))
+
+
+def test_a_review_range_lies_before_its_trigger() -> None:
+    import pytest
+    from pydantic import ValidationError
+
+    ok = ActorWoke(
+        agent_id="quality.audit_trail_reviewer", trigger_seq=42, review_from_seq=1, review_to_seq=41
+    )
+    assert (ok.review_from_seq, ok.review_to_seq) == (1, 41)
+    for bad in (
+        {"review_from_seq": 1},
+        {"review_from_seq": 5, "review_to_seq": 4},
+        {"review_from_seq": 1, "review_to_seq": 42},
+    ):
+        with pytest.raises(ValidationError):
+            ActorWoke(agent_id="quality.audit_trail_reviewer", trigger_seq=42, **bad)  # type: ignore[arg-type]
+    with pytest.raises(ValidationError):
+        AuditReviewRequested(study_id="MRD-201", from_seq=5, through_seq=4)

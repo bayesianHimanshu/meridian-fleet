@@ -13,7 +13,8 @@ UNBLINDED = "unblinded"  # reserved: nothing stages it yet
 NARR = "narr"  # rbqm.narrator's job
 LM = "lm"  # the local model's job
 TMF = "tmf"  # the eTMF index of the cut (quality zone only)
-STAGE_AREAS: tuple[str, ...] = (META, BLINDED, OPS, UNBLINDED, NARR, LM, TMF)
+AUDIT = "audit"  # the audit extract of the ledger (quality.audit_trail only)
+STAGE_AREAS: tuple[str, ...] = (META, BLINDED, OPS, UNBLINDED, NARR, LM, TMF, AUDIT)
 
 
 def stage_path(area: str) -> str:
