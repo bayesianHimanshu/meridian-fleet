@@ -1,0 +1,169 @@
+{
+  "case": "ten_decisions_in_five_minutes",
+  "description": "The boundary: 10 decisions by one person, the first and last exactly 5 minutes apart.",
+  "through_seq": 15,
+  "rows": [
+    {
+      "SEQ": 1,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:00:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational"
+    },
+    {
+      "SEQ": 2,
+      "TYPE": "actor_woke",
+      "RECORDED_AT": "2026-11-07T10:01:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "started"
+    },
+    {
+      "SEQ": 3,
+      "TYPE": "finding_raised",
+      "RECORDED_AT": "2026-11-07T10:02:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "FINDING_ID": "RBQM-0001",
+      "FINDING_GROUP": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational"
+    },
+    {
+      "SEQ": 4,
+      "TYPE": "actor_suspended",
+      "RECORDED_AT": "2026-11-07T10:02:30+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "completed",
+      "IMAGE_DIGEST": "sha256:abababababababababababababababababababababababababababababababab",
+      "POLICY_SHA256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "POLICY_FILE_SHA256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    {
+      "SEQ": 5,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:03:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-1a2b3c4d",
+      "CUT_SCOPE": "evaluation"
+    },
+    {
+      "SEQ": 6,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:00:00+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0001",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 1 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 7,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:00:33+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0002",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 2 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 8,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:01:07+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0003",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 3 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 9,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:01:40+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0004",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 4 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 10,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:02:13+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0005",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 5 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 11,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:02:47+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0006",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 6 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 12,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:03:20+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0007",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 7 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 13,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:03:53+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0008",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 8 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 14,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:04:27+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0009",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 9 with the site; CRA follow-up booked."
+    },
+    {
+      "SEQ": 15,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T11:05:00+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0010",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Checked finding 10 with the site; CRA follow-up booked."
+    }
+  ],
+  "ideal": "One rapid decisions finding naming asha.rao, from the first decision (seq 6).",
+  "ideal_findings": [
+    "audit_rapid_decisions:asha.rao/6"
+  ],
+  "actual": {}
+}

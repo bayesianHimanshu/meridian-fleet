@@ -1,0 +1,100 @@
+{
+  "case": "decision_on_retired_finding",
+  "description": "kri_monitor 2.1.0 raised RBQM-0001 on DC-BASE; 2.2.0 then completed a run on DC-BASE without raising it (retired); a person accepted RBQM-0001 afterwards.",
+  "through_seq": 7,
+  "rows": [
+    {
+      "SEQ": 1,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:00:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational"
+    },
+    {
+      "SEQ": 2,
+      "TYPE": "actor_woke",
+      "RECORDED_AT": "2026-11-07T10:01:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.1.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "started"
+    },
+    {
+      "SEQ": 3,
+      "TYPE": "finding_raised",
+      "RECORDED_AT": "2026-11-07T10:02:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.1.0",
+      "FINDING_ID": "RBQM-0001",
+      "FINDING_GROUP": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational"
+    },
+    {
+      "SEQ": 4,
+      "TYPE": "actor_suspended",
+      "RECORDED_AT": "2026-11-07T10:03:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.1.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "completed",
+      "IMAGE_DIGEST": "sha256:abababababababababababababababababababababababababababababababab",
+      "POLICY_SHA256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "POLICY_FILE_SHA256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    {
+      "SEQ": 5,
+      "TYPE": "actor_woke",
+      "RECORDED_AT": "2026-11-07T10:10:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "started"
+    },
+    {
+      "SEQ": 6,
+      "TYPE": "actor_suspended",
+      "RECORDED_AT": "2026-11-07T10:11:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "completed",
+      "IMAGE_DIGEST": "sha256:abababababababababababababababababababababababababababababababab",
+      "POLICY_SHA256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "POLICY_FILE_SHA256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    },
+    {
+      "SEQ": 7,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T10:20:00+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "clinical_ops_lead",
+      "FINDING_ID": "RBQM-0001",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Entry lag at the site confirmed; CRA visit booked."
+    }
+  ],
+  "ideal": "One finding for the decision at seq 7.",
+  "ideal_findings": [
+    "audit_decision_on_retired:7"
+  ],
+  "actual": {}
+}

@@ -1,0 +1,62 @@
+{
+  "case": "broken_prev_hash",
+  "description": "Seq 3's prev_hash is not seq 2's hash.",
+  "through_seq": 4,
+  "rows": [
+    {
+      "SEQ": 1,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:00:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational"
+    },
+    {
+      "SEQ": 2,
+      "TYPE": "actor_woke",
+      "RECORDED_AT": "2026-11-07T10:01:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "started"
+    },
+    {
+      "SEQ": 3,
+      "TYPE": "finding_raised",
+      "RECORDED_AT": "2026-11-07T10:02:00+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "FINDING_ID": "RBQM-0001",
+      "FINDING_GROUP": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "PREV_HASH": "h9"
+    },
+    {
+      "SEQ": 4,
+      "TYPE": "actor_suspended",
+      "RECORDED_AT": "2026-11-07T10:02:30+00:00",
+      "ACTOR": "rbqm.kri_monitor",
+      "AGENT": "rbqm.kri_monitor",
+      "VERSION": "2.2.0",
+      "TRIGGER_SEQ": 1,
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "EXECUTOR": "openshell",
+      "RUN_STATUS": "completed",
+      "IMAGE_DIGEST": "sha256:abababababababababababababababababababababababababababababababab",
+      "POLICY_SHA256": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "POLICY_FILE_SHA256": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef"
+    }
+  ],
+  "ideal": "One chain linkage finding at seq 3.",
+  "ideal_findings": [
+    "audit_chain_linkage:link-3"
+  ],
+  "actual": {}
+}
