@@ -1,4 +1,4 @@
-"""safety.term_adjudicator 1.0.0: do two event terms describe the same event?
+"""safety.term_adjudicator 1.1.0: do two event terms describe the same event?
 
 safety.sae_reconciler decides nothing about meaning: when a subject's only unmatched
 serious AE and only unmatched case have different preferred terms it raises
@@ -17,6 +17,12 @@ from the records the findings' evidence names (AE.AETERM by USUBJID and AESEQ; t
 REPORTED_TERM by CASEID and VERSION). It answers {"same_event": "yes" | "no" | "unsure",
 "reason": "..."}; the validator below decides whether the answer may be shown. The
 deterministic findings never change: the outcome is a FindingAssessment a person reads.
+
+1.1.0 asks two pinned models the same question with the 1.0.0 prompt and validator
+(LocalModelSettings.adjudicator_models) and combines them by the agreement rule
+(meridian.domain.events.agreed_verdict): "yes" only if both say yes, "no" only if both
+say no, otherwise "unsure". In 1.0.0 no model ever said "unsure", and a wrong "yes" is
+the costly mistake; disagreement is the abstention. Both raw answers are recorded.
 """
 
 import json
@@ -29,13 +35,21 @@ from meridian.agents.rbqm.narrator_v1_0 import EM_DASH, SUBJECT_ID, sentence_cou
 from meridian.agents.safety.sae_reconciler import Onset, gap, parse_onset
 from meridian.domain import safety as s
 from meridian.domain.dedup import parse_dedup_key
-from meridian.domain.events import AssessmentCandidate, Event, FindingRaised, Verdict
+from meridian.domain.events import (
+    AssessmentCandidate,
+    AssessmentStatus,
+    Event,
+    FindingRaised,
+    ModelAnswer,
+    Verdict,
+    agreed_verdict,
+)
 from meridian.domain.findings import Evidence, Finding
 from meridian.ledger.hashing import canonical_json
 from meridian.llm.local import LocalModelOptions, LocalModelRequest, LocalModelResponse
 
 AGENT_ID = "safety.term_adjudicator"
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 VALIDATOR_VERSION = "1.0.0"
 # FindingRaised events of exactly these detector versions.
 ADJUDICATES: dict[str, str] = {"safety.sae_reconciler": "1.1.1"}
@@ -249,6 +263,16 @@ and hyper-, fast and slow) and different conditions of the same organ.
 """
 
 
+# A variant measured on the dev term pairs only (docs/local-model-eval.md, step 3b2): rule 3
+# names the relations that should be "unsure". It is not what the agent sends.
+UNSURE_PROMPT = SYSTEM_PROMPT.replace(
+    '3. "unsure" when you cannot tell. A wrong "yes" is worse than "unsure".',
+    '3. "unsure" when one term may be a cause, a symptom or a complication of the other, '
+    'and whenever you cannot tell. A wrong "yes" is worse than "unsure".',
+)
+assert UNSURE_PROMPT != SYSTEM_PROMPT
+
+
 def build_request(
     inp: dict[str, Any],
     *,
@@ -258,10 +282,11 @@ def build_request(
     num_predict: int,
     temperature: float = 0.0,
     think: bool = False,
+    system: str = SYSTEM_PROMPT,
 ) -> LocalModelRequest:
     return LocalModelRequest(
         model=model,
-        system=SYSTEM_PROMPT,
+        system=system,
         user="Records:\n" + canonical_json(inp),
         options=LocalModelOptions(
             temperature=temperature, seed=seed, num_ctx=num_ctx, num_predict=num_predict
@@ -309,3 +334,46 @@ def validate(response: LocalModelResponse) -> Judgement:
     if reasons:
         return Judgement(None, None, tuple(dict.fromkeys(reasons)))
     return Judgement(verdict, reason, ())
+
+
+def _short(model: str) -> str:
+    return model.split(":", 1)[0]
+
+
+@dataclass(frozen=True, slots=True)
+class Combined:
+    """The assessment the agreement rule makes of the answers."""
+
+    status: AssessmentStatus
+    verdict: Verdict | None
+    reason: str | None
+    rejection_reasons: tuple[str, ...]
+    error: str | None
+
+
+def combine(answers: Sequence[ModelAnswer]) -> Combined:
+    """Agreement rule 1.1.0. An error answer makes the assessment an error (retried); if
+    every answer was rejected it is rejected; otherwise it is accepted with the agreed
+    verdict, where a rejected answer agrees with nothing. The reason is written here,
+    not by a model: each model's own reason stays in its answer."""
+    errors = [a for a in answers if a.status == "error"]
+    if errors:
+        message = "; ".join(f"{_short(a.model)}: {a.error}" for a in errors)
+        return Combined("error", None, None, (), message[:500])
+    if all(a.status == "rejected" for a in answers):
+        codes = tuple(f"{_short(a.model)}:{c}" for a in answers for c in a.rejection_reasons)
+        return Combined("rejected", None, None, codes, None)
+    verdict = agreed_verdict(tuple(a.verdict for a in answers))
+    said = "; ".join(
+        f"{_short(a.model)} {a.verdict}" if a.verdict else f"{_short(a.model)} gave no valid answer"
+        for a in answers
+    )
+    if verdict == "yes":
+        reason = f"Every model said the terms describe the same event ({said})."
+    elif verdict == "no":
+        reason = f"Every model said the terms describe different events ({said})."
+    elif all(a.verdict == "unsure" for a in answers):
+        reason = f"Every model was unsure whether the terms are one event ({said})."
+    else:
+        reason = f"The models do not agree that the terms are one event or two ({said})."
+    return Combined("accepted", verdict, reason, (), None)

@@ -160,8 +160,19 @@ def test_a_job_names_one_model() -> None:
 
 
 def test_settings_refuse_a_model_without_a_pinned_digest() -> None:
+    two = ("x:1b", "y:1b")
+    pinned = {MODEL: DIGEST, "x:1b": DIGEST, "y:1b": DIGEST}
     with pytest.raises(ValidationError, match="no pinned digest"):
-        LocalModelSettings(model=MODEL, digests={})
+        LocalModelSettings(model=MODEL, adjudicator_models=two, digests={})
+    with pytest.raises(ValidationError, match="y:1b has no pinned digest"):
+        LocalModelSettings(
+            model=MODEL, adjudicator_models=two, digests={MODEL: DIGEST, "x:1b": DIGEST}
+        )
     with pytest.raises(ValidationError, match="64 hex"):
-        LocalModelSettings(model=MODEL, digests={MODEL: "sha256:abc"})
-    assert LocalModelSettings(model=MODEL, digests={MODEL: DIGEST}).pinned() == DIGEST
+        LocalModelSettings(
+            model=MODEL, adjudicator_models=two, digests={**pinned, MODEL: "sha256:abc"}
+        )
+    with pytest.raises(ValidationError, match="two or more different"):
+        LocalModelSettings(model=MODEL, adjudicator_models=("x:1b", "x:1b"), digests=pinned)
+    settings = LocalModelSettings(model=MODEL, adjudicator_models=two, digests=pinned)
+    assert settings.pinned() == settings.pinned("y:1b") == DIGEST

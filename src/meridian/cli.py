@@ -562,6 +562,9 @@ def agents_adjudicate(
             else ", ".join(p.rejection_reasons) or p.error
         )
         typer.echo(f"  seq {event.seq} {'+'.join(p.finding_ids)} {p.status:<8} {detail}")
+        for a in p.answers:
+            said = a.verdict or ",".join(a.rejection_reasons) or a.error
+            typer.echo(f"    {a.model} ({(a.model_digest or '')[:12]}) {a.status}: {said}")
 
 
 @agents_app.command("narrate-local")
@@ -1135,12 +1138,12 @@ def api_openapi() -> None:
     typer.echo(f"wrote {path}")
 
 
-SetOption = Annotated[str, typer.Option("--set", help="dev, holdout or clean.")]
+SetOption = Annotated[str, typer.Option("--set", help="dev, holdout, clean or terms.")]
 
 
-def _set_name(name: str) -> Literal["dev", "holdout", "clean"]:
-    if name not in ("dev", "holdout", "clean"):
-        typer.echo(f"error: unknown set {name!r}; dev, holdout or clean", err=True)
+def _set_name(name: str) -> Literal["dev", "holdout", "clean", "terms"]:
+    if name not in ("dev", "holdout", "clean", "terms"):
+        typer.echo(f"error: unknown set {name!r}; dev, holdout, clean or terms", err=True)
         raise typer.Exit(code=2)
     return name  # type: ignore[return-value]
 
@@ -1195,7 +1198,8 @@ def safety_inject(set_name: SetOption) -> None:
 def safety_run(
     executor: ExecutorOption = None,
     set_name: Annotated[
-        str | None, typer.Option("--set", help="dev, holdout or clean; default DC-BASE.")
+        str | None,
+        typer.Option("--set", help="dev, holdout, clean or terms; default DC-BASE."),
     ] = None,
 ) -> None:
     """Run safety.sae_reconciler on DC-BASE or on one evaluation set only."""
@@ -1230,7 +1234,9 @@ def safety_run(
 
 @safety_app.command("eval")
 def safety_eval(
-    set_name: Annotated[str, typer.Option("--set", help="dev, holdout, clean or base (DC-BASE).")],
+    set_name: Annotated[
+        str, typer.Option("--set", help="dev, holdout, clean, terms or base (DC-BASE).")
+    ],
 ) -> None:
     """Precision and recall per check from the ledger; writes data/evals/safety/<set>.json."""
     from meridian.agents.safety.sae_reconciler import AGENT_ID, VERSION

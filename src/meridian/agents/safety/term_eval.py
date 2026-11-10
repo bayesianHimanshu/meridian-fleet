@@ -22,6 +22,7 @@ from pydantic import BaseModel, ConfigDict
 
 from meridian.agents.local_model import LocalBatch, LocalModelExecutor
 from meridian.agents.safety import term_adjudicator as ta
+from meridian.domain.events import Verdict, agreed_verdict
 from meridian.llm.local_job import LocalCallResult, LocalModelJob
 from meridian.platform.config import LocalModelSettings
 
@@ -40,7 +41,9 @@ class TermPair(BaseModel):
 
     id: str
     category: str
-    label: Literal["yes", "no"]
+    # "unsure": one term may be a cause, symptom or complication of the other (step 3b2);
+    # only "unsure" is correct there, and a "yes" counts as a wrong "yes".
+    label: Verdict
     record_a: TermRecord
     record_b: TermRecord
 
@@ -64,7 +67,7 @@ def load_pairs(path: Path) -> list[TermPair]:
 class PairResult:
     pair: TermPair
     status: Literal["accepted", "rejected", "error"]
-    verdict: str | None
+    verdict: Verdict | None
     reason: str | None
     rejection_reasons: tuple[str, ...]
     latency_ms: int | None
@@ -124,6 +127,19 @@ class ModelReport:
         return sum(1 for r in self.lookalikes if r.verdict == "yes")
 
     @property
+    def wrong_yes_unsure_labelled(self) -> int:
+        return sum(1 for r in self.results if r.pair.label == "unsure" and r.verdict == "yes")
+
+    @property
+    def wrong_yes(self) -> int:
+        """The step 3b2 safety number: "yes" on a look-alike or on a pair labelled unsure."""
+        return self.wrong_yes_lookalike + self.wrong_yes_unsure_labelled
+
+    @property
+    def unsure_on_unsure_labelled(self) -> int:
+        return sum(1 for r in self.results if r.pair.label == "unsure" and r.verdict == "unsure")
+
+    @property
     def wrong_yes_different(self) -> int:
         return sum(1 for r in self.results if r.pair.label == "no" and r.verdict == "yes")
 
@@ -158,6 +174,11 @@ class ModelReport:
             "no_recall_lookalike": round(self.no_recall_lookalike, 3),
             "wrong_yes_lookalike": self.wrong_yes_lookalike,
             "wrong_yes_different": self.wrong_yes_different,
+            "unsure_labelled": sum(1 for r in self.results if r.pair.label == "unsure"),
+            "wrong_yes_unsure_labelled": self.wrong_yes_unsure_labelled,
+            "wrong_yes": self.wrong_yes,
+            "unsure_on_unsure_labelled": self.unsure_on_unsure_labelled,
+            "correct": sum(1 for r in self.results if r.correct),
             "unsure_rate": round(self.unsure_rate, 3),
             "rejected": self.rejected,
             "rejected_reasons": dict(sorted(self.rejected_reasons.items())),
@@ -172,7 +193,13 @@ class ModelReport:
         }
 
 
-def build_job(pairs: Sequence[TermPair], settings: LocalModelSettings) -> LocalModelJob:
+def build_job(
+    pairs: Sequence[TermPair],
+    settings: LocalModelSettings,
+    model: str | None = None,
+    system: str = ta.SYSTEM_PROMPT,
+) -> LocalModelJob:
+    model = model or settings.model
     requests = []
     for pair in pairs:
         inp = pair.model_input()
@@ -182,16 +209,17 @@ def build_job(pairs: Sequence[TermPair], settings: LocalModelSettings) -> LocalM
         requests.append(
             ta.build_request(
                 inp,
-                model=settings.model,
+                model=model,
                 seed=settings.seed,
                 num_ctx=settings.num_ctx,
                 num_predict=settings.num_predict,
                 temperature=settings.temperature,
                 think=settings.think,
+                system=system,
             )
         )
     return LocalModelJob(
-        model=settings.model, pinned_digest=settings.pinned(), requests=tuple(requests)
+        model=model, pinned_digest=settings.pinned(model), requests=tuple(requests)
     )
 
 
@@ -220,20 +248,69 @@ def run_model(
     pairs: Sequence[TermPair],
     settings: LocalModelSettings,
     executor: LocalModelExecutor,
+    model: str | None = None,
+    system: str = ta.SYSTEM_PROMPT,
 ) -> ModelReport:
+    model = model or settings.model
     results: list[LocalCallResult] = []
     served: str | None = None
     try:
         for start in range(0, len(pairs), settings.max_per_job):
             chunk = pairs[start : start + settings.max_per_job]
-            batch = executor.call(build_job(chunk, settings), settings.timeout_seconds)
+            job = build_job(chunk, settings, model, system)
+            batch = executor.call(job, settings.timeout_seconds)
             results.extend(batch.results)
             served = served or batch.served_digest
     except Exception as exc:  # the report says so; nothing else is run for the model
-        return ModelReport(model=settings.model, digest=None, results=[], batch_error=str(exc))
+        return ModelReport(model=model, digest=None, results=[], batch_error=str(exc))
     finally:
         executor.drain()
-    return score(pairs, LocalBatch(tuple(results), served, executor.name), settings.model)
+    return score(pairs, LocalBatch(tuple(results), served, executor.name), model)
+
+
+def agreement(reports: Sequence[ModelReport]) -> ModelReport:
+    """The agreement rule of term adjudicator 1.1.0 over per-model reports of the same
+    pairs, exactly as safety.term_adjudicator.combine decides: an error makes the pair an
+    error, all rejected makes it rejected, otherwise the agreed verdict (a rejected answer
+    agrees with nothing). Latency is the sum over the models."""
+    if len(reports) < 2 or any(not r.results for r in reports):
+        raise ValueError("agreement needs two or more reports with results")
+    out = ModelReport(model="+".join(r.model for r in reports), digest=None, results=[])
+    for rows in zip(*(r.results for r in reports), strict=True):
+        pair = rows[0].pair
+        if any(x.pair.id != pair.id for x in rows):
+            raise ValueError("the reports are not of the same pairs in the same order")
+        latency = sum(x.latency_ms or 0 for x in rows) if all(x.latency_ms for x in rows) else None
+        if any(x.status == "error" for x in rows):
+            out.results.append(PairResult(pair, "error", None, None, (), latency, "error"))
+        elif all(x.status == "rejected" for x in rows):
+            codes = tuple(c for x in rows for c in x.rejection_reasons)
+            out.results.append(PairResult(pair, "rejected", None, None, codes, latency))
+        else:
+            verdict = agreed_verdict(tuple(x.verdict for x in rows))
+            out.results.append(PairResult(pair, "accepted", verdict, None, (), latency))
+    return out
+
+
+@dataclass(frozen=True, slots=True)
+class AbstentionCost:
+    """What a variant changes against a baseline on the same pairs: correct answers lost
+    (mostly a right "yes" or "no" turned "unsure") and gained."""
+
+    lost: tuple[str, ...]
+    gained: tuple[str, ...]
+
+
+def abstention_cost(base: ModelReport, other: ModelReport) -> AbstentionCost:
+    lost, gained = [], []
+    for b, o in zip(base.results, other.results, strict=True):
+        if b.pair.id != o.pair.id:
+            raise ValueError("the reports are not of the same pairs in the same order")
+        if b.correct and not o.correct:
+            lost.append(b.pair.id)
+        elif o.correct and not b.correct:
+            gained.append(b.pair.id)
+    return AbstentionCost(tuple(lost), tuple(gained))
 
 
 def placement(base_url: str, model: str, timeout: float = 10.0) -> Placement | None:

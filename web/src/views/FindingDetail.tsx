@@ -204,6 +204,32 @@ export function Assessments({ detail }: { detail: Detail }) {
               ) : null}
               , ledger seq <span className="mono">{a.seq}</span>, <Time iso={a.recorded_at} />
             </p>
+            {a.answers.length > 0 ? (
+              <ul className="stack" aria-label={`answers of assessment ${a.seq}`}>
+                {a.answers.map((x) => (
+                  <li key={x.model} data-testid="assessment-answer">
+                    <p className="muted">
+                      <span className="mono">{x.model}</span>
+                      {x.model_digest ? (
+                        <>
+                          {" "}
+                          (<Hash value={x.model_digest} label={`digest of ${x.model}`} />)
+                        </>
+                      ) : null}
+                      {": "}
+                      {x.status === "accepted"
+                        ? x.verdict
+                        : `${x.status} (${x.rejection_reasons.join(", ") || (x.error ?? "").split(":")[0]})`}
+                    </p>
+                    {x.text !== null ? (
+                      <pre className="mono" data-testid="raw-answer">
+                        {x.text}
+                      </pre>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </div>
         ))}
         {other.length > 0 ? (

@@ -19,6 +19,19 @@ its safety database is generated. Faults are then planted on distinct records:
   late case.
 * late_reporting_site: most of one site's cases (at least 2, and at least three quarters)
   arrive late; the ground truth holds each late case and the site.
+
+The terms set (step 3b2) plants only the two term faults, so the agreement rule of
+safety.term_adjudicator runs end to end. Each recodes one case's preferred term from the
+committed pairs in meridian.faults.term_pairs, keeping its onset, so the reconciler
+raises sae_term_mismatch for the clinical record:
+
+* recoded_term: an equivalent preferred term; the verbatim term is kept (expected
+  adjudication "yes").
+* lookalike_term: a different event with a similar name, for example HYPERHIDROSIS
+  against HYPOHIDROSIS; the verbatim term is the new term (expected "no").
+
+Two term faults never share a subject: a subject with two unpaired SAEs and two unpaired
+cases gets no sae_term_mismatch.
 """
 
 import hashlib
@@ -42,6 +55,7 @@ from meridian.domain.events import Event
 from meridian.faults.catalog import FaultError, FaultRecord
 from meridian.faults.inject import FAULTS_ACTOR, GroundTruth
 from meridian.faults.reader import FullCut, FullCutReader
+from meridian.faults.term_pairs import LOOKALIKE_TERM, PAIRS, RECODED_TERM
 from meridian.ledger.hashing import canonical_json
 from meridian.platform.clock import Clock
 from meridian.safetydb.generate import case_id, clinical_saes, generate, write_snapshot
@@ -63,12 +77,19 @@ OUTCOMES: tuple[str, ...] = (
     "RECOVERED/RESOLVED WITH SEQUELAE",
     "FATAL",
 )
+TERM_FAULT_TYPES: tuple[str, ...] = (RECODED_TERM, LOOKALIKE_TERM)
 CAUSALITIES: tuple[str, ...] = ("NONE", "REMOTE", "POSSIBLE", "PROBABLE")
 SITE_LATE_SHARE = 0.75
 SITE_LATE_MIN = 2
-SetName = Literal["dev", "holdout", "clean"]
-SET_SEEDS: dict[str, int] = {"dev": 20261110, "holdout": 20261111, "clean": 20261112}
-SET_SIZES: dict[str, int] = {"dev": 30, "holdout": 30, "clean": 10}
+SetName = Literal["dev", "holdout", "clean", "terms"]
+SET_SEEDS: dict[str, int] = {
+    "dev": 20261110,
+    "holdout": 20261111,
+    "clean": 20261112,
+    "terms": 20261113,
+}
+SET_SIZES: dict[str, int] = {"dev": 30, "holdout": 30, "clean": 10, "terms": 10}
+MAX_TERM_FAULTS = 2
 AUGMENT_RANGE = (6, 13)  # promoted AEs per cut, low inclusive, high exclusive
 MAX_FAULTS = 3
 BASE_CUT = "DC-BASE"
@@ -191,6 +212,11 @@ def plant(scenario: SafetyScenario, base: FullCut) -> Planted:
     records_of: list[tuple[str, str, int]] = [
         (u, sites[u], int(q)) for u, q in saes.select("USUBJID", "AESEQ").iter_rows()
     ]
+    terms_of = {
+        (u, int(q)): s.norm_text(t)
+        for u, q, t in saes.select("USUBJID", "AESEQ", "AEDECOD").iter_rows()
+    }
+    term_subjects: set[str] = set()
     used: set[tuple[str, int]] = set()
     late_sites: set[str] = set()
     planted: list[FaultRecord] = []
@@ -272,6 +298,37 @@ def plant(scenario: SafetyScenario, base: FullCut) -> Planted:
                     p,
                     {s.SAFETY_CASES: len(late)},
                     {"late_cases": float(len(late)), "site_cases": float(total)},
+                )
+            )
+            continue
+        if fault.type in TERM_FAULT_TYPES:
+            pairs = PAIRS[fault.type]
+            sources = {a for a, _ in pairs}
+            pool = [
+                r for r in free() if terms_of[(r[0], r[2])] in sources and r[0] not in term_subjects
+            ]
+            if not pool:
+                raise FaultError(f"no serious AE with a term of the {fault.type} pairs")
+            u, _, q = pool[int(rng.integers(0, len(pool)))]
+            used.add((u, q))
+            term_subjects.add(u)
+            options = [i for i, (a, _) in enumerate(pairs) if a == terms_of[(u, q)]]
+            index = options[int(rng.integers(0, len(options)))]
+            new_term = pairs[index][1]
+            caseid = cid(u, q)
+            values = {s.PREFERRED_TERM: new_term}
+            if fault.type == LOOKALIKE_TERM:
+                values[s.REPORTED_TERM] = new_term.lower()
+            set_case(caseid, **values)
+            planted.append(
+                _record(
+                    fid,
+                    fault.type,
+                    s.clinical_key(u, q),
+                    s.TERM_MISMATCH,
+                    {**p, "pair": float(index)},
+                    {s.SAFETY_CASES: 1},
+                    {},
                 )
             )
             continue
@@ -375,13 +432,15 @@ def scenario_set(set_name: SetName, base: FullCut, n: int | None = None) -> list
     rng = np.random.Generator(np.random.PCG64(SET_SEEDS[set_name]))
     out: list[SafetyScenario] = []
     size = SET_SIZES[set_name] if n is None else n
-    used = dict.fromkeys(FAULT_TYPES, 0)
+    kinds = TERM_FAULT_TYPES if set_name == "terms" else FAULT_TYPES
+    most = MAX_TERM_FAULTS if set_name == "terms" else MAX_FAULTS
+    used = dict.fromkeys(kinds, 0)
     while len(out) < size:
-        k = 0 if set_name == "clean" else int(rng.integers(1, MAX_FAULTS + 1))
+        k = 0 if set_name == "clean" else int(rng.integers(1, most + 1))
         # The k least used types so far, ties broken at random: every type gets used.
-        ties = rng.random(len(FAULT_TYPES))
-        ranked = sorted(range(len(FAULT_TYPES)), key=lambda j: (used[FAULT_TYPES[j]], ties[j]))
-        types = [FAULT_TYPES[j] for j in ranked[:k]]
+        ties = rng.random(len(kinds))
+        ranked = sorted(range(len(kinds)), key=lambda j: (used[kinds[j]], ties[j]))
+        types = [kinds[j] for j in ranked[:k]]
         scenario = SafetyScenario(
             set_name=set_name,
             index=len(out) + 1,

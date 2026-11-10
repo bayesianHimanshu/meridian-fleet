@@ -19,9 +19,17 @@ from meridian.platform.config import LocalModelSettings
 from tests.sae_stress_support import DEV, load, run, tables
 from tests.support import T0
 
-MODEL = "granite4:3b"
+MODEL = "granite4:3b"  # the narrator's model in these tests
 DIGEST = "a" * 64
-SETTINGS = LocalModelSettings(model=MODEL, digests={MODEL: DIGEST}, max_calls_per_pass=10)
+# The two adjudicator models (agreement rule), asked in this order.
+MODEL_A = "phi4-mini:3.8b-q4_K_M"
+MODEL_B = "qwen3.5:4b-q4_K_M"
+DIGEST_A = "1" * 64
+DIGEST_B = "2" * 64
+DIGESTS = {MODEL: DIGEST, MODEL_A: DIGEST_A, MODEL_B: DIGEST_B}
+SETTINGS = LocalModelSettings(
+    model=MODEL, adjudicator_models=(MODEL_A, MODEL_B), digests=DIGESTS, max_calls_per_pass=10
+)
 RECODED = load(DEV / "01_recoded_term.json")
 
 
@@ -88,6 +96,12 @@ def answer(verdict: str = "yes", reason: str = "Both name the same allergic reac
 
 
 def fake(
-    *script: str | LocalModelError, digest: str = DIGEST, thinking: str = ""
+    *script: str | LocalModelError,
+    digest: str = DIGEST,
+    thinking: str = "",
+    served: dict[str, str] | None = None,
 ) -> FakeLocalModelClient:
-    return FakeLocalModelClient(script=script, digests={MODEL: digest}, thinking=thinking)
+    """Scripted answers in the order sent: for the adjudicator, every request of MODEL_A,
+    then every request of MODEL_B. served overrides the digests Ollama reports."""
+    digests = {**DIGESTS, MODEL: digest, **(served or {})}
+    return FakeLocalModelClient(script=script, digests=digests, thinking=thinking)

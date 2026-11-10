@@ -93,6 +93,20 @@ Checks: `npm run typecheck`, `npm run lint`, `npm test`, `npm run check:api` (in
 The API types in `web/src/api/schema.ts` are generated from `openapi/meridian-api.json`
 with `npm run gen:api`.
 
+Step 3b: a local model (Ollama on the host, reached only from the safety.local_model
+sandbox) judges whether two event terms are one event and explains safety findings with
+subject ids: [docs/local-model-notes.md](docs/local-model-notes.md). Step 3b2:
+safety.term_adjudicator 1.1.0 asks two models and says "yes" or "no" only when both do,
+safety.local_narrator 1.0.1 has a host-written opening, and the terms fault set runs the
+path end to end: [docs/local-model-eval.md](docs/local-model-eval.md).
+
+```sh
+uv run meridian agents adjudicate [--cut DC-...]      # term adjudicator, both models
+uv run meridian agents narrate-local [--cut DC-...]   # local narrator
+uv run python scripts/term_agreement_eval.py          # dev pairs: 1.0.0, agreement, unsure prompt
+uv run meridian safety inject --set terms             # 10 cuts with recoded and look-alike terms
+```
+
 ## Setup
 
 ```sh
@@ -103,11 +117,23 @@ uv sync
 ## Checks
 
 ```sh
-uv run ruff format
-uv run ruff check
-uv run mypy src tests scripts
-uv run pytest
+scripts/check.sh            # every check CI runs locally; non-zero on the first failure
+scripts/check.sh --no-web   # the same without web/
 ```
+
+It runs ruff format --check, ruff check, mypy --strict (src, tests, scripts), pytest
+without the slow and openshell marks, the policy render check, and in `web/` typecheck,
+lint, tests and the generated API types check. A pre-commit hook in `.githooks/` runs it
+before every commit. Enable it once per clone (this repository only, never `--global`):
+
+```sh
+git config core.hooksPath .githooks
+```
+
+Two commits (ae3a1fd, 52429fb) went in with a failing check before the hook existed. The
+hook checks the working tree, not only what is staged, so stage everything you changed
+or stash the rest. `git commit --no-verify` skips it; don't, unless the commit is known
+to fail and says so.
 
 ## CLI
 

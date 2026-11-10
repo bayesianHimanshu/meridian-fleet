@@ -89,6 +89,45 @@ accepted summaries next to their evidence for review. No pass mark is set in adv
 every accepted summary has passed validator 1.1.0 with the local rules, and the review
 decides whether the summaries are useful.
 
+## Step 3b2: abstain on disagreement (targets, written before the run)
+
+No model said "unsure" in step 3b, and every sealed error was a pair labelled "unsure".
+Two ways to get abstention are measured on the dev set only (the first sealed set is
+spent):
+
+* **1.1.0, agreement**: phi4-mini:3.8b-q4_K_M and qwen3.5:4b-q4_K_M (think false) are
+  asked the same question with the 1.0.0 prompt; "yes" only if both say yes, "no" only if
+  both say no, otherwise "unsure" (an answer that fails validation agrees with nothing).
+* **unsure prompt**: phi4-mini alone, with rule 3 of the prompt extended to "unsure when
+  one term may be a cause, a symptom or a complication of the other"
+  (term_adjudicator.UNSURE_PROMPT). Also reported, for information only: the agreement
+  rule with the unsure prompt on both models (two changes at once; not a candidate).
+* **1.0.0**, phi4-mini alone with the 1.0.0 prompt, is the baseline, rerun on the same set.
+
+The dev set gains 14 pairs labelled "unsure" (category related: one term may be a cause,
+symptom or complication of the other, for example PYREXIA and SEPSIS), none of them in
+the sealed set. It now has 75 pairs: 30 yes, 31 no (26 look-alikes), 14 unsure. On a pair
+labelled "unsure" only "unsure" is correct.
+
+Targets on dev:
+
+* **wrong "yes"** (the primary number): "yes" on a look-alike plus "yes" on a pair
+  labelled "unsure", at most one;
+* reported without a pass mark: the "unsure" rate, "unsure" on the 14 unsure-labelled
+  pairs, accuracy, rejected answers, latency, and the cost of abstention: how many pairs
+  1.0.0 answered correctly that the variant does not (and how many it gains).
+
+What ships:
+
+1. The agreement rule (1.1.0), if it meets the wrong "yes" target.
+2. The unsure prompt instead, only if it meets the target and the agreement rule does
+   not, or it has fewer wrong "yes", or the same number and costs at least 3 fewer correct
+   answers against 1.0.0.
+3. If neither meets the target, the agreement rule ships (it cannot say "yes" more often
+   than either model alone) and the miss is reported.
+
+A second sealed set, if the user gives one, is run once at the end with what ships.
+
 ## Results
 
 ### Dev term pairs (2026-11-09)
@@ -170,3 +209,114 @@ verbatim term. Look-alikes: the 10 "no" pairs other than the unrelated control.
 All seven errors are pairs labelled "unsure": six were answered "no" and one "yes" (a
 general and a local form of one skin reaction). The model never says "unsure", which
 is what costs the accuracy target; it never said "yes" to a pair labelled "no".
+
+### Step 3b2: the agreement rule and the unsure prompt on dev (2026-11-09)
+
+`scripts/term_agreement_eval.py`: 75 dev pairs (30 yes, 31 no of which 26 look-alikes,
+14 unsure), each model with each prompt in its own jobs in the safety.local_model
+sandbox; the agreement rows are combined from the single-model runs exactly as the
+agent combines answers. Wrong "yes" counts "yes" on look-alikes and on pairs labelled
+"unsure". Cost: pairs 1.0.0 answered correctly that the variant does not (lost), and the
+reverse (gained).
+
+| Variant | Correct (accuracy) | Wrong "yes" | "unsure" answers | "unsure" on the 14 unsure-labelled | Rejected | Lost / gained vs 1.0.0 | Median latency |
+|---|---|---|---|---|---|---|---|
+| 1.0.0, phi4-mini | 59 (0.787) | 1 (dev-050) | 0 | 0 | 0 | | 1013 ms |
+| qwen3.5 alone | 57 (0.760) | 0 | 0 | 0 | 3 | 4 / 2 | 2695 ms |
+| **1.1.0 agreement** | 55 (0.733) | **0** | 6 (0.08) | 0 | 0 | 4 / 0 | 3718 ms (both) |
+| unsure prompt, phi4-mini | 60 (0.800) | 1 (dev-050) | 0 | 0 | 0 | 0 / 1 | 1088 ms |
+| unsure prompt, qwen3.5 (information) | 59 (0.787) | 0 | 0 | 0 | 1 | 2 / 2 | 2918 ms |
+| agreement + unsure prompt (information) | 58 (0.773) | 0 | 3 (0.04) | 0 | 0 | 2 / 1 | 4179 ms (both) |
+
+Where the agreement rule abstains (6 pairs):
+
+* dev-050 (ATRIAL FIBRILLATION and ATRIAL FLUTTER, label no): phi4-mini yes, qwen3.5 no.
+  This is 1.0.0's one wrong "yes", now "unsure".
+* dev-021 (INFECTION and CELLULITIS, label yes): phi4-mini no, qwen3.5 yes (1.0.0 was
+  wrong here too).
+* Lost, label yes: dev-020 (qwen3.5 no); dev-003 and dev-023 (qwen3.5's answer rejected,
+  reason_too_long). Lost, label no: dev-054 (qwen3.5 rejected, too_many_sentences).
+
+Three of the four lost answers come from qwen3.5 answers that fail the validator, not
+from disagreement.
+
+The unsure-labelled pairs: every variant answered all 14 "no" (cause, symptom or
+complication, for example PYREXIA and SEPSIS). That is not a wrong "yes", but neither
+the agreement rule nor the explicit instruction makes a model say "unsure" there: the
+unsure prompt changed no "no" to "unsure" on any pair. Abstention comes only from
+disagreement.
+
+Decision, by the rule written above: the agreement rule meets the target (0 wrong
+"yes"); the unsure prompt also meets it (1) but has more wrong "yes" than the agreement
+rule, so **1.1.0 agreement ships**, with the 1.0.0 prompt. Its cost: 4 correct answers
+of 75 turned "unsure", and calls take both models' time (about 3.7 s per pair).
+
+### Step 3b2: safety.local_narrator 1.0.1 (2026-11-09)
+
+`meridian agents narrate-local` on every current safety finding (reconciler 1.1.1): 158
+findings, now including the holdout and clean cuts. One job of 16 failed on a gateway
+HTTP/2 error ("stream closed because of a broken pipe") and was retried on the next
+pass. Final outcomes, with 1.0.0 on the 77 findings it saw in step 3b:
+
+| | Findings | Accepted | Rejected | Rejection reasons (a narrative can have several) |
+|---|---|---|---|---|
+| 1.0.0 (step 3b) | 77 | 16 | 61 | missing_site 60, number_not_displayed 4, supporting_as_headline 4, date_not_displayed 3, bad_json 1 |
+| 1.0.1, the same 77 | 77 | 66 | 11 | filler_sentence_severity 9, too_many_sentences 2, filler_sentence_discrepancy 2 |
+| 1.0.1, all | 158 | 135 | 23 | filler_sentence_severity 16, filler_sentence_discrepancy 5, too_many_sentences 4 |
+
+On the same 77: 59 went from rejected to accepted, 9 from accepted to rejected, 7 stayed
+accepted, 2 stayed rejected. Accepted by check, all 158: sae_missing_in_safety_db 16/16,
+late_sae_report 57/60, causality_mismatch 15/16, onset_mismatch 16/17,
+outcome_mismatch 16/17, case_without_clinical_sae 14/16, sae_late_reporting_site 1/16.
+
+* missing_site is gone: the opening carries the site.
+* The site-level check went from 8/8 to 1/16. Re-sent through the sandbox (nothing
+  recorded), its answers end "This is considered a high severity finding.", which the
+  new rule rejects as intended. The prompt says not to; phi4-mini does it anyway.
+* The other filler rejections read "This discrepancy was identified through a
+  reconciliation process." and "This discrepancy is supported by the recorded date of
+  the AE.": filler, rightly rejected.
+* Temperature 0 and a fixed seed do not make answers repeatable: re-sending 7 rejected
+  requests gave different text for 2 (both then passed). The ledger keeps what was
+  validated at the time.
+
+What the validator does not catch (in accepted texts): a date given the wrong meaning
+("This discrepancy was noted on 25 May 2013", the onset), a raw evidence selector copied
+into prose ("CASEID=SC-A4C2754345; VERSION=1; ..."), and the template summary copied
+whole.
+
+### Step 3b2: the term path end to end (2026-11-09)
+
+`meridian safety inject --set terms` wrote 10 cuts with 15 term faults (7 recoded_term,
+8 lookalike_term); `meridian safety run --set terms` ran safety.sae_reconciler 1.1.1 in
+OpenShell sandboxes; `meridian agents adjudicate` ran safety.term_adjudicator 1.1.0 in
+the safety.local_model sandbox (both models, one job each).
+
+* Findings: 15 sae_term_mismatch, precision 1.00 and recall 1.00 against the ground truth
+  (`meridian safety eval --set terms`), nothing else raised.
+* Assessments: 15, all accepted.
+
+| Fault | Pair (clinical / case) | n | phi4-mini | qwen3.5 | Verdict |
+|---|---|---|---|---|---|
+| recoded_term | PRURITUS / PRURITUS GENERALISED | 2 | yes | yes | yes |
+| recoded_term | PRURITUS / PRURITUS GENERALISED | 1 | no | yes | unsure |
+| recoded_term | HEADACHE / TENSION HEADACHE | 1 | yes | yes | yes |
+| recoded_term | APPLICATION SITE PRURITUS / ADMINISTRATION SITE PRURITUS | 1 | no | yes | unsure |
+| recoded_term | APPLICATION SITE DERMATITIS / ADMINISTRATION SITE DERMATITIS | 1 | no | yes | unsure |
+| recoded_term | APPLICATION SITE ERYTHEMA / ADMINISTRATION SITE ERYTHEMA | 1 | no | no | **no** |
+| lookalike_term | PRURITUS / PRURIGO | 4 | yes | no | unsure |
+| lookalike_term | ERYTHEMA / ERYTHEMA NODOSUM | 2 | no | no | no |
+| lookalike_term | HYPERHIDROSIS / HYPOHIDROSIS | 1 | no | no | no |
+| lookalike_term | NASOPHARYNGITIS / LARYNGITIS | 1 | no | no | no |
+
+* recoded_term (expected yes): yes 3, unsure 3, no 1. lookalike_term (expected no): no 4,
+  unsure 4, yes 0. Wrong "yes": 0. phi4-mini alone (1.0.0) would have said "yes" to all
+  4 PRURITUS / PRURIGO look-alikes.
+* The one wrong "no": both models read ADMINISTRATION SITE ERYTHEMA as another event.
+  That is the safe direction (the finding stays open for a person), but it is wrong.
+* PRURITUS is the commonest serious AE term after augmentation, so the seeded draw
+  picked PRURITUS pairs for 7 of the 15 faults.
+* Who sees it: the medical monitor and the clinical operations lead see the assessment
+  on each finding page, with both raw answers, models and digests; the toxicologist
+  gets 404 for these findings and so never sees their assessments (unchanged rule: an
+  assessment is shown only when every finding it names is).

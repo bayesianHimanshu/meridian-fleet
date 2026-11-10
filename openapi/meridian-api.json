@@ -160,9 +160,119 @@
         "title": "ActorWoke",
         "type": "object"
       },
+      "AnswerView": {
+        "additionalProperties": false,
+        "description": "One model's answer inside an agreement assessment (term adjudicator 1.1.0): its raw\ntext as received, and its verdict and reason only if it passed validation.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "model_digest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Digest"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rejection_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "model",
+          "model_digest",
+          "status",
+          "verdict",
+          "reason",
+          "text",
+          "rejection_reasons",
+          "error",
+          "latency_ms"
+        ],
+        "title": "AnswerView",
+        "type": "object"
+      },
       "AssessmentView": {
         "additionalProperties": false,
-        "description": "A local model's judgement about this finding (and, for a pair, one other). Shown\nonly when the role may see every finding it names. A rejected or failed answer shows\nits status and reason codes, never the model's text.",
+        "description": "A local model's judgement about this finding (and, for a pair, one other). Shown\nonly when the role may see every finding it names. For 1.0.0 (one model) a rejected or\nfailed answer shows its status and reason codes, never the model's text; for 1.1.0\n(agreement) answers holds each model's raw answer, and verdict and reason are the\nagreement rule's.",
         "properties": {
           "agent_id": {
             "title": "Agent Id",
@@ -171,6 +281,14 @@
           "agent_version": {
             "title": "Agent Version",
             "type": "string"
+          },
+          "answers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/AnswerView"
+            },
+            "title": "Answers",
+            "type": "array"
           },
           "candidate": {
             "enum": [
@@ -1504,7 +1622,7 @@
       },
       "FindingAssessment": {
         "additionalProperties": false,
-        "description": "A model's judgement about one or two findings, by safety.term_adjudicator (phase 3\nstep 3b): do two event terms describe the same event?\n\nIt never changes, closes or supersedes a finding; a person reads it next to them.\ncandidate: term_mismatch (one sae_term_mismatch finding) or unpaired_pair (an\nsae_missing_in_safety_db and a case_without_clinical_sae finding of the same subject\nwith onsets within the reconciler's window). accepted: the output passed validation,\nand only then are verdict and reason recorded. rejected: it failed validation\n(reasons say why); nothing of it is shown. error: the call failed or the served model\nwas not the pinned one (retried on the next pass). Hashes are of the canonical\nrequest body sent and of the raw response body received; model_digest is the digest\nOllama served.",
+        "description": "A model's judgement about one or two findings, by safety.term_adjudicator (phase 3\nstep 3b): do two event terms describe the same event?\n\nIt never changes, closes or supersedes a finding; a person reads it next to them.\ncandidate: term_mismatch (one sae_term_mismatch finding) or unpaired_pair (an\nsae_missing_in_safety_db and a case_without_clinical_sae finding of the same subject\nwith onsets within the reconciler's window). accepted: the output passed validation,\nand only then are verdict and reason recorded. rejected: it failed validation\n(reasons say why); nothing of it is shown. error: the call failed or the served model\nwas not the pinned one (retried on the next pass). Hashes are of the canonical\nrequest body sent and of the raw response body received; model_digest is the digest\nOllama served.\n\nAgreement (1.1.0): answers holds one ModelAnswer per model asked, each with its raw\ntext, model and digest; model names the models joined by \"+\", and model_digest and\nrequest_sha256 are left out (each answer has its own). Then the status is error if\nany answer is an error, rejected if every answer was rejected, and accepted\notherwise, with the verdict of agreed_verdict and a reason the host writes.",
         "properties": {
           "agent_id": {
             "maxLength": 128,
@@ -1516,6 +1634,14 @@
             "minLength": 1,
             "title": "Agent Version",
             "type": "string"
+          },
+          "answers": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ModelAnswer"
+            },
+            "title": "Answers",
+            "type": "array"
           },
           "candidate": {
             "enum": [
@@ -1652,9 +1778,16 @@
             "type": "array"
           },
           "request_sha256": {
-            "pattern": "^[0-9a-f]{64}$",
-            "title": "Request Sha256",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Sha256"
           },
           "response_sha256": {
             "anyOf": [
@@ -1718,8 +1851,7 @@
           "agent_id",
           "agent_version",
           "status",
-          "model",
-          "request_sha256"
+          "model"
         ],
         "title": "FindingAssessment",
         "type": "object"
@@ -2535,6 +2667,156 @@
           "next_since"
         ],
         "title": "LedgerPage",
+        "type": "object"
+      },
+      "ModelAnswer": {
+        "additionalProperties": false,
+        "description": "One model's answer inside a FindingAssessment of the agreement rule (1.1.0).\n\ntext is the raw response content as received (never a reasoning trace), recorded\nwhether or not it passed validation; verdict and reason only when it did. An error\nanswer has no text (the call failed, or the served digest was not the pinned one).",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "input_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "model_digest": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Digest"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rejection_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Rejection Reasons",
+            "type": "array"
+          },
+          "request_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Request Sha256",
+            "type": "string"
+          },
+          "response_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Sha256"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "error"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "text": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "yes",
+                  "no",
+                  "unsure"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "model",
+          "status",
+          "request_sha256"
+        ],
+        "title": "ModelAnswer",
         "type": "object"
       },
       "NarrativeView": {

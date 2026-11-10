@@ -146,10 +146,29 @@ class NarrativeView(BaseModel):
     model_digest: str | None = None
 
 
+class AnswerView(BaseModel):
+    """One model's answer inside an agreement assessment (term adjudicator 1.1.0): its raw
+    text as received, and its verdict and reason only if it passed validation."""
+
+    model_config = _FROZEN
+
+    model: str
+    model_digest: str | None
+    status: AssessmentStatus
+    verdict: Verdict | None
+    reason: str | None
+    text: str | None
+    rejection_reasons: list[str]
+    error: str | None
+    latency_ms: int | None
+
+
 class AssessmentView(BaseModel):
     """A local model's judgement about this finding (and, for a pair, one other). Shown
-    only when the role may see every finding it names. A rejected or failed answer shows
-    its status and reason codes, never the model's text."""
+    only when the role may see every finding it names. For 1.0.0 (one model) a rejected or
+    failed answer shows its status and reason codes, never the model's text; for 1.1.0
+    (agreement) answers holds each model's raw answer, and verdict and reason are the
+    agreement rule's."""
 
     model_config = _FROZEN
 
@@ -168,6 +187,7 @@ class AssessmentView(BaseModel):
     error: str | None
     executor: str | None
     sandbox: str | None
+    answers: list[AnswerView] = []
 
 
 class DecisionView(BaseModel):

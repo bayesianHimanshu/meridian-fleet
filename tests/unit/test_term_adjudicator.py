@@ -1,5 +1,6 @@
-"""safety.term_adjudicator with the fake local model client: candidates, the input, the
-validator, digest pinning, and that no finding is ever altered."""
+"""safety.term_adjudicator 1.1.0 with the fake local model client: candidates, the input,
+the validator, the agreement rule over two models, digest pinning, and that no finding is
+ever altered."""
 
 import json
 import re
@@ -14,14 +15,24 @@ from meridian.agents.rbqm.narrator_v1_0 import SUBJECT_ID
 from meridian.agents.safety import term_adjudicator as ta
 from meridian.agents.safety.adjudication import AdjudicatorRunner
 from meridian.domain.enums import EventType, Visibility
-from meridian.domain.events import Event, FindingAssessment, FindingRaised
+from meridian.domain.events import (
+    Event,
+    FindingAssessment,
+    FindingRaised,
+    ModelAnswer,
+    Verdict,
+    agreed_verdict,
+)
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
 from meridian.llm.local import FakeLocalModelClient, LocalModelResponse
 from meridian.platform.clock import FixedClock
 from tests.local_model_support import (
-    DIGEST,
+    DIGEST_A,
+    DIGEST_B,
     MODEL,
+    MODEL_A,
+    MODEL_B,
     RECODED,
     SETTINGS,
     answer,
@@ -33,6 +44,7 @@ from tests.local_model_support import (
 from tests.support import T0, make_ledger
 
 EM_DASH = chr(0x2014)
+BOTH = f"{MODEL_A}+{MODEL_B}"
 
 
 @pytest.fixture
@@ -94,9 +106,21 @@ def test_the_input_holds_the_four_terms_and_no_date_or_id(
     ledger: SqliteLedger, spec: dict[str, object]
 ) -> None:
     raise_spec(ledger, spec)
-    client = fake(answer())
+    client = fake(answer(), answer())
     _runner(ledger, client, spec).run_pass()
-    (request,) = client.requests
+    first, second = client.requests
+    # Both models get the same question, with the 1.0.0 prompt.
+    assert (first.model, second.model) == (MODEL_A, MODEL_B)
+    assert (
+        (first.system, first.user)
+        == (second.system, second.user)
+        == (
+            ta.SYSTEM_PROMPT,
+            first.user,
+        )
+    )
+    assert first.think is second.think is False
+    request = first
     user = request.user
     inp = json.loads(user.removeprefix("Records:\n"))
     assert inp == {
@@ -129,7 +153,7 @@ def test_input_problems_refuse_a_date_or_an_id_in_a_term() -> None:
 def test_an_accepted_assessment_never_alters_a_finding(ledger: SqliteLedger) -> None:
     raised = raise_spec(ledger, RECODED)
     before = [e.model_dump_json() for e in ledger.read()]
-    report = _runner(ledger, fake(answer("yes"))).run_pass()
+    report = _runner(ledger, fake(answer("yes"), answer("yes", "Same allergy."))).run_pass()
     assert report.counts == {"accepted": 1}
     after = list(ledger.read())
     # Every earlier event is byte-for-byte the same; the only new one is the assessment.
@@ -137,18 +161,80 @@ def test_an_accepted_assessment_never_alters_a_finding(ledger: SqliteLedger) -> 
     assert [e.event_type for e in after[len(before) :]] == [EventType.FINDING_ASSESSMENT]
     ((event, a),) = _assessments(ledger)
     assert (a.status, a.verdict, a.candidate) == ("accepted", "yes", "term_mismatch")
-    assert a.reason == "Both name the same allergic reaction."
+    assert a.agent_version == "1.1.0"
+    assert a.reason is not None
+    assert a.reason.startswith("Every model said the terms describe the same event")
     assert a.finding_ids == (raised[0].payload.finding.finding_id,)  # type: ignore[union-attr]
     assert a.finding_seqs == (raised[0].seq,)
-    assert (a.model, a.model_digest, a.executor) == (MODEL, DIGEST, "inprocess")
-    assert a.request_sha256 is not None
-    assert a.response_sha256 is not None
-    assert (a.input_tokens, a.output_tokens, a.latency_ms) == (120, 30, 1)
+    assert (a.model, a.model_digest, a.request_sha256, a.executor) == (
+        BOTH,
+        None,
+        None,
+        "inprocess",
+    )
     assert event.visibility is Visibility.BLINDED
     assert event.actor == "safety.term_adjudicator"
     assert verify(ledger).ok
     # Final: the next pass sends nothing.
     assert _runner(ledger, fake()).run_pass().counts == {}
+
+
+def test_both_raw_answers_models_and_digests_are_recorded(ledger: SqliteLedger) -> None:
+    raise_spec(ledger, RECODED)
+    text_a = answer("yes", "Both name the same allergic reaction.")
+    text_b = answer("no", "One names an infusion reaction only.")
+    client = fake(text_a, text_b)
+    _runner(ledger, client).run_pass()
+    ((_, a),) = _assessments(ledger)
+    first, second = a.answers
+    assert (first.model, first.model_digest, first.text) == (MODEL_A, DIGEST_A, text_a)
+    assert (second.model, second.model_digest, second.text) == (MODEL_B, DIGEST_B, text_b)
+    assert (first.verdict, second.verdict) == ("yes", "no")
+    assert first.reason == "Both name the same allergic reaction."
+    assert first.request_sha256 == client.requests[0].sha256()
+    assert second.request_sha256 == client.requests[1].sha256()
+    assert first.response_sha256 is not None
+    assert second.response_sha256 is not None
+    assert (first.input_tokens, first.output_tokens, first.latency_ms) == (120, 30, 1)
+    # They disagree, so the assessment abstains.
+    assert (a.status, a.verdict) == ("accepted", "unsure")
+    assert a.latency_ms == 2
+    stored = FindingAssessment.model_validate_json(a.model_dump_json())
+    assert stored.answers == a.answers
+
+
+TRUTH_TABLE: list[tuple[Verdict | None, Verdict | None, Verdict]] = [
+    ("yes", "yes", "yes"),
+    ("no", "no", "no"),
+    ("unsure", "unsure", "unsure"),
+    ("yes", "no", "unsure"),
+    ("no", "yes", "unsure"),
+    ("yes", "unsure", "unsure"),
+    ("unsure", "yes", "unsure"),
+    ("no", "unsure", "unsure"),
+    ("unsure", "no", "unsure"),
+    ("yes", None, "unsure"),  # None: the answer failed validation
+    (None, "no", "unsure"),
+]
+
+
+@pytest.mark.parametrize(("a", "b", "expected"), TRUTH_TABLE)
+def test_the_agreement_rule_truth_table(
+    a: Verdict | None, b: Verdict | None, expected: Verdict
+) -> None:
+    assert agreed_verdict((a, b)) == expected
+
+
+@pytest.mark.parametrize(("a", "b", "expected"), TRUTH_TABLE)
+def test_the_runner_applies_the_agreement_rule(
+    ledger: SqliteLedger, a: Verdict | None, b: Verdict | None, expected: Verdict
+) -> None:
+    raise_spec(ledger, RECODED)
+    texts = [answer(v, "About the terms.") if v else "not json" for v in (a, b)]
+    _runner(ledger, fake(*texts)).run_pass()
+    ((_, assessment),) = _assessments(ledger)
+    assert (assessment.status, assessment.verdict) == ("accepted", expected)
+    assert tuple(x.verdict for x in assessment.answers) == (a, b)
 
 
 @pytest.mark.parametrize(
@@ -164,27 +250,40 @@ def test_an_accepted_assessment_never_alters_a_finding(ledger: SqliteLedger) -> 
         (answer("yes", f"Same event {EM_DASH} both allergic."), "em_dash"),
     ],
 )
-def test_invalid_output_is_rejected_recorded_and_never_shown(
+def test_invalid_output_is_rejected_and_recorded_raw(
     ledger: SqliteLedger, text: str, reason: str
 ) -> None:
     raise_spec(ledger, RECODED)
-    report = _runner(ledger, fake(text)).run_pass()
+    # One invalid answer: no agreement, so the assessment abstains.
+    _runner(ledger, fake(text, answer("yes"))).run_pass()
+    ((_, a),) = _assessments(ledger)
+    first, _second = a.answers
+    assert (first.status, first.verdict, first.reason) == ("rejected", None, None)
+    assert reason in first.rejection_reasons
+    assert first.text == text  # the raw answer is kept
+    assert (a.status, a.verdict) == ("accepted", "unsure")
+    assert a.reason is not None
+    assert "phi4-mini gave no valid answer" in a.reason
+
+
+def test_two_invalid_answers_reject_the_assessment(ledger: SqliteLedger) -> None:
+    raise_spec(ledger, RECODED)
+    report = _runner(ledger, fake("not json", answer("yes", "x" * 201))).run_pass()
     assert report.counts == {"rejected": 1}
     ((_, a),) = _assessments(ledger)
-    assert reason in a.rejection_reasons
     assert (a.verdict, a.reason) == (None, None)
-    assert a.response_sha256 is not None
+    assert a.rejection_reasons == ("phi4-mini:bad_json", "qwen3.5:reason_too_long")
 
 
 def test_a_reasoning_trace_is_rejected_and_never_reaches_the_validator(
     ledger: SqliteLedger,
 ) -> None:
     raise_spec(ledger, RECODED)
-    client = fake(answer("yes"), thinking="Thinking Process: the user wants a verdict.")
+    client = fake(answer("yes"), answer("yes"), thinking="Thinking Process: the user wants.")
     _runner(ledger, client).run_pass()
     ((_, a),) = _assessments(ledger)
     assert a.status == "rejected"
-    assert a.rejection_reasons == ("thinking_present",)
+    assert {x.rejection_reasons for x in a.answers} == {("thinking_present",)}
     assert "Thinking" not in a.model_dump_json()
 
 
@@ -209,18 +308,33 @@ def test_validate_reads_only_the_content() -> None:
 
 def test_a_different_served_digest_sends_nothing_and_is_retried(ledger: SqliteLedger) -> None:
     raise_spec(ledger, RECODED)
-    client = fake(answer(), digest="b" * 64)
+    client = fake(answer(), served={MODEL_B: "b" * 64})
     report = _runner(ledger, client).run_pass()
-    assert client.requests == []
+    assert [r.model for r in client.requests] == [MODEL_A]  # nothing sent to MODEL_B
     assert report.counts == {"error": 1}
     ((_, a),) = _assessments(ledger)
     assert a.error is not None
-    assert a.error.startswith("digest_mismatch")
-    assert a.model_digest == "b" * 64
-    # An error is not final: the next pass with the pinned model judges it.
-    assert _runner(ledger, fake(answer("no", "Different conditions."))).run_pass().counts == {
-        "accepted": 1
-    }
+    assert a.error.startswith("qwen3.5: digest_mismatch")
+    first, second = a.answers
+    assert (first.status, second.status) == ("accepted", "error")
+    assert second.text is None
+    # An error is not final: the next pass with the pinned models judges it.
+    again = _runner(ledger, fake(answer("no", "Different."), answer("no", "Different."))).run_pass()
+    assert again.counts == {"accepted": 1}
+    assert _assessments(ledger)[-1][1].verdict == "no"
+
+
+def _answer(model: str, digest: str, verdict: Verdict) -> ModelAnswer:
+    return ModelAnswer(
+        model=model,
+        model_digest=digest,
+        status="accepted",
+        verdict=verdict,
+        reason="About the terms.",
+        text=answer(verdict, "About the terms."),
+        request_sha256="c" * 64,
+        response_sha256="d" * 64,
+    )
 
 
 def test_an_assessment_round_trips_and_its_rules_hold() -> None:
@@ -229,26 +343,49 @@ def test_an_assessment_round_trips_and_its_rules_hold() -> None:
         finding_seqs=(3, 4),
         candidate="unpaired_pair",
         agent_id="safety.term_adjudicator",
-        agent_version="1.0.0",
+        agent_version="1.1.0",
         status="accepted",
         verdict="unsure",
-        reason="The terms may describe the same event.",
-        model=MODEL,
-        model_digest=DIGEST,
-        request_sha256="c" * 64,
-        response_sha256="d" * 64,
+        reason="The models do not agree.",
+        model=BOTH,
+        answers=(_answer(MODEL_A, DIGEST_A, "yes"), _answer(MODEL_B, DIGEST_B, "no")),
     )
     assert FindingAssessment.model_validate_json(a.model_dump_json()) == a
-    with pytest.raises(ValidationError):
-        a.model_copy(update={"verdict": None}).model_validate({**a.model_dump(), "verdict": None})
+    data = a.model_dump()
     with pytest.raises(ValidationError, match="wrong number"):
-        FindingAssessment.model_validate({**a.model_dump(), "candidate": "term_mismatch"})
-    with pytest.raises(ValidationError, match="records no verdict"):
+        FindingAssessment.model_validate({**data, "candidate": "term_mismatch"})
+    with pytest.raises(ValidationError, match="agreed verdict"):
+        FindingAssessment.model_validate({**data, "verdict": "yes"})
+    with pytest.raises(ValidationError, match="names its answers"):
+        FindingAssessment.model_validate({**data, "model": MODEL_A})
+    with pytest.raises(ValidationError, match="per answer"):
+        FindingAssessment.model_validate({**data, "model_digest": DIGEST_A})
+    with pytest.raises(ValidationError, match="two or more answers"):
+        FindingAssessment.model_validate({**data, "answers": data["answers"][:1]})
+    with pytest.raises(ValidationError, match="make the assessment accepted"):
         FindingAssessment.model_validate(
-            {**a.model_dump(), "status": "rejected", "rejection_reasons": ("bad_json",)}
+            {**data, "status": "rejected", "verdict": None, "reason": None}
         )
+    with pytest.raises(ValidationError, match="an answer that was received"):
+        ModelAnswer.model_validate({**data["answers"][0], "text": None})
+    # A 1.0.0 single-model assessment still validates, and still needs its digest.
+    single = FindingAssessment(
+        finding_ids=("SAF-0001",),
+        finding_seqs=(3,),
+        candidate="term_mismatch",
+        agent_id="safety.term_adjudicator",
+        agent_version="1.0.0",
+        status="accepted",
+        verdict="yes",
+        reason="Same.",
+        model=MODEL,
+        model_digest="a" * 64,
+        request_sha256="c" * 64,
+    )
     with pytest.raises(ValidationError, match="digest"):
-        FindingAssessment.model_validate({**a.model_dump(), "model_digest": None})
+        FindingAssessment.model_validate({**single.model_dump(), "model_digest": None})
+    with pytest.raises(ValidationError, match="request sha256"):
+        FindingAssessment.model_validate({**single.model_dump(), "request_sha256": None})
 
 
 def test_only_the_adjudicated_reconciler_version_is_a_candidate(ledger: SqliteLedger) -> None:
@@ -257,3 +394,22 @@ def test_only_the_adjudicated_reconciler_version_is_a_candidate(ledger: SqliteLe
     assert ta.may_adjudicate(finding)
     assert not ta.may_adjudicate(finding.model_copy(update={"agent_version": "1.1.0"}))
     assert isinstance(raised[0].payload, FindingRaised)
+
+
+def test_each_model_answers_all_its_requests_before_the_next(ledger: SqliteLedger) -> None:
+    raise_spec(ledger, RECODED)
+    raise_spec(ledger, unpaired_spec(3))  # a second candidate: a pair of the same terms
+    client = fake(*(answer("yes") for _ in range(4)))
+    runner = AdjudicatorRunner(
+        ledger=ledger,
+        executor=InProcessLocalModelExecutor(client),
+        clock=FixedClock(T0),
+        settings=SETTINGS.model_copy(update={"max_per_job": 1}),
+        lookup=spec_lookup(RECODED),
+        window_days=7,
+        log=structlog.get_logger(),
+    )
+    assert runner.run_pass().counts == {"accepted": 2}
+    # One job per request here, all of MODEL_A first: Ollama loads each model once.
+    assert [r.model for r in client.requests] == [MODEL_A, MODEL_A, MODEL_B, MODEL_B]
+    assert all(len(a.answers) == 2 for _, a in _assessments(ledger))

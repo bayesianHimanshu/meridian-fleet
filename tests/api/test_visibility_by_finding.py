@@ -8,8 +8,9 @@ This test generates random ledgers of findings with random visible_to (RBQM, saf
 subject-level and site-level, restricted), narratives, decisions and FindingAssessments
 (about one finding, or a pair of findings), and checks, for every role and every GET
 endpoint, that no response contains the finding id, the subject id or an evidence display
-string of a finding that role cannot open (its detail page is 404), nor the reason of an
-assessment about any finding that role cannot open.
+string of a finding that role cannot open (its detail page is 404), nor the reason or a
+raw model answer (agreement assessments, 1.1.0) of an assessment about any finding that
+role cannot open.
 
 test_the_property_fails_under_the_old_ledger_redaction runs the same check against the
 ledger redaction as it was before the fix (a test double for
@@ -36,6 +37,8 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    ModelAnswer,
+    Verdict,
 )
 from meridian.domain.findings import Decision, Evidence, Finding
 from tests.api_support import STUDY, Fixture, build, headers
@@ -82,6 +85,11 @@ spec = st.fixed_dictionaries(
     }
 )
 specs_strategy = st.lists(spec, min_size=1, max_size=6)
+
+MODEL_ANSWERS: tuple[tuple[str, str, Verdict], ...] = (
+    ("fake-a:1b", "1", "yes"),
+    ("fake-b:1b", "2", "no"),
+)
 
 
 def _finding(i: int, sp: dict[str, Any]) -> tuple[Finding, str, str | None]:
@@ -198,26 +206,47 @@ def build_random(root: Path, specs: list[dict[str, Any]]) -> tuple[Fixture, list
             about = []
         if about:
             reason = f"Assessed{i}x{sp['word']}"
+            raw = f"RawAnswer{i}x{sp['word']}"
             restricted = any(x["vis"] is Visibility.RESTRICTED for x in about)
-            fx.append(
-                FindingAssessment(
-                    finding_ids=tuple(sorted(x["finding_id"] for x in about)),
-                    finding_seqs=tuple(
-                        x["seq"] for x in sorted(about, key=lambda x: x["finding_id"])
-                    ),
-                    candidate="unpaired_pair" if len(about) == 2 else "term_mismatch",
-                    agent_id="safety.term_adjudicator",
+            common: dict[str, Any] = {
+                "finding_ids": tuple(sorted(x["finding_id"] for x in about)),
+                "finding_seqs": tuple(
+                    x["seq"] for x in sorted(about, key=lambda x: x["finding_id"])
+                ),
+                "candidate": "unpaired_pair" if len(about) == 2 else "term_mismatch",
+                "agent_id": "safety.term_adjudicator",
+                "status": "accepted",
+                "verdict": "unsure",
+                "reason": reason,
+            }
+            if i % 2:  # 1.0.0: one model
+                assessment = FindingAssessment(
+                    **common,
                     agent_version="1.0.0",
-                    status="accepted",
-                    verdict="unsure",
-                    reason=reason,
                     model="fake",
                     model_digest="e" * 64,
                     request_sha256="d" * 64,
-                ),
-                Visibility.RESTRICTED if restricted else Visibility.BLINDED,
-            )
-            assessments.append({"token": reason, "about": [x["finding_id"] for x in about]})
+                )
+            else:  # 1.1.0: two models, each raw answer kept and shown
+                answers = tuple(
+                    ModelAnswer(
+                        model=m,
+                        model_digest=d * 64,
+                        status="accepted",
+                        verdict=v,
+                        reason=f"{raw} {m}.",
+                        text=f'{{"same_event": "{v}", "reason": "{raw} {m}."}}',
+                        request_sha256="d" * 64,
+                        response_sha256="f" * 64,
+                    )
+                    for m, d, v in MODEL_ANSWERS
+                )
+                assessment = FindingAssessment(
+                    **common, agent_version="1.1.0", model="fake-a:1b+fake-b:1b", answers=answers
+                )
+            fx.append(assessment, Visibility.RESTRICTED if restricted else Visibility.BLINDED)
+            tokens = {reason} | (set() if i % 2 else {raw})
+            assessments.append({"tokens": tokens, "about": [x["finding_id"] for x in about]})
     # The fixture's own two RBQM findings are visible to the RBQM roles only.
     for e in fx.events:
         p = e.payload
@@ -235,7 +264,7 @@ def build_random(root: Path, specs: list[dict[str, Any]]) -> tuple[Fixture, list
     # An assessment's reason belongs to all of its findings: it is secret from a role that
     # cannot open any one of them.
     for a in assessments:
-        out.append({"finding_id": None, "tokens": {a["token"]}, "about": a["about"]})
+        out.append({"finding_id": None, "tokens": a["tokens"], "about": a["about"]})
     return fx, out
 
 
