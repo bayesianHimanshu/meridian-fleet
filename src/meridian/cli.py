@@ -80,6 +80,11 @@ safety_app = typer.Typer(
     no_args_is_help=True, help="The synthetic safety database and SAE reconciliation."
 )
 app.add_typer(safety_app, name="safety")
+tmf_app = typer.Typer(
+    no_args_is_help=True,
+    help="The synthetic eTMF index and quality.tmf_completeness (TMF completeness).",
+)
+app.add_typer(tmf_app, name="tmf")
 
 DEMO_STUDY = "MER-101"
 DEMO_SITE = "SITE-007"
@@ -1272,3 +1277,59 @@ def safety_eval(
         for cut, check, record in result.missed:
             typer.echo(f"  missed {cut} {check} {record}")
         typer.echo(f"written to {out}")
+
+
+TmfSetOption = Annotated[str, typer.Option("--set", help="dev, holdout or clean.")]
+
+
+def _tmf_set(name: str) -> Literal["dev", "holdout", "clean"]:
+    if name not in ("dev", "holdout", "clean"):
+        typer.echo(f"error: unknown set {name!r}; dev, holdout or clean", err=True)
+        raise typer.Exit(code=2)
+    return name  # type: ignore[return-value]
+
+
+@tmf_app.command("generate")
+def tmf_generate() -> None:
+    """A clean eTMF snapshot for every recorded cut that has none yet (DC-BASE included)."""
+    from meridian.data.datacut import data_cut_events
+    from meridian.domain.events import DataCut
+    from meridian.faults.reader import FullCutReader
+    from meridian.tmf.generate import ensure_clean_snapshot
+
+    with _container() as c:
+        s = c.settings
+        study_dir = s.curated_root / s.study_id
+        written = present = 0
+        for event in data_cut_events(c.ledger, s.study_id):
+            assert isinstance(event.payload, DataCut)
+            cut_id = event.payload.cut_id
+            if (s.etmf_root / s.study_id / cut_id / "manifest.json").exists():
+                present += 1
+                continue
+            if not (study_dir / cut_id).is_dir():
+                typer.echo(f"  skipped {cut_id}: no curated cut on disk")
+                continue
+            ensure_clean_snapshot(
+                etmf_root=s.etmf_root,
+                study_id=s.study_id,
+                cut=FullCutReader(study_dir / cut_id).read(),
+                ref=s.agents.tmf_completeness.reference,
+                clock=c.clock,
+            )
+            written += 1
+            typer.echo(f"  wrote clean eTMF snapshot for {cut_id}")
+        typer.echo(f"clean eTMF snapshots written {written}, already present {present}")
+
+
+@tmf_app.command("inject")
+def tmf_inject(set_name: TmfSetOption) -> None:
+    """Write one TMF evaluation set: cuts, eTMF snapshots, ground truth, DataCut events."""
+    name = _tmf_set(set_name)
+    with _container() as c:
+        for r in c.tmf_injector().inject_set(name):
+            planted = ", ".join(f"{f.kri}:{f.target}" for f in r.ground_truth.faults) or "none"
+            state = "written" if r.cut_created else "present"
+            typer.echo(
+                f"{r.scenario.label} {r.scenario.cut_id} {state} seq {r.event.seq}: {planted}"
+            )
