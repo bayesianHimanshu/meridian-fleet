@@ -1,4 +1,4 @@
-# Threat model: the blinding control (phase 2)
+# Threat model: the blinding control (phase 2; Agent Substrate zones since phase 4a)
 
 What we protect: unblinded data (treatment assignment, kept in `<cut>/unblinded/`), the
 audit ledger, and any credential on the host. The agents that read study data run in
@@ -55,6 +55,53 @@ Evidence:
   `ANTHROPIC_API_KEY` inside the sandbox does not start with `sk-ant-` (recorded as true
   or false only). `meridian agents narrate` refuses to run until this passed.
 
+## 4. Zones in Agent Substrate (phase 4a): what changes
+
+Since phase 4a, rbqm, safety.sae_reconciler, quality and quality.audit_trail run in Agent
+Substrate actors (gVisor, v1.0.0), one actor per run cloned from a golden snapshot
+(docs/substrate-design.md, Part 2). The narrator and the local model, the only zones with
+network rules, stay on OpenShell. Facts 1 and 3 hold there too; fact 2 does not.
+
+**Accepted loss: no per-path read allow-list.** Substrate has no Landlock or per-path rule, so
+inside an actor every file of the image is readable (`read_etc` in `meridian substrate
+conformance` reads /etc/os-release, and is recorded as allowed on purpose). A blinded zone's
+actor would read /stage/unblinded if the host put it there; nothing in the sandbox refuses it.
+The image holds no study data, so this exposes the image, not the trial. The user accepted
+this trade for these four zones in phase 4a.
+
+**The compensating control: an actor receives only its zone's folders.**
+* The host stages with the same code as for OpenShell (`stage_run`, then `assert_clean_stage`
+  right before the archive is built), so fact 1's evidence covers it.
+* The actor refuses any archive member that is not a regular file named `<area>/<file>` of an
+  area its template names (`meridian-worker serve --areas`, the policy's reads), so a staging
+  bug that adds an area fails the run instead of delivering it.
+* Evidence: `test_an_actor_receives_only_its_zones_folders` in
+  `tests/unit/test_substrate_executor.py`, for every substrate zone: the archive holds exactly
+  the policy's areas, never unblinded/ or the cut manifest; the template's --areas is the same
+  set; and the actor's unpack refuses every other area. `test_unpack_refuses_anything_but_
+  area_slash_file` and `test_a_link_member_is_refused` cover traversal and links.
+
+**No outbound network (fact 3) holds:** these actors have no EgressPolicy, so atenet-egress
+refuses every connection. `meridian substrate conformance` shows it per zone in real actors:
+TCP to 192.0.2.1:443, to the host 172.17.0.1:11434, to another actor's worker IP and to the
+cluster API is refused, each with a gateway log line (`code=403`, PolicyDenied
+source `substrate_log`), and a name outside any policy does not resolve.
+
+**No data at rest** is new here, because Substrate can snapshot a running actor. Controls:
+the only snapshot an actor may have is its template's golden snapshot, taken before any data
+(the wakeup probe answers only after a constant warm-up); a run is never suspended; the
+executor reads the actor back before deleting it and fails the run on any other snapshot;
+every actor is deleted. Evidence: `meridian substrate canary` (docs/substrate-eval.md) plants
+a unique string in the staged inputs of 20 runs, then searches the snapshot bucket (decoded),
+the kind node's filesystem and var/: not found; its positive control suspends one canary actor
+and finds the string in that snapshot, so the search would see a leak.
+
+**What is procedure, not enforcement:** the runner acts as Substrate's shared bootstrap
+identity, which may suspend actors; nothing in Substrate forbids snapshotting a data actor.
+An AccessPolicy without suspend rights for the runner is backlog. Snapshots are not encrypted
+and the kind install's rustfs uses its default credentials, acceptable only because no data
+snapshot should exist.
+
 ## Other controls, briefly
 
 * Agents get no ledger access and no credentials: the host runner is the only ledger
@@ -62,7 +109,8 @@ Evidence:
 * Inputs are verified: the worker checks every staged file against the host's inputs
   manifest before reading data.
 * Every sandbox is tracked in `var/sandboxes.jsonl` and deleted; `meridian sandbox reap`
-  cleans up any that were left.
+  cleans up any that were left. Substrate actors likewise in `var/actors.jsonl`
+  (`meridian substrate reap`).
 
 * The narrator sees only a finding's kind, site, severity, title, summary and evidence,
   after a de-identification check; the host validates every reply before recording it.
@@ -80,6 +128,11 @@ Evidence:
   configuration, not something this code checks. Digest pinning makes a different model
   under the same name fail the run, not pass it.
 
+* **Substrate zones have no read allow-list** (section 4): a staging bug would deliver what it
+  staged; the actor refuses only areas its template does not name.
+* **Substrate's refusal evidence names the actor, not the policy.** The gateway's line has the
+  destination, the actor's SPIFFE id and code 403, but no policy version; the template spec
+  hash on the run records what the actor was.
 * **Filesystem refusals have no OpenShell log record on 0.1.7.** Landlock returns EACCES
   without any line in `openshell logs`, so file refusals are recorded from what the
   conformance harness observed from outside the sandbox (exit code and stderr,

@@ -1,6 +1,10 @@
-# Agent Substrate: discovery and design (phase 4a step 1)
+# Agent Substrate: discovery and design (phase 4a steps 1 and 2)
 
-Design only: no executor code, no cluster, nothing installed. Every claim about Substrate cites
+Parts 0 and 1 are the step 1 design. Part 2 records the decisions taken after it and what
+step 2 built, including where the build departs from the design. Measurements and proofs are
+in docs/substrate-eval.md.
+
+Step 1 was design only: no executor code, no cluster, nothing installed. Every claim about Substrate cites
 a path in github.com/agent-substrate/substrate at commit
 **94e0a26ac90151886a76410568aaac2664a54d90** (main, 5 Nov 2026), cloned read-only to
 ~/src/substrate. Paths below are relative to that checkout. **Guess** marks anything not stated
@@ -338,3 +342,103 @@ restore phases. Its numbers are targets, not measurements: under 500 ms resume
   served by the actor.
 - **Host reachability** of 172.17.0.1 from the kind bridge, and ufw.
 - **kubectl skew** (1.33 client against a 1.36 server).
+
+## Part 2: decisions and what step 2 built (phase 4a step 2)
+
+### Decisions (taken by the user after step 1)
+
+1. **Pin v1.0.0** (`b34fbee742906494b5eb4f1f36987176bf8770a4`), as OpenShell is pinned at
+   0.1.7. v1.0.0 is not an ancestor of main: it is on release-1.0, where 60 of the 66 commits
+   between the merge base and 94e0a26 were cherry-picked. The 6 left over
+   (`git log --cherry-pick --right-only v1.0.0...94e0a26`) and the whole tree diff touch only
+   site/, docs/, demos/counter/README.md, hack/test-site-templates.sh and the benchmarking
+   tools (`git diff --stat v1.0.0 94e0a26`): no API, CLI, controller, worker or manifest code.
+   Verdict: nothing we use differs. ate-system was redeployed from v1.0.0 with the same flags
+   (credential provider k8s.io, ingress SPIFFE id atenet-client, `--sandbox-classes=gvisor`);
+   ate-setup's install record says `substrateVersion: v1.0.0`, and the runner refuses to start
+   if it says anything else (`Container.check_substrate_release`). kubectl-ate was rebuilt
+   from the same tag, and the gVisor worker image with ko at the tag
+   (`localhost:5001/ateworker-gvisor@sha256:ad6957f4...`, config [substrate] worker_image).
+2. **/dev/kvm** is back at 660 and is not touched again. microVM is not used.
+3. **gVisor only.**
+4. **The narrator and the local model stay on OpenShell.**
+5. **Option C, accepted:** one Executor protocol, chosen per policy from config
+   ([runtime] executor = "zoned", [runtime.executors]); policies with a network rule run on
+   OpenShell, policies without on Substrate (rbqm, safety.sae_reconciler, quality,
+   quality.audit_trail). Substrate is refused for any policy with a network rule or a
+   provider (`meridian.sandbox.zoned`). **We knowingly lose the per-path read allow-lists
+   (Landlock) for these zones.** The compensating control: the host sends an actor only its
+   zone's folders, proven for every zone by
+   `tests/unit/test_substrate_executor.py::test_an_actor_receives_only_its_zones_folders`,
+   and the actor itself refuses any archive member outside the areas its template names
+   (`meridian-worker serve --areas`). docs/threat-model.md section 4 records the trade.
+6. **Memory:** the counter demo was removed before our pool existed; the pool starts at 2
+   workers, and memory per worker is measured (docs/substrate-eval.md).
+
+### What was built
+
+- **`meridian-worker serve`** (src/meridian/worker_serve.py): the actor's HTTP server. Before
+  it listens it builds the agent registry and reads a constant parquet file it writes itself;
+  `GET /readyz` answers only after that, and the template's wakeup probe is that endpoint, so
+  the golden snapshot (MEMORY fidelity) holds a warm process and no data. `POST /run` takes the
+  tar and its sha256, unpacks only `<area>/<file>` regular files of the template's areas into
+  a fresh folder under /tmp (tmpfs in gVisor), runs the same `execute` as `meridian-worker
+  run`, answers the drafts document, the archive sha256 and the inputs manifest sha256, deletes
+  the folder and answers 409 to any later run. Nothing about the run reaches stdout or stderr
+  (the worker pod's log); it prints one line, "run finished, exit N".
+- **Templates** (deploy/substrate/, rendered by `meridian substrate render` from
+  src/meridian/sandbox/substrate_templates.py and checked by a test): one per zone, named
+  `<policy>-<12 hex of the image's registry digest>` because templates are immutable, image by
+  digest, `serve --areas <the policy's reads>`, 1 CPU and 768 MiB, MEMORY fidelity, golden
+  snapshot on. One conformance template on the same image, pool, class and size runs
+  `meridian-worker probe` instead. One WorkerPool, meridian/meridian, 2 gVisor workers of
+  1 GiB.
+- **`SubstrateExecutor`** (src/meridian/sandbox/substrate_executor.py): stages exactly what
+  the OpenShell executor uploads (the staging is now one shared function, `stage_run`), packs
+  it into a deterministic tar, creates the actor from the zone template, resumes it, posts
+  through `kubectl ate proxy`, reads the actor back and fails the run if it has any snapshot
+  other than its golden one, and always deletes it. `drain` waits until no actor it created
+  is listed.
+- **Records:** ActorWoke (the plan, before the run) and ActorSuspended (after it) carry a
+  `SubstrateRun`: release and commit, atespace, template and the sha256 of its canonical spec
+  as ate-api reports it, the committed template file and its sha256, the image by registry
+  digest, WorkerPool, sandbox class, actor name and uid, worker pod, and the golden tag and
+  snapshot id. `image_digest` stays the image id, as OpenShell records it, so the two
+  executors' runs of the same image compare equal. The fleet page and a finding's
+  traceability panel show the placement.
+- **quality.audit_trail_reviewer 1.1.0:** substrate is a sandboxed executor when the
+  completion records the image, the template spec hash and the golden snapshot id.
+- **`meridian substrate`** render, deploy, status, verify, conformance, canary, bench and reap;
+  `meridian sandbox conformance --executor substrate`; `meridian agents run --cut --rerun`.
+
+### Where the build departs from Part 1
+
+- **One atespace (`meridian`) for all four zones,** not one per zone. With no egress policy and
+  no credentials, the atespace separates nothing the template does not already separate; the
+  zone is the template. One atespace per zone is needed once a zone gets an egress rule.
+- **The agent runs in the server's process,** not in a subprocess. A subprocess would import
+  everything again (about 1.4 s, the cost the golden snapshot removes). The process handles
+  one run and is deleted with its actor.
+- **Port 8080, not 80:** the image runs as uid 1000 (`USER sandbox`), which cannot bind a port
+  below 1024. The router forwards any port.
+- **The golden warm-up is not 20 s:** with a wakeup probe on every container the controller
+  takes the snapshot as soon as the probe answers (`goldenSnapshotWarmupFor` in
+  `cmd/ateapi/internal/controlapi/template_reconciler.go`). Golden snapshots were ready 10 to
+  28 s after a template was created.
+- **Refusal is not a failed connect.** Inside an actor `connect()` to any address succeeds:
+  atunnel accepts every TCP connection and tunnels it to atenet-egress, which refuses it
+  (`docs/guides/egress-traffic.md`). The probe therefore connects, sends one request and
+  reads: the tunnel resets the connection, and the gateway logs
+  `[egress] authority=<host:port> peer_san=spiffe://substrate-actor.local/worker-for-actor/<atespace>/<actor> ... code=403`.
+  Part 1's guess that the denial would appear as the ext-proc line was wrong for a
+  no-policy actor: it is this access-log line. These lines become PolicyDenied events with
+  source `substrate_log`.
+- **Snapshots use Substrate's sparse format** (`ATESPRSE`, a u32 version, then one zstd stream
+  of the populated extents; `pkg/objectstorage/sparsezstd.go`). A search of snapshot storage
+  must decode it; a plain zstd decoder fails on every object.
+- **DeleteActor removes the actor's own snapshot** from object storage within 30 s (seen in the
+  canary's positive control), as Part 1 read in `workflow_delete.go`.
+- **AccessPolicy:** not set up. The runner acts as the shared bootstrap identity
+  `system:serviceaccount:ate-system:ate-client`, which can also suspend. The control that no
+  run is suspended is therefore the executor's per-run snapshot check plus the canary proof,
+  not authorization (docs/threat-model.md section 4).
