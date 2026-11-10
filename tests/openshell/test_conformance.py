@@ -46,6 +46,7 @@ NO_PROVIDER = sorted(name for name, p in policies.ALL_POLICIES.items() if not p.
 
 def test_the_no_provider_list_holds_the_reconciler() -> None:
     assert "safety.sae_reconciler" in NO_PROVIDER
+    assert "quality.audit_trail" in NO_PROVIDER  # conformance of the audit zone (step 4b)
     assert "rbqm.narrator" not in NO_PROVIDER
     assert "safety.local_model" not in NO_PROVIDER
 

@@ -115,5 +115,9 @@
   "ideal_findings": [
     "audit_reason_quality:asha.rao/reused/6"
   ],
-  "actual": {}
+  "actual": {
+    "1.0.0": [
+      "audit_reason_quality:asha.rao/reused/6"
+    ]
+  }
 }

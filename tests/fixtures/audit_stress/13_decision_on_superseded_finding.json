@@ -128,5 +128,9 @@
   "ideal_findings": [
     "audit_decision_on_retired:9"
   ],
-  "actual": {}
+  "actual": {
+    "1.0.0": [
+      "audit_decision_on_retired:9"
+    ]
+  }
 }

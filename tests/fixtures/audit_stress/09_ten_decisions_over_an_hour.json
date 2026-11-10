@@ -163,5 +163,7 @@
   ],
   "ideal": "Nothing.",
   "ideal_findings": [],
-  "actual": {}
+  "actual": {
+    "1.0.0": []
+  }
 }

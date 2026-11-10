@@ -45,5 +45,9 @@
   "ideal_findings": [
     "audit_chain_linkage:gap-3-4"
   ],
-  "actual": {}
+  "actual": {
+    "1.0.0": [
+      "audit_chain_linkage:gap-3-4"
+    ]
+  }
 }

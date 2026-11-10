@@ -153,5 +153,7 @@
   ],
   "ideal": "Nothing: below the threshold of 10 in 5 minutes.",
   "ideal_findings": [],
-  "actual": {}
+  "actual": {
+    "1.0.0": []
+  }
 }

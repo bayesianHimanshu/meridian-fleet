@@ -79,5 +79,9 @@
   "ideal_findings": [
     "audit_failed_run_unresolved:safety.sae_reconciler/1.0.0/1/2"
   ],
-  "actual": {}
+  "actual": {
+    "1.0.0": [
+      "audit_failed_run_unresolved:safety.sae_reconciler/1.0.0/1/2"
+    ]
+  }
 }

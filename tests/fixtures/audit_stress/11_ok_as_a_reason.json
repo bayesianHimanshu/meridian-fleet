@@ -67,5 +67,9 @@
   "ideal_findings": [
     "audit_reason_quality:5"
   ],
-  "actual": {}
+  "actual": {
+    "1.0.0": [
+      "audit_reason_quality:5"
+    ]
+  }
 }

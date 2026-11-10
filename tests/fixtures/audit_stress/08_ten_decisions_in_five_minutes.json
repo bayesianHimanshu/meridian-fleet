@@ -165,5 +165,9 @@
   "ideal_findings": [
     "audit_rapid_decisions:asha.rao/6"
   ],
-  "actual": {}
+  "actual": {
+    "1.0.0": [
+      "audit_rapid_decisions:asha.rao/6"
+    ]
+  }
 }
