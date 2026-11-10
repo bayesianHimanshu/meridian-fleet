@@ -686,12 +686,23 @@ class Repository:
 
     def _run(self, r: _Raised) -> RunTrace | None:
         """The ActorWoke before the finding and the ActorSuspended after it, for the same
-        agent, version and DataCut: the runner writes woke, findings, suspended in order."""
+        agent, version and DataCut: the runner writes woke, findings, suspended in order.
+        A finding about the ledger itself (cut LEDGER, an audit review) has no DataCut: its
+        run is the agent's last ActorWoke before the finding, whatever its trigger."""
         snap = self.snapshot()
+        f = r.finding
         trigger = next((seq for seq, c in snap.cuts.items() if c.cut_id == r.cut_id), None)
         if trigger is None:
-            return None
-        f = r.finding
+            prior = [
+                e.payload.trigger_seq
+                for e in snap.woke
+                if isinstance(e.payload, ActorWoke)
+                and (e.payload.agent_id, e.payload.agent_version) == (f.agent_id, f.agent_version)
+                and e.seq < r.event.seq
+            ]
+            if not prior:
+                return None
+            trigger = prior[-1]
 
         def same(p: ActorWoke | ActorSuspended) -> bool:
             return (p.agent_id, p.agent_version, p.trigger_seq) == (

@@ -346,3 +346,43 @@ def test_the_finding_says_whether_the_caller_may_decide_it(fx: Fixture) -> None:
     other = client.get("/api/v1/findings/RBQM-0001", headers=headers(Role.MEDICAL_MONITOR)).json()
     assert other["finding"]["may_decide"] is True
     assert other["finding"]["decide_blocked_reason"] is None
+
+
+def test_an_audit_findings_run_trace_is_its_review_run(fx: Fixture) -> None:
+    """A finding about the ledger has no DataCut; its run is the review that raised it."""
+    from meridian.domain.events import AuditReviewRequested
+
+    trigger = fx.events[-1].seq + 1
+    fx.append(
+        AuditReviewRequested(study_id="MRD-201", through_seq=trigger - 1), actor="meridian.audit"
+    )
+    fx.append(
+        ActorWoke(
+            agent_id=REVIEWER,
+            agent_version="1.0.0",
+            trigger_seq=trigger,
+            executor="substrate",
+            review_from_seq=1,
+            review_to_seq=trigger - 1,
+        ),
+        actor=REVIEWER,
+    )
+    fid = _raise(
+        fx,
+        finding(FindingKind.AUDIT, visible_to=AUDIT_ROLES, agent=REVIEWER, title="Audit: gap"),
+        "audit_chain_linkage:gap-3-4",
+    )
+    fx.append(
+        ActorSuspended(
+            agent_id=REVIEWER,
+            agent_version="1.0.0",
+            trigger_seq=trigger,
+            executor="substrate",
+            image_digest="sha256:" + "d" * 64,
+        ),
+        actor=REVIEWER,
+    )
+    detail = fx.client().get(f"/api/v1/findings/{fid}", headers=headers(Role.QA_AUDITOR)).json()
+    assert detail["run"]["trigger_seq"] == trigger
+    assert detail["run"]["woke"]["executor"] == "substrate"
+    assert detail["run"]["suspended"]["image_digest"] == "sha256:" + "d" * 64
