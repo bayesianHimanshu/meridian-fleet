@@ -1222,6 +1222,8 @@ export interface components {
         };
         /** FindingSummary */
         FindingSummary: {
+            /** Actor Under Review */
+            actor_under_review?: string | null;
             /** Agent Id */
             agent_id: string;
             /** Agent Version */
@@ -1230,12 +1232,19 @@ export interface components {
             check: string;
             /** Cut Id */
             cut_id: string;
+            /** Decide Blocked Reason */
+            decide_blocked_reason?: string | null;
             /** Decision Count */
             decision_count: number;
             /** Finding Id */
             finding_id: string;
             kind: components["schemas"]["FindingKind"];
             latest_narrative: components["schemas"]["LatestNarrative"] | null;
+            /**
+             * May Decide
+             * @default false
+             */
+            may_decide: boolean;
             /** Primary Evidence */
             primary_evidence: string[];
             /**
@@ -1243,6 +1252,8 @@ export interface components {
              * Format: date-time
              */
             raised_at: string;
+            /** Raised By */
+            raised_by?: string | null;
             /** Retired */
             retired: boolean;
             /** Retired By Version */

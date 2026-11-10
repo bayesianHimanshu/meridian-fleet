@@ -24,6 +24,7 @@ from meridian.domain.events import (
     FindingRaised,
     HumanDecision,
     LedgerEntry,
+    QualityObservation,
     RedactedEvent,
 )
 from meridian.domain.findings import Finding
@@ -90,15 +91,33 @@ def can_see_assessment(assessment: FindingAssessment, visible_finding_ids: Colle
     return all(f in visible_finding_ids for f in assessment.finding_ids)
 
 
+def observation_id_of(finding: Finding) -> str | None:
+    """The observation a qa_observation finding records (its OBSERVATION_ID evidence)."""
+    if finding.kind is not FindingKind.QA_OBSERVATION:
+        return None
+    for e in finding.evidence:
+        if e.selector.startswith("OBSERVATION_ID="):
+            return e.selector.removeprefix("OBSERVATION_ID=")
+    return None
+
+
 def redact_with_findings(
-    role: Role, entry: LedgerEntry, visible_finding_ids: Collection[str]
+    role: Role,
+    entry: LedgerEntry,
+    visible_finding_ids: Collection[str],
+    visible_observation_ids: Collection[str] = (),
 ) -> LedgerEntry:
     """redact, and also redact any event about a finding outside visible_finding_ids
-    (the findings this role may see)."""
+    (the findings this role may see). A QualityObservation event is shown exactly when its
+    qa_observation finding is (visible_observation_ids); fail closed when none is given."""
     shown = redact(role, entry)
-    if isinstance(shown, Event) and any(
-        f not in visible_finding_ids for f in finding_ids_of(shown)
-    ):
+    if not isinstance(shown, Event):
+        return shown
+    hidden = any(f not in visible_finding_ids for f in finding_ids_of(shown))
+    p = shown.payload
+    if isinstance(p, QualityObservation) and p.observation_id not in visible_observation_ids:
+        hidden = True
+    if hidden:
         return RedactedEvent(
             seq=shown.seq,
             event_type=shown.event_type,

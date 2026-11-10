@@ -239,6 +239,11 @@ class Snapshot:
             return "retired"
         return decided
 
+    def observation_ids(self) -> set[str]:
+        """The observations whose qa_observation finding this role may see."""
+        ids = (visibility.observation_id_of(r.finding) for r in self.raised.values())
+        return {i for i in ids if i is not None}
+
     def current(self, finding_id: str) -> bool:
         """Newest version's finding, still raised by the newest run: neither superseded
         nor retired."""
@@ -502,7 +507,22 @@ class Repository:
             status=snap.status(r.finding_id),
             decision_count=len(snap.decisions.get(r.finding_id, [])),
             latest_narrative=_latest_narrative(snap.narratives.get(r.finding_id, [])),
+            raised_by=f.raised_by,
+            actor_under_review=f.actor_under_review,
+            may_decide=self._blocked(f) is None,
+            decide_blocked_reason=self._blocked(f),
         )
+
+    def _blocked(self, f: Finding) -> str | None:
+        """Why the caller may not decide f, or None (the rules decide() enforces)."""
+        if not visibility.can_decide(self.role, f):
+            if self.role is Role.QA_AUDITOR:
+                return "qa_auditor may review findings but may never make a decision"
+            deciders = ", ".join(sorted(visibility.DECIDERS.get(f.kind, ())))
+            return (
+                f"{self.role.value} may not decide {f.kind.value} findings; {deciders} decide them"
+            )
+        return visibility.self_decision(self.person.actor, f)
 
     def studies(self) -> list[StudySummary]:
         counts: dict[str, int] = defaultdict(int)
@@ -711,10 +731,12 @@ class Repository:
         entries = self._ledger.read(
             since_seq=since, event_types=types, viewer_role=visibility.ledger_viewer(self.role)
         )
-        visible = self.snapshot().raised.keys()
+        snap = self.snapshot()
+        visible = snap.raised.keys()
+        observations = snap.observation_ids()
 
         def shown_as(e: LedgerEntry) -> LedgerEntry:
-            return visibility.redact_with_findings(self.role, e, visible)
+            return visibility.redact_with_findings(self.role, e, visible, observations)
 
         if agent is not None:
             entries = [e for e in entries if _agent_of(shown_as(e)) == agent]
@@ -1195,7 +1217,9 @@ class Repository:
         entry = next((e for e in entries if e.seq == seq), None)
         if entry is None:
             raise NotFoundError("ledger event not found")
-        shown = visibility.redact_with_findings(self.role, entry, snap.raised)
+        shown = visibility.redact_with_findings(
+            self.role, entry, snap.raised, snap.observation_ids()
+        )
         if not isinstance(shown, Event):
             raise NotFoundError("ledger event not found")
         return shown
@@ -1333,17 +1357,9 @@ class Repository:
         self, finding_id: str, action: DecisionAction, reason: str | None
     ) -> DecisionResponse:
         r = self._visible(finding_id)  # 404 before anything else: existence is not leaked
-        if self.role is Role.QA_AUDITOR:
-            raise ForbiddenError("qa_auditor may review findings but may never make a decision")
-        if not visibility.can_decide(self.role, r.finding):
-            deciders = ", ".join(sorted(visibility.DECIDERS.get(r.finding.kind, ())))
-            raise ForbiddenError(
-                f"{self.role.value} may not decide {r.finding.kind.value} findings; "
-                f"{deciders} decide them"
-            )
-        conflict = visibility.self_decision(self.person.actor, r.finding)
-        if conflict is not None:
-            raise ForbiddenError(conflict)
+        blocked = self._blocked(r.finding)
+        if blocked is not None:
+            raise ForbiddenError(blocked)
         if action is DecisionAction.DISMISSED and (reason is None or not reason.strip()):
             raise InvalidDecisionError("a dismissal needs a non-empty reason")
         decision = Decision(

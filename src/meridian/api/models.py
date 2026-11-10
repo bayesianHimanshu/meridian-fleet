@@ -117,6 +117,13 @@ class FindingSummary(BaseModel):
     latest_narrative: LatestNarrative | None
     # Display strings of the primary evidence (described the same way for old findings).
     primary_evidence: list[str]
+    # Phase 3 step 4b. raised_by: the person who raised it (a QA observation), else null.
+    # actor_under_review: the person whose own actions it is about, else null. may_decide:
+    # whether the caller may record a decision on it; decide_blocked_reason says why not.
+    raised_by: str | None = None
+    actor_under_review: str | None = None
+    may_decide: bool = False
+    decide_blocked_reason: str | None = None
 
 
 class FindingPage(BaseModel):

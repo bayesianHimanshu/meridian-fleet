@@ -55,6 +55,10 @@ export function finding(
     decision_count: 0,
     latest_narrative: null,
     primary_evidence: ["18 observed (5.1 expected)", "Bonferroni-adjusted p = 1.6e-06 (threshold 0.01)"],
+    raised_by: null,
+    actor_under_review: null,
+    may_decide: true,
+    decide_blocked_reason: null,
     ...over,
   };
 }

@@ -2461,6 +2461,17 @@
       "FindingSummary": {
         "additionalProperties": false,
         "properties": {
+          "actor_under_review": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Under Review"
+          },
           "agent_id": {
             "title": "Agent Id",
             "type": "string"
@@ -2476,6 +2487,17 @@
           "cut_id": {
             "title": "Cut Id",
             "type": "string"
+          },
+          "decide_blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decide Blocked Reason"
           },
           "decision_count": {
             "title": "Decision Count",
@@ -2498,6 +2520,11 @@
               }
             ]
           },
+          "may_decide": {
+            "default": false,
+            "title": "May Decide",
+            "type": "boolean"
+          },
           "primary_evidence": {
             "items": {
               "type": "string"
@@ -2509,6 +2536,17 @@
             "format": "date-time",
             "title": "Raised At",
             "type": "string"
+          },
+          "raised_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raised By"
           },
           "retired": {
             "title": "Retired",
