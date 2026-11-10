@@ -12,7 +12,7 @@ import json
 import re
 import uuid
 from collections import Counter, defaultdict
-from collections.abc import Callable, Collection, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -296,9 +296,16 @@ def _run_event(e: Event | None) -> RunEvent | None:
             policy_file=p.policy_file,
             policy_file_sha256=p.policy_file_sha256,
             inputs_manifest_sha256=p.inputs_manifest_sha256,
+            substrate=p.substrate,
         )
     assert isinstance(p, ActorWoke)
-    return RunEvent(seq=e.seq, hash=e.hash, recorded_at=e.recorded_at, executor=p.executor)
+    return RunEvent(
+        seq=e.seq,
+        hash=e.hash,
+        recorded_at=e.recorded_at,
+        executor=p.executor,
+        substrate=p.substrate,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -445,7 +452,11 @@ class Repository:
         portfolio: Sequence[PortfolioEntry],
         operational_cuts: Collection[str] = ("DC-BASE",),
         run_timeout_seconds: int = 120,
+        executors: Mapping[str, str] | None = None,
+        default_executor: str = "openshell",
     ) -> None:
+        self._executors = dict(executors or {})
+        self._default_executor = default_executor
         # A started detector run without its ActorSuspended counts as running, not failed,
         # until this many seconds after its ActorWoke ([runtime] exec_timeout_seconds).
         self._run_timeout = timedelta(seconds=run_timeout_seconds)
@@ -786,6 +797,8 @@ class Repository:
             last = current[-1] if current else None
             recent = [r for r in mine if r.woke.recorded_at >= since]
             failures = [r for r in mine if failed(r)]
+            done = [r for r in current if r.suspended is not None]
+            last_done = done[-1].suspended.payload if done and done[-1].suspended else None
             agents.append(
                 FleetAgent(
                     agent_id=a.agent_id,
@@ -810,6 +823,10 @@ class Repository:
                     failed_7d=sum(1 for r in recent if failed(r)),
                     last_failure_at=failures[-1].woke.recorded_at if failures else None,
                     run_event_types=[EventType.ACTOR_WOKE, EventType.ACTOR_SUSPENDED],
+                    executor=self._executors.get(policy_name, self._default_executor),
+                    substrate=last_done.substrate
+                    if isinstance(last_done, ActorSuspended)
+                    else None,
                 )
             )
         narratives = sorted(
@@ -852,13 +869,14 @@ class Repository:
             agents.append(
                 self._model_agent(agent_id, version, policy_name, role, events, kind, since)
             )
-        latest: dict[str, Event] = {}
+        latest: dict[tuple[str, str], Event] = {}
         for e in snap.containment:
             assert isinstance(e.payload, ContainmentCheckCompleted)
-            latest[e.payload.policy_name or e.payload.zone] = e
+            key = (e.payload.policy_name or e.payload.zone, e.payload.executor or "openshell")
+            latest[key] = e
         containment = []
-        for policy_name in sorted(latest):
-            e = latest[policy_name]
+        for policy_name, executor in sorted(latest):
+            e = latest[(policy_name, executor)]
             p = e.payload
             assert isinstance(p, ContainmentCheckCompleted)
             containment.append(
@@ -874,6 +892,8 @@ class Repository:
                     all_refused=p.all_refused,
                     log_line_found=p.log_line_found,
                     credential_value_visible=p.credential_value_visible,
+                    executor=executor,
+                    substrate=p.substrate,
                     checks=[
                         ContainmentCheckView(
                             name=c.name,

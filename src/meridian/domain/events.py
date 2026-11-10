@@ -40,6 +40,36 @@ class DocumentFiled(BaseModel):
     artifact: Annotated[str, Field(min_length=1)]
 
 
+class SubstrateRun(BaseModel):
+    """Where an Agent Substrate run happened (phase 4a step 2).
+
+    On ActorWoke it is the plan: the actor is named but not yet created (actor_uid and
+    worker_pod are null). On ActorSuspended it is what the control plane reported for the
+    actor just before it was deleted. The run never suspends: the only snapshot an actor
+    has is the golden snapshot it was created from (golden_snapshot)."""
+
+    model_config = _FROZEN
+
+    version: Annotated[str, Field(min_length=1)]  # the release, for example v1.0.0
+    commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")]
+    atespace: Annotated[str, Field(min_length=1)]
+    template: Annotated[str, Field(min_length=1)]
+    # sha256 of the template's canonical spec as ate-api reports it (status and server
+    # bookkeeping dropped; meridian.sandbox.substrate_templates.spec_sha256).
+    template_sha256: Sha256Hex
+    # The committed template file and the sha256 of its bytes.
+    template_file: Annotated[str, Field(min_length=1)]
+    template_file_sha256: Sha256Hex
+    image: Annotated[str, Field(pattern=r"^[^@\s]+@sha256:[0-9a-f]{64}$")]  # registry ref
+    worker_pool: Annotated[str, Field(min_length=1)]
+    sandbox_class: Annotated[str, Field(min_length=1)]
+    actor: Annotated[str, Field(min_length=1)]
+    golden_tag: Annotated[str, Field(min_length=1)]
+    golden_snapshot: Annotated[str, Field(min_length=1)]  # the snapshot uuid of that tag
+    actor_uid: str | None = None
+    worker_pod: str | None = None
+
+
 class ActorWoke(BaseModel):
     model_config = _FROZEN
 
@@ -48,13 +78,15 @@ class ActorWoke(BaseModel):
     trigger_seq: PositiveInt
     # Null on events written before agent versions were part of identity.
     agent_version: str | None = None
-    # Where the run executes ("inprocess" or "openshell"). Known before the run starts.
+    # Where the run executes ("inprocess", "openshell" or "substrate"). Known before the run starts.
     # Null on events written before phase 2.
     executor: str | None = None
     # An audit review (phase 3 step 4b): the ledger seq range the run reviews. Null for a
     # run on a data cut.
     review_from_seq: PositiveInt | None = None
     review_to_seq: PositiveInt | None = None
+    # executor "substrate" (phase 4a step 2): the planned placement. Null otherwise.
+    substrate: SubstrateRun | None = None
 
     @model_validator(mode="after")
     def _range(self) -> Self:
@@ -91,6 +123,8 @@ class ActorSuspended(BaseModel):
     # their header comment share it. Null in process and before step 3a polish.
     policy_file: str | None = None
     policy_file_sha256: Sha256Hex | None = None
+    # executor "substrate" (phase 4a step 2): where the run happened. Null otherwise.
+    substrate: SubstrateRun | None = None
 
 
 class FindingRaised(BaseModel):
@@ -112,7 +146,8 @@ class PolicyDenied(BaseModel):
     # Phase 2 step 2b, all optional (null on older events). source says who observed the
     # refusal: "harness" (the exit code and stderr seen from outside the sandbox) or
     # "openshell_log" (the OpenShell supervisor's log line, stored verbatim in raw_line).
-    source: Literal["harness", "openshell_log"] | None = None
+    # "substrate_log" (phase 4a): an atenet-egress log line naming the refused target.
+    source: Literal["harness", "openshell_log", "substrate_log"] | None = None
     zone: str | None = None
     check: str | None = None
     sandbox: str | None = None
@@ -157,6 +192,10 @@ class ContainmentCheckCompleted(BaseModel):
     policy_name: str | None = None
     providers: tuple[str, ...] = ()
     credential_value_visible: bool | None = None
+    # Phase 4a: "substrate" for a check in Agent Substrate actors (null: OpenShell), with
+    # the conformance actor's placement. policy_sha256 is then the zone template's spec.
+    executor: str | None = None
+    substrate: SubstrateRun | None = None
 
 
 NarrativeStatus = Literal["accepted", "rejected", "refused", "error"]

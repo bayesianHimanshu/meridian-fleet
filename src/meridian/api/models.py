@@ -12,6 +12,7 @@ from meridian.domain.events import (
     Event,
     NarrativeStatus,
     RedactedEvent,
+    SubstrateRun,
     Verdict,
 )
 from meridian.domain.findings import Evidence
@@ -225,6 +226,9 @@ class RunEvent(BaseModel):
     policy_file: str | None = None
     policy_file_sha256: str | None = None
     inputs_manifest_sha256: str | None = None
+    # executor substrate (phase 4a): the Agent Substrate release, template and its spec
+    # hash, WorkerPool, sandbox class, actor and the golden snapshot it was cloned from.
+    substrate: SubstrateRun | None = None
 
 
 class RunTrace(BaseModel):
@@ -322,6 +326,10 @@ class FleetAgent(BaseModel):
     last_failure_at: datetime | None
     # The ledger event types that record this agent's runs (for a filtered ledger link).
     run_event_types: list[EventType]
+    # Where its runs go now ([runtime]): openshell or substrate (phase 4a), and for
+    # substrate the placement of the last completed run of this version.
+    executor: str = "openshell"
+    substrate: SubstrateRun | None = None
 
 
 class ContainmentCheckView(BaseModel):
@@ -349,6 +357,10 @@ class ContainmentView(BaseModel):
     log_line_found: bool
     credential_value_visible: bool | None
     checks: list[ContainmentCheckView]
+    # openshell, or substrate (phase 4a: the check ran in Agent Substrate actors; then
+    # applied_policy_sha256 is the zone template's spec hash).
+    executor: str = "openshell"
+    substrate: SubstrateRun | None = None
 
 
 class Fleet(BaseModel):

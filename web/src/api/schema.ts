@@ -425,6 +425,7 @@ export interface components {
             policy_file_sha256?: string | null;
             /** Policy Sha256 */
             policy_sha256?: string | null;
+            substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Trigger Seq */
             trigger_seq: number;
             /**
@@ -445,6 +446,7 @@ export interface components {
             review_from_seq?: number | null;
             /** Review To Seq */
             review_to_seq?: number | null;
+            substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Trigger Seq */
             trigger_seq: number;
             /**
@@ -721,6 +723,8 @@ export interface components {
             checks: components["schemas"]["ContainmentCheck"][];
             /** Credential Value Visible */
             credential_value_visible?: boolean | null;
+            /** Executor */
+            executor?: string | null;
             /** Image */
             image: string;
             /** Image Digest */
@@ -740,6 +744,7 @@ export interface components {
             providers: string[];
             /** Sandbox */
             sandbox: string;
+            substrate?: components["schemas"]["SubstrateRun"] | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -777,6 +782,11 @@ export interface components {
             checks: components["schemas"]["ContainmentCheckView"][];
             /** Credential Value Visible */
             credential_value_visible: boolean | null;
+            /**
+             * Executor
+             * @default openshell
+             */
+            executor: string;
             /** Image Digest */
             image_digest: string;
             /** Log Line Found */
@@ -794,6 +804,7 @@ export interface components {
             sandbox: string;
             /** Seq */
             seq: number;
+            substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Zone */
             zone: string;
         };
@@ -1304,6 +1315,11 @@ export interface components {
             applied_policy_sha256: string;
             /** Enabled */
             enabled: boolean;
+            /**
+             * Executor
+             * @default openshell
+             */
+            executor: string;
             /** Failed 7D */
             failed_7d: number;
             /** Last Failure At */
@@ -1329,6 +1345,7 @@ export interface components {
             run_event_types: components["schemas"]["EventType"][];
             /** Runs 7D */
             runs_7d: number;
+            substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Version */
             version: string;
             /** Zone */
@@ -1550,7 +1567,7 @@ export interface components {
             /** Sandbox */
             sandbox?: string | null;
             /** Source */
-            source?: ("harness" | "openshell_log") | null;
+            source?: ("harness" | "openshell_log" | "substrate_log") | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1745,6 +1762,7 @@ export interface components {
             recorded_at: string;
             /** Seq */
             seq: number;
+            substrate?: components["schemas"]["SubstrateRun"] | null;
         };
         /**
          * RunTrace
@@ -1840,6 +1858,47 @@ export interface components {
             cuts: number;
             /** Study Id */
             study_id: string;
+        };
+        /**
+         * SubstrateRun
+         * @description Where an Agent Substrate run happened (phase 4a step 2).
+         *
+         *     On ActorWoke it is the plan: the actor is named but not yet created (actor_uid and
+         *     worker_pod are null). On ActorSuspended it is what the control plane reported for the
+         *     actor just before it was deleted. The run never suspends: the only snapshot an actor
+         *     has is the golden snapshot it was created from (golden_snapshot).
+         */
+        SubstrateRun: {
+            /** Actor */
+            actor: string;
+            /** Actor Uid */
+            actor_uid?: string | null;
+            /** Atespace */
+            atespace: string;
+            /** Commit */
+            commit: string;
+            /** Golden Snapshot */
+            golden_snapshot: string;
+            /** Golden Tag */
+            golden_tag: string;
+            /** Image */
+            image: string;
+            /** Sandbox Class */
+            sandbox_class: string;
+            /** Template */
+            template: string;
+            /** Template File */
+            template_file: string;
+            /** Template File Sha256 */
+            template_file_sha256: string;
+            /** Template Sha256 */
+            template_sha256: string;
+            /** Version */
+            version: string;
+            /** Worker Pod */
+            worker_pod?: string | null;
+            /** Worker Pool */
+            worker_pool: string;
         };
         /**
          * TmfArtifact

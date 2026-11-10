@@ -59,6 +59,55 @@ export function PolicyPair({
   );
 }
 
+/** Where an Agent Substrate run happened (phase 4a), labelled the same way here and in a
+ * finding's traceability: release, template and its spec hash, pool, sandbox class, the
+ * golden snapshot the actor was cloned from, and the actor. */
+export function SubstratePlacement({
+  run,
+  of,
+}: {
+  run: Schemas["SubstrateRun"];
+  of: string;
+}) {
+  return (
+    <dl className="policy-pair" data-testid="substrate-placement">
+      <dt>Agent Substrate</dt>
+      <dd>
+        <span className="mono">{run.version}</span> commit{" "}
+        <Hash value={run.commit} label={`substrate commit of ${of}`} />
+      </dd>
+      <dt>template</dt>
+      <dd>
+        <span className="mono">{run.template}</span> spec sha256{" "}
+        <Hash
+          value={run.template_sha256}
+          label={`template spec sha256 of ${of}`}
+        />
+      </dd>
+      <dt>template file sha256</dt>
+      <dd>
+        <span className="mono">{run.template_file}</span>{" "}
+        <Hash
+          value={run.template_file_sha256}
+          label={`template file sha256 of ${of}`}
+        />
+      </dd>
+      <dt>worker pool, sandbox</dt>
+      <dd>
+        <span className="mono">{run.worker_pool}</span>,{" "}
+        <span className="mono">{run.sandbox_class}</span>
+      </dd>
+      <dt>golden snapshot</dt>
+      <dd className="mono">{run.golden_snapshot}</dd>
+      <dt>actor</dt>
+      <dd className="mono">
+        {run.actor}
+        {run.actor_uid ? ` (${run.actor_uid})` : ""}
+      </dd>
+    </dl>
+  );
+}
+
 export function FleetView() {
   const fleet = useApi(["fleet"], () => unwrap(api.GET("/api/v1/fleet")));
   return (
@@ -91,7 +140,7 @@ export function FleetView() {
                     <th scope="col">Agent</th>
                     <th scope="col">Version</th>
                     <th scope="col">Zone</th>
-                    <th scope="col">Policy</th>
+                    <th scope="col">Executor and policy</th>
                     <th scope="col">Last run</th>
                     <th scope="col">Outcome</th>
                     <th scope="col" className="num">
@@ -114,6 +163,7 @@ export function FleetView() {
                       <td className="mono">{a.version}</td>
                       <td>{a.zone}</td>
                       <td>
+                        <span className="chip">{a.executor}</span>{" "}
                         <span className="mono">{a.policy}</span>
                         <PolicyPair
                           file={a.policy_file}
@@ -121,6 +171,12 @@ export function FleetView() {
                           appliedSha={a.applied_policy_sha256}
                           of={a.agent_id}
                         />
+                        {a.substrate ? (
+                          <SubstratePlacement
+                            run={a.substrate}
+                            of={`the last run of ${a.agent_id}`}
+                          />
+                        ) : null}
                       </td>
                       <td className="mono">
                         {a.last_run_at ? <Time iso={a.last_run_at} /> : "never"}
@@ -171,9 +227,9 @@ export function FleetView() {
             ) : null}
             <div className="stack">
               {fleet.data.containment.map((c) => (
-                <div key={c.policy}>
+                <div key={`${c.policy} ${c.executor}`}>
                   <h3>
-                    {c.policy}{" "}
+                    {c.policy} <span className="chip">{c.executor}</span>{" "}
                     <span className={`chip ${c.passed ? "good" : "critical"}`}>
                       {c.passed ? "passed" : "failed"}
                     </span>

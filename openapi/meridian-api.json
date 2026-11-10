@@ -91,6 +91,16 @@
             ],
             "title": "Policy Sha256"
           },
+          "substrate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstrateRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "trigger_seq": {
             "exclusiveMinimum": 0.0,
             "title": "Trigger Seq",
@@ -164,6 +174,16 @@
               }
             ],
             "title": "Review To Seq"
+          },
+          "substrate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstrateRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "trigger_seq": {
             "exclusiveMinimum": 0.0,
@@ -942,6 +962,17 @@
             ],
             "title": "Credential Value Visible"
           },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
           "image": {
             "minLength": 1,
             "title": "Image",
@@ -995,6 +1026,16 @@
             "minLength": 1,
             "title": "Sandbox",
             "type": "string"
+          },
+          "substrate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstrateRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "type": {
             "const": "containment_check_completed",
@@ -1101,6 +1142,11 @@
             ],
             "title": "Credential Value Visible"
           },
+          "executor": {
+            "default": "openshell",
+            "title": "Executor",
+            "type": "string"
+          },
           "image_digest": {
             "title": "Image Digest",
             "type": "string"
@@ -1129,6 +1175,16 @@
           "seq": {
             "title": "Seq",
             "type": "integer"
+          },
+          "substrate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstrateRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "zone": {
             "title": "Zone",
@@ -2712,6 +2768,11 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "executor": {
+            "default": "openshell",
+            "title": "Executor",
+            "type": "string"
+          },
           "failed_7d": {
             "title": "Failed 7D",
             "type": "integer"
@@ -2802,6 +2863,16 @@
           "runs_7d": {
             "title": "Runs 7D",
             "type": "integer"
+          },
+          "substrate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstrateRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "version": {
             "title": "Version",
@@ -3486,7 +3557,8 @@
               {
                 "enum": [
                   "harness",
-                  "openshell_log"
+                  "openshell_log",
+                  "substrate_log"
                 ],
                 "type": "string"
               },
@@ -4071,6 +4143,16 @@
           "seq": {
             "title": "Seq",
             "type": "integer"
+          },
+          "substrate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SubstrateRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -4390,6 +4472,116 @@
           "cuts"
         ],
         "title": "StudySummary",
+        "type": "object"
+      },
+      "SubstrateRun": {
+        "additionalProperties": false,
+        "description": "Where an Agent Substrate run happened (phase 4a step 2).\n\nOn ActorWoke it is the plan: the actor is named but not yet created (actor_uid and\nworker_pod are null). On ActorSuspended it is what the control plane reported for the\nactor just before it was deleted. The run never suspends: the only snapshot an actor\nhas is the golden snapshot it was created from (golden_snapshot).",
+        "properties": {
+          "actor": {
+            "minLength": 1,
+            "title": "Actor",
+            "type": "string"
+          },
+          "actor_uid": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Uid"
+          },
+          "atespace": {
+            "minLength": 1,
+            "title": "Atespace",
+            "type": "string"
+          },
+          "commit": {
+            "pattern": "^[0-9a-f]{40}$",
+            "title": "Commit",
+            "type": "string"
+          },
+          "golden_snapshot": {
+            "minLength": 1,
+            "title": "Golden Snapshot",
+            "type": "string"
+          },
+          "golden_tag": {
+            "minLength": 1,
+            "title": "Golden Tag",
+            "type": "string"
+          },
+          "image": {
+            "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$",
+            "title": "Image",
+            "type": "string"
+          },
+          "sandbox_class": {
+            "minLength": 1,
+            "title": "Sandbox Class",
+            "type": "string"
+          },
+          "template": {
+            "minLength": 1,
+            "title": "Template",
+            "type": "string"
+          },
+          "template_file": {
+            "minLength": 1,
+            "title": "Template File",
+            "type": "string"
+          },
+          "template_file_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Template File Sha256",
+            "type": "string"
+          },
+          "template_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Template Sha256",
+            "type": "string"
+          },
+          "version": {
+            "minLength": 1,
+            "title": "Version",
+            "type": "string"
+          },
+          "worker_pod": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Pod"
+          },
+          "worker_pool": {
+            "minLength": 1,
+            "title": "Worker Pool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version",
+          "commit",
+          "atespace",
+          "template",
+          "template_sha256",
+          "template_file",
+          "template_file_sha256",
+          "image",
+          "worker_pool",
+          "sandbox_class",
+          "actor",
+          "golden_tag",
+          "golden_snapshot"
+        ],
+        "title": "SubstrateRun",
         "type": "object"
       },
       "TmfArtifact": {

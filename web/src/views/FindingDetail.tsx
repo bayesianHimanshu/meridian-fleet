@@ -25,7 +25,7 @@ import {
 } from "../components/text";
 import { useApi } from "../queries";
 import { RaiseObservation } from "../components/Observation";
-import { PolicyPair } from "./Fleet";
+import { PolicyPair, SubstratePlacement } from "./Fleet";
 
 type Detail = Schemas["FindingDetail"];
 type Action = Schemas["DecisionAction"];
@@ -318,6 +318,7 @@ export function Assessments({ detail }: { detail: Detail }) {
 function Traceability({ detail }: { detail: Detail }) {
   const run = detail.run;
   const suspended = run?.suspended;
+  const placement = suspended?.substrate ?? run?.woke?.substrate;
   return (
     <section className="panel" aria-labelledby="trace-title">
       <div className="panel-head">
@@ -351,6 +352,14 @@ function Traceability({ detail }: { detail: Detail }) {
             </span>
           ) : null}
         </dd>
+        {placement ? (
+          <>
+            <dt>Substrate placement</dt>
+            <dd>
+              <SubstratePlacement run={placement} of="this run" />
+            </dd>
+          </>
+        ) : null}
         <dt>Inputs manifest sha256</dt>
         <dd>
           <Hash
