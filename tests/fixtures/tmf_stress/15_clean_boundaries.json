@@ -2,14 +2,33 @@
   "case": "clean_boundaries",
   "description": "Control at the limits: the 9002 IRB approval filed exactly 14 days after its date, the 9001 close-out report filed exactly 30 days after, a monitoring report dated 3 days after its visit, and a report pending QC since 10 days before the export.",
   "index_set": {
-    "D-2-IRB": {"FILED_DATE": "2013-04-01"},
-    "D-1-CO": {"FILED_DATE": "2014-03-26"},
-    "D-2-MV1": {"DOCUMENT_DATE": "2013-06-27", "FILED_DATE": "2013-07-08"}
+    "D-2-IRB": {
+      "FILED_DATE": "2013-04-01"
+    },
+    "D-1-CO": {
+      "FILED_DATE": "2014-03-26"
+    },
+    "D-2-MV1": {
+      "DOCUMENT_DATE": "2013-06-27",
+      "FILED_DATE": "2013-07-08"
+    }
   },
   "index_add": [
-    {"DOCUMENT_ID": "D-T-AMD2", "ARTIFACT": "Protocol Amendment", "LEVEL": "trial", "SITE": "", "DOC_SITE": "", "VERSION": "2", "DOCUMENT_DATE": "2014-06-12", "FILED_DATE": "2014-06-20", "QC_STATUS": "pending"}
+    {
+      "DOCUMENT_ID": "D-T-AMD2",
+      "ARTIFACT": "Protocol Amendment",
+      "LEVEL": "trial",
+      "SITE": "",
+      "DOC_SITE": "",
+      "VERSION": "2",
+      "DOCUMENT_DATE": "2014-06-12",
+      "FILED_DATE": "2014-06-20",
+      "QC_STATUS": "pending"
+    }
   ],
   "ideal": "Nothing.",
   "ideal_findings": [],
-  "actual": {}
+  "actual": {
+    "1.0.0": []
+  }
 }

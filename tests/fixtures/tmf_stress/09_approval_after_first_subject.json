@@ -1,8 +1,19 @@
 {
   "case": "approval_after_first_subject",
   "description": "Site 9002's only initial IRB approval is dated 20 May 2013, two weeks after its first subject started treatment (6 May 2013). It was filed 28 May 2013, on time.",
-  "index_set": {"D-2-IRB": {"DOCUMENT_DATE": "2013-05-20", "FILED_DATE": "2013-05-28"}},
+  "index_set": {
+    "D-2-IRB": {
+      "DOCUMENT_DATE": "2013-05-20",
+      "FILED_DATE": "2013-05-28"
+    }
+  },
   "ideal": "One high finding: the site treated a subject before its IRB approval.",
-  "ideal_findings": ["tmf_approval_after_first_subject:9002/irb_iec_decision"],
-  "actual": {}
+  "ideal_findings": [
+    "tmf_approval_after_first_subject:9002/irb_iec_decision"
+  ],
+  "actual": {
+    "1.0.0": [
+      "tmf_approval_after_first_subject:9002/irb_iec_decision"
+    ]
+  }
 }

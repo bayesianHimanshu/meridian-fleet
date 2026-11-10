@@ -2,18 +2,95 @@
   "case": "site_activated_never_enrolled",
   "description": "Site 9003 had its initiation visit on 3 Jun 2013 and filed its activation records, but never enrolled a subject: it is not in DM, has no routine visits and no close-out visit yet.",
   "visits_add": [
-    {"VISIT_ID": "V-9003-INI", "SITE": "9003", "VISIT_TYPE": "initiation", "VISIT_DATE": "2013-06-03"}
+    {
+      "VISIT_ID": "V-9003-INI",
+      "SITE": "9003",
+      "VISIT_TYPE": "initiation",
+      "VISIT_DATE": "2013-06-03"
+    }
   ],
   "index_add": [
-    {"DOCUMENT_ID": "D-3-IRB", "ARTIFACT": "IRB or IEC Decision", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-05-06", "FILED_DATE": "2013-05-14", "QC_STATUS": "passed"},
-    {"DOCUMENT_ID": "D-3-1572", "ARTIFACT": "Form FDA 1572", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-05-10", "FILED_DATE": "2013-05-20", "QC_STATUS": "passed"},
-    {"DOCUMENT_ID": "D-3-CV", "ARTIFACT": "Principal Investigator Curriculum Vitae", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-02-04", "FILED_DATE": "2013-02-15", "QC_STATUS": "passed"},
-    {"DOCUMENT_ID": "D-3-DEL", "ARTIFACT": "Site Signature Sheet", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-06-03", "FILED_DATE": "2013-06-11", "QC_STATUS": "passed"},
-    {"DOCUMENT_ID": "D-3-PSP", "ARTIFACT": "Protocol Signature Page", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-05-13", "FILED_DATE": "2013-05-22", "QC_STATUS": "passed"},
-    {"DOCUMENT_ID": "D-3-FDF", "ARTIFACT": "Financial Disclosure Form", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-05-13", "FILED_DATE": "2013-05-22", "QC_STATUS": "passed"},
-    {"DOCUMENT_ID": "D-3-INI", "ARTIFACT": "Trial Initiation Monitoring Report", "LEVEL": "site", "SITE": "9003", "DOC_SITE": "9003", "VERSION": "1", "DOCUMENT_DATE": "2013-06-03", "FILED_DATE": "2013-06-17", "QC_STATUS": "passed"}
+    {
+      "DOCUMENT_ID": "D-3-IRB",
+      "ARTIFACT": "IRB or IEC Decision",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-05-06",
+      "FILED_DATE": "2013-05-14",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-3-1572",
+      "ARTIFACT": "Form FDA 1572",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-05-10",
+      "FILED_DATE": "2013-05-20",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-3-CV",
+      "ARTIFACT": "Principal Investigator Curriculum Vitae",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-02-04",
+      "FILED_DATE": "2013-02-15",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-3-DEL",
+      "ARTIFACT": "Site Signature Sheet",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-06-03",
+      "FILED_DATE": "2013-06-11",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-3-PSP",
+      "ARTIFACT": "Protocol Signature Page",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-05-13",
+      "FILED_DATE": "2013-05-22",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-3-FDF",
+      "ARTIFACT": "Financial Disclosure Form",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-05-13",
+      "FILED_DATE": "2013-05-22",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-3-INI",
+      "ARTIFACT": "Trial Initiation Monitoring Report",
+      "LEVEL": "site",
+      "SITE": "9003",
+      "DOC_SITE": "9003",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-06-03",
+      "FILED_DATE": "2013-06-17",
+      "QC_STATUS": "passed"
+    }
   ],
   "ideal": "Nothing: the activation records are filed; with no subject there is no first subject to compare approvals with, no routine visit and no close-out report is expected yet.",
   "ideal_findings": [],
-  "actual": {}
+  "actual": {
+    "1.0.0": []
+  }
 }
