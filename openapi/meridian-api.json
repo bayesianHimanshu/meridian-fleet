@@ -3866,6 +3866,345 @@
         "title": "StudySummary",
         "type": "object"
       },
+      "TmfArtifact": {
+        "additionalProperties": false,
+        "description": "One expected artifact of config/tmf_expected.toml (names only, no numbers).",
+        "properties": {
+          "essential": {
+            "title": "Essential",
+            "type": "boolean"
+          },
+          "file_within_days": {
+            "title": "File Within Days",
+            "type": "integer"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "trial",
+              "site"
+            ],
+            "title": "Level",
+            "type": "string"
+          },
+          "milestone": {
+            "title": "Milestone",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "zone": {
+            "title": "Zone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "name",
+          "zone",
+          "level",
+          "milestone",
+          "file_within_days",
+          "essential"
+        ],
+        "title": "TmfArtifact",
+        "type": "object"
+      },
+      "TmfCell": {
+        "additionalProperties": false,
+        "description": "One artifact at one site (or the trial). For a visit report, expected counts the\nvisits that are due, filed those with a report, late those filed late.",
+        "properties": {
+          "artifact": {
+            "title": "Artifact",
+            "type": "string"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "integer"
+          },
+          "filed": {
+            "title": "Filed",
+            "type": "integer"
+          },
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "late": {
+            "title": "Late",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "filed",
+              "filed_late",
+              "missing",
+              "not_expected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact",
+          "status",
+          "expected",
+          "filed",
+          "late",
+          "finding_ids"
+        ],
+        "title": "TmfCell",
+        "type": "object"
+      },
+      "TmfCompletenessView": {
+        "additionalProperties": false,
+        "description": "The TMF of one cut: completeness and timely filing per site and for the trial, the\nexpected-against-filed matrix (computed from the cut's eTMF index), and the current\nquality.tmf_completeness findings the caller may see. No subject data.",
+        "properties": {
+          "agent_id": {
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "agent_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Version"
+          },
+          "artifacts": {
+            "items": {
+              "$ref": "#/components/schemas/TmfArtifact"
+            },
+            "title": "Artifacts",
+            "type": "array"
+          },
+          "completeness_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completeness Percent"
+          },
+          "cut_id": {
+            "title": "Cut Id",
+            "type": "string"
+          },
+          "export_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Export Date"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/TmfFindingItem"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "run_completed": {
+            "title": "Run Completed",
+            "type": "boolean"
+          },
+          "scope": {
+            "enum": [
+              "operational",
+              "evaluation"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "sites": {
+            "items": {
+              "$ref": "#/components/schemas/TmfSiteRow"
+            },
+            "title": "Sites",
+            "type": "array"
+          },
+          "study_id": {
+            "title": "Study Id",
+            "type": "string"
+          },
+          "timely_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timely Percent"
+          },
+          "trial": {
+            "items": {
+              "$ref": "#/components/schemas/TmfCell"
+            },
+            "title": "Trial",
+            "type": "array"
+          },
+          "trial_completeness_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Completeness Percent"
+          },
+          "trial_timely_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trial Timely Percent"
+          }
+        },
+        "required": [
+          "study_id",
+          "cut_id",
+          "scope",
+          "export_date",
+          "agent_id",
+          "agent_version",
+          "run_completed",
+          "completeness_percent",
+          "timely_percent",
+          "trial_completeness_percent",
+          "trial_timely_percent",
+          "artifacts",
+          "trial",
+          "sites",
+          "findings"
+        ],
+        "title": "TmfCompletenessView",
+        "type": "object"
+      },
+      "TmfFindingItem": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "title": "Check",
+            "type": "string"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          },
+          "site_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Site Id"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "accepted",
+              "escalated",
+              "dismissed",
+              "retired"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "finding_id",
+          "check",
+          "site_id",
+          "severity",
+          "status",
+          "title"
+        ],
+        "title": "TmfFindingItem",
+        "type": "object"
+      },
+      "TmfSiteRow": {
+        "additionalProperties": false,
+        "properties": {
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/TmfCell"
+            },
+            "title": "Cells",
+            "type": "array"
+          },
+          "completeness_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completeness Percent"
+          },
+          "site_id": {
+            "title": "Site Id",
+            "type": "string"
+          },
+          "timely_percent": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timely Percent"
+          }
+        },
+        "required": [
+          "site_id",
+          "completeness_percent",
+          "timely_percent",
+          "cells"
+        ],
+        "title": "TmfSiteRow",
+        "type": "object"
+      },
       "UnblindedCases": {
         "additionalProperties": false,
         "description": "How many safety cases on the operational cut carry an unblinded treatment field.\nOnly the count: the treatment itself is never served.",
@@ -4830,6 +5169,85 @@
         "summary": "Portfolio",
         "tags": [
           "portfolio"
+        ]
+      }
+    },
+    "/api/v1/quality/{cut}/tmf": {
+      "get": {
+        "description": "TMF completeness of one cut: completeness and timely filing per site and for the\ntrial, the expected-against-filed matrix, and the current quality.tmf_completeness\nfindings the caller may see. No subject data; the roles of the agent's config only.",
+        "operationId": "quality_tmf_api_v1_quality__cut__tmf_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cut",
+            "required": true,
+            "schema": {
+              "title": "Cut",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Person id from config/people.toml (development only).",
+            "in": "header",
+            "name": "X-Meridian-Actor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Person id from config/people.toml (development only).",
+              "title": "X-Meridian-Actor"
+            }
+          },
+          {
+            "description": "That person's role (development only).",
+            "in": "header",
+            "name": "X-Meridian-Role",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "That person's role (development only).",
+              "title": "X-Meridian-Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TmfCompletenessView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Quality Tmf",
+        "tags": [
+          "quality"
         ]
       }
     },

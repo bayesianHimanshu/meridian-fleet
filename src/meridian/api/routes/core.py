@@ -21,6 +21,7 @@ from meridian.api.models import (
     Reconciliation,
     ReviewQueue,
     StudySummary,
+    TmfCompletenessView,
     UnblindedCases,
     VerifyReport,
     WhoAmI,
@@ -178,6 +179,14 @@ def safety_reconciliation(cut: str, repo: Repo) -> Reconciliation:
 def safety_unblinded_cases(repo: Repo, ctx: Context) -> UnblindedCases:
     """Unblinded statistician only: how many cases carry a treatment field (a count)."""
     return repo.unblinded_cases(ctx.safety_case_counts)
+
+
+@router.get("/quality/{cut}/tmf", tags=["quality"])
+def quality_tmf(cut: str, repo: Repo, ctx: Context) -> TmfCompletenessView:
+    """TMF completeness of one cut: completeness and timely filing per site and for the
+    trial, the expected-against-filed matrix, and the current quality.tmf_completeness
+    findings the caller may see. No subject data; the roles of the agent's config only."""
+    return repo.tmf(cut, ctx.tmf_reader, ctx.agents.tmf_completeness)
 
 
 @router.get("/portfolio", tags=["portfolio"])

@@ -178,6 +178,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/quality/{cut}/tmf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Quality Tmf
+         * @description TMF completeness of one cut: completeness and timely filing per site and for the
+         *     trial, the expected-against-filed matrix, and the current quality.tmf_completeness
+         *     findings the caller may see. No subject data; the roles of the agent's config only.
+         */
+        get: operations["quality_tmf_api_v1_quality__cut__tmf_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/rbqm/{cut}/sites": {
         parameters: {
             query?: never;
@@ -1609,6 +1631,120 @@ export interface components {
             study_id: string;
         };
         /**
+         * TmfArtifact
+         * @description One expected artifact of config/tmf_expected.toml (names only, no numbers).
+         */
+        TmfArtifact: {
+            /** Essential */
+            essential: boolean;
+            /** File Within Days */
+            file_within_days: number;
+            /** Key */
+            key: string;
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "trial" | "site";
+            /** Milestone */
+            milestone: string;
+            /** Name */
+            name: string;
+            /** Zone */
+            zone: string;
+        };
+        /**
+         * TmfCell
+         * @description One artifact at one site (or the trial). For a visit report, expected counts the
+         *     visits that are due, filed those with a report, late those filed late.
+         */
+        TmfCell: {
+            /** Artifact */
+            artifact: string;
+            /** Expected */
+            expected: number;
+            /** Filed */
+            filed: number;
+            /** Finding Ids */
+            finding_ids: string[];
+            /** Late */
+            late: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "filed" | "filed_late" | "missing" | "not_expected";
+        };
+        /**
+         * TmfCompletenessView
+         * @description The TMF of one cut: completeness and timely filing per site and for the trial, the
+         *     expected-against-filed matrix (computed from the cut's eTMF index), and the current
+         *     quality.tmf_completeness findings the caller may see. No subject data.
+         */
+        TmfCompletenessView: {
+            /** Agent Id */
+            agent_id: string;
+            /** Agent Version */
+            agent_version: string | null;
+            /** Artifacts */
+            artifacts: components["schemas"]["TmfArtifact"][];
+            /** Completeness Percent */
+            completeness_percent: number | null;
+            /** Cut Id */
+            cut_id: string;
+            /** Export Date */
+            export_date: string | null;
+            /** Findings */
+            findings: components["schemas"]["TmfFindingItem"][];
+            /** Run Completed */
+            run_completed: boolean;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "operational" | "evaluation";
+            /** Sites */
+            sites: components["schemas"]["TmfSiteRow"][];
+            /** Study Id */
+            study_id: string;
+            /** Timely Percent */
+            timely_percent: number | null;
+            /** Trial */
+            trial: components["schemas"]["TmfCell"][];
+            /** Trial Completeness Percent */
+            trial_completeness_percent: number | null;
+            /** Trial Timely Percent */
+            trial_timely_percent: number | null;
+        };
+        /** TmfFindingItem */
+        TmfFindingItem: {
+            /** Check */
+            check: string;
+            /** Finding Id */
+            finding_id: string;
+            severity: components["schemas"]["Severity"];
+            /** Site Id */
+            site_id: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "accepted" | "escalated" | "dismissed" | "retired";
+            /** Title */
+            title: string;
+        };
+        /** TmfSiteRow */
+        TmfSiteRow: {
+            /** Cells */
+            cells: components["schemas"]["TmfCell"][];
+            /** Completeness Percent */
+            completeness_percent: number | null;
+            /** Site Id */
+            site_id: string;
+            /** Timely Percent */
+            timely_percent: number | null;
+        };
+        /**
          * UnblindedCases
          * @description How many safety cases on the operational cut carry an unblinded treatment field.
          *     Only the count: the treatment itself is never served.
@@ -1965,6 +2101,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Portfolio"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quality_tmf_api_v1_quality__cut__tmf_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Person id from config/people.toml (development only). */
+                "X-Meridian-Actor"?: string | null;
+                /** @description That person's role (development only). */
+                "X-Meridian-Role"?: string | null;
+            };
+            path: {
+                cut: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TmfCompletenessView"];
                 };
             };
             /** @description Validation Error */

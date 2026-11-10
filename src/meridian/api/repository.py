@@ -18,11 +18,13 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from meridian.agents.base import zone_of
+from meridian.agents.quality import tmf_completeness
 from meridian.agents.rbqm import narrator
 from meridian.agents.rbqm.describe import describe
 from meridian.agents.registry import AgentRegistry
 from meridian.agents.safety import local_narrator, term_adjudicator
 from meridian.api import safety as safety_view
+from meridian.api import tmf as tmf_view
 from meridian.api import visibility
 from meridian.api.identity import Person
 from meridian.api.models import (
@@ -56,6 +58,8 @@ from meridian.api.models import (
     RunTrace,
     SiteFlag,
     StudySummary,
+    TmfCompletenessView,
+    TmfFindingItem,
     UnblindedCases,
     VerifyReport,
 )
@@ -80,6 +84,7 @@ from meridian.domain.events import (
 from meridian.domain.findings import Decision, Finding
 from meridian.ledger.store import LedgerReader, LedgerWriter, RawLedgerSource
 from meridian.ledger.verify import verify
+from meridian.platform.agent_settings import TmfCompletenessConfig
 from meridian.platform.clock import Clock
 from meridian.platform.config import AgentsSettings
 from meridian.sandbox.policies import (
@@ -972,6 +977,74 @@ class Repository:
             by_check=by_check,
             by_site=by_site,
             items=items,
+        )
+
+    def tmf(
+        self, cut_id: str, reader: Callable[[str], StudyReader], cfg: TmfCompletenessConfig
+    ) -> TmfCompletenessView:
+        """The TMF of one cut: matrix and percentages from its eTMF index, and the current
+        quality.tmf_completeness findings this role may see."""
+        if not visibility.can_see_tmf(self.role, cfg.visible_to):
+            raise ForbiddenError(f"{self.role.value} may not see the TMF")
+        snap = self.snapshot()
+        cut = next((c for c in snap.cuts.values() if c.cut_id == cut_id), None)
+        if cut is None:
+            raise NotFoundError("cut not found")
+        try:
+            a = tmf_completeness.assess(reader(cut_id), cfg)
+        except (MissingTableError, StudyAccessError, OSError) as exc:
+            raise NotFoundError("eTMF index not available for the cut") from exc
+        trigger = next(seq for seq, c in snap.cuts.items() if c.cut_id == cut_id)
+        versions = sorted(
+            {
+                e.payload.agent_version
+                for e in snap.suspended
+                if isinstance(e.payload, ActorSuspended)
+                and e.payload.agent_id == tmf_completeness.AGENT_ID
+                and e.payload.trigger_seq == trigger
+                and e.payload.agent_version is not None
+            },
+            key=_version,
+        )
+        current = [
+            r
+            for r in sorted(snap.raised.values(), key=lambda r: r.event.seq)
+            if r.cut_id == cut_id
+            and r.finding.agent_id == tmf_completeness.AGENT_ID
+            and snap.current(r.finding_id)
+        ]
+        finding_of = {r.check.partition(":")[2]: r.finding_id for r in current}
+        trial, sites = tmf_view.rows(a, cfg.reference, finding_of)
+        complete, timely = a.percent(None)
+        trial_complete, trial_timely = a.percent("")
+        return TmfCompletenessView(
+            study_id=cut.study_id,
+            cut_id=cut_id,
+            scope=self.scope(cut_id),
+            export_date=None if a.export_date is None else a.export_date.isoformat(),
+            agent_id=tmf_completeness.AGENT_ID,
+            agent_version=versions[-1] if versions else None,
+            run_completed=bool(versions),
+            completeness_percent=complete,
+            timely_percent=timely,
+            trial_completeness_percent=trial_complete,
+            trial_timely_percent=trial_timely,
+            artifacts=tmf_view.artifacts(cfg.reference),
+            trial=trial,
+            sites=sites,
+            findings=tmf_view.items(
+                [
+                    TmfFindingItem(
+                        finding_id=r.finding_id,
+                        check=r.check.partition(":")[0],
+                        site_id=r.finding.site_id,
+                        severity=r.finding.severity,
+                        status=snap.status(r.finding_id),
+                        title=r.finding.title,
+                    )
+                    for r in current
+                ]
+            ),
         )
 
     def unblinded_cases(self, counter: Callable[[str], tuple[int, int]]) -> UnblindedCases:

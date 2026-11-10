@@ -133,3 +133,9 @@ def can_see_site_metrics(role: Role) -> bool:
 
 def can_see_study_data(role: Role) -> bool:
     return role in SITE_METRIC_ROLES
+
+
+def can_see_tmf(role: Role, agent_visible_to: Collection[Role]) -> bool:
+    """The TMF page holds no subject data: per-site completeness of trial records. It is
+    shown to exactly the roles quality.tmf_completeness's findings reach (its config)."""
+    return role in agent_visible_to
