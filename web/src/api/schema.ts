@@ -446,6 +446,8 @@ export interface components {
             review_from_seq?: number | null;
             /** Review To Seq */
             review_to_seq?: number | null;
+            /** Started At */
+            started_at?: string | null;
             substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Trigger Seq */
             trigger_seq: number;
@@ -1567,7 +1569,7 @@ export interface components {
             /** Sandbox */
             sandbox?: string | null;
             /** Source */
-            source?: ("harness" | "openshell_log" | "substrate_log") | null;
+            source?: ("harness" | "openshell_log" | "substrate_log" | "runner_guard" | "substrate_authz") | null;
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1883,6 +1885,8 @@ export interface components {
             golden_tag: string;
             /** Image */
             image: string;
+            /** Image Source Commit */
+            image_source_commit?: string | null;
             /** Sandbox Class */
             sandbox_class: string;
             /** Template */

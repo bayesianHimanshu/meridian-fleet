@@ -40,12 +40,17 @@ WORKER_BIN = "/opt/meridian/venv/bin/meridian-worker"
 PORT = 8080
 WORKLOAD_LABEL = "meridian"
 ACTOR_CPU_MILLICORES = 1000
-ACTOR_MEMORY_BYTES = 768 * 1024 * 1024
+ACTOR_MEMORY_MIB = 768  # default; [substrate] actor_memory_mib
+MIB = 1024 * 1024
 WORKER_CPU_LIMIT = "1"
 WORKER_CPU_REQUEST = "250m"
-WORKER_MEMORY = "1Gi"
+WORKER_MEMORY_MIB = 1024  # default; [substrate] worker_memory_mib
+# A worker offers its pod memory less this to actors (ateworker reports 960Mi of 1Gi).
+WORKER_RESERVED_MIB = 64
 TEMPLATES_DIR = "templates"
 POOL_FILE = "workerpool.yaml"
+RUNNER_FILE = "runner.yaml"
+ACCESS_POLICY_FILE = "access-policy.yaml"
 # Fields ate-api adds or changes on its own; they are not part of what runs.
 SERVER_METADATA = ("createTime", "updateTime", "version", "uid", "deleteTime")
 
@@ -61,6 +66,7 @@ class PoolSpec:
     replicas: int
     worker_image: str
     sandbox_class: str
+    worker_memory_mib: int = WORKER_MEMORY_MIB
 
 
 def slug(policy: str) -> str:
@@ -74,8 +80,18 @@ def digest_tail(image_ref: str) -> str:
     return image_ref.split("@sha256:", 1)[1][:12]
 
 
-def template_name(policy: str, image_ref: str) -> str:
-    return f"{slug(policy)}-{digest_tail(image_ref)}"
+def template_name(policy: str, image_ref: str, actor_memory_mib: int = ACTOR_MEMORY_MIB) -> str:
+    """<policy>-<12 hex of the image digest>-m<actor MiB>: templates are immutable, so a new
+    image or a new actor size must give a new name."""
+    return f"{slug(policy)}-{digest_tail(image_ref)}-m{actor_memory_mib}"
+
+
+def check_sizes(actor_memory_mib: int, worker_memory_mib: int) -> None:
+    if actor_memory_mib > worker_memory_mib - WORKER_RESERVED_MIB:
+        raise TemplateError(
+            f"an actor of {actor_memory_mib} MiB does not fit a {worker_memory_mib} MiB worker "
+            f"(it offers {worker_memory_mib - WORKER_RESERVED_MIB} MiB)"
+        )
 
 
 def areas_of(policy: str) -> tuple[str, ...]:
@@ -126,7 +142,11 @@ def _yaml(value: object, indent: int = 0) -> list[str]:
 
 
 def template_spec(
-    name: str, atespace: str, image_ref: str, command: Sequence[str]
+    name: str,
+    atespace: str,
+    image_ref: str,
+    command: Sequence[str],
+    actor_memory_mib: int = ACTOR_MEMORY_MIB,
 ) -> dict[str, Any]:
     """The ActorTemplate, shaped like protojson ateapi.ActorTemplate."""
     return {
@@ -143,7 +163,7 @@ def template_spec(
         "resources": {
             "limits": {
                 "cpuMillicores": ACTOR_CPU_MILLICORES,
-                "memoryBytes": ACTOR_MEMORY_BYTES,
+                "memoryBytes": actor_memory_mib * MIB,
             }
         },
         "snapshotConfig": {"preferredFidelity": "SNAPSHOT_FIDELITY_MEMORY"},
@@ -158,17 +178,20 @@ def probe_command() -> list[str]:
     return [WORKER_BIN, "probe", "--port", str(PORT)]
 
 
-def render_template(policy: str, atespace: str, image_ref: str) -> str:
+def render_template(
+    policy: str, atespace: str, image_ref: str, actor_memory_mib: int = ACTOR_MEMORY_MIB
+) -> str:
     """policy is one of SUBSTRATE_POLICIES, or CONFORMANCE."""
+    mem = actor_memory_mib
     if policy == CONFORMANCE:
-        name = f"{CONFORMANCE}-{digest_tail(image_ref)}"
-        spec = template_spec(name, atespace, image_ref, probe_command())
+        name = f"{CONFORMANCE}-{digest_tail(image_ref)}-m{mem}"
+        spec = template_spec(name, atespace, image_ref, probe_command(), mem)
         what = "the conformance probe (meridian.worker_probe): fixed checks, no agents"
     else:
         if policy not in SUBSTRATE_POLICIES or not substrate_eligible(policy):
             raise TemplateError(f"{policy} may not run in substrate")
-        name = template_name(policy, image_ref)
-        spec = template_spec(name, atespace, image_ref, zone_command(policy))
+        name = template_name(policy, image_ref, mem)
+        spec = template_spec(name, atespace, image_ref, zone_command(policy), mem)
         areas = ", ".join(stage_path(a) for a in areas_of(policy))
         what = f"policy {policy}: receives only {areas}"
     header = [
@@ -180,6 +203,7 @@ def render_template(policy: str, atespace: str, image_ref: str) -> str:
 
 
 def render_pool(pool: PoolSpec) -> str:
+    memory = f"{pool.worker_memory_mib}Mi"
     spec = {
         "apiVersion": "ate.dev/v1",
         "kind": "WorkerPool",
@@ -194,8 +218,8 @@ def render_pool(pool: PoolSpec) -> str:
             "sandboxClasses": [{"name": pool.sandbox_class}],
             "template": {
                 "resources": {
-                    "limits": {"cpu": WORKER_CPU_LIMIT, "memory": WORKER_MEMORY},
-                    "requests": {"cpu": WORKER_CPU_REQUEST, "memory": WORKER_MEMORY},
+                    "limits": {"cpu": WORKER_CPU_LIMIT, "memory": memory},
+                    "requests": {"cpu": WORKER_CPU_REQUEST, "memory": memory},
                 }
             },
         },
@@ -211,6 +235,45 @@ def render_pool(pool: PoolSpec) -> str:
         "---",
     ]
     return "\n".join([*header, *_yaml(spec)]) + "\n"
+
+
+def runner_principal(namespace: str, service_account: str) -> str:
+    return f"user:system:serviceaccount:{namespace}:{service_account}"
+
+
+def access_policy_spec(namespace: str, service_account: str) -> dict[str, Any]:
+    """The atespace's access policy: the runner is `editor` there and nowhere else. v1.0.0
+    has no finer role: an editor may also suspend, revert and tag (substrate.py)."""
+    return {
+        "metadata": {"name": "default"},
+        "bindings": [{"role": "editor", "members": [runner_principal(namespace, service_account)]}],
+    }
+
+
+def render_runner(namespace: str, service_account: str) -> str:
+    header = [
+        "# The runner's own identity for Agent Substrate (a ServiceAccount; kubectl ate",
+        "# --token-file with a short-lived token). Its only grant is access-policy.yaml.",
+        "# Generated by `meridian substrate render`; do not edit by hand.",
+    ]
+    spec = {
+        "apiVersion": "v1",
+        "kind": "ServiceAccount",
+        "metadata": {
+            "name": service_account,
+            "namespace": namespace,
+            "labels": {"workload": WORKLOAD_LABEL},
+        },
+    }
+    return "\n".join([*header, *_yaml(spec)]) + "\n"
+
+
+def render_access_policy(atespace: str, namespace: str, service_account: str) -> str:
+    header = [
+        f"# The access policy of atespace {atespace} (kubectl ate create access-policy -a",
+        f"# {atespace}). Generated by `meridian substrate render`; do not edit by hand.",
+    ]
+    return "\n".join([*header, *_yaml(access_policy_spec(namespace, service_account))]) + "\n"
 
 
 def template_path(deploy_dir: Path, policy: str) -> Path:

@@ -88,6 +88,10 @@ atespace = "meridian"
 namespace = "meridian"
 worker_pool = "meridian"
 workers = 2
+# 512 MiB workers and 384 MiB actors (phase 4a step 3: peak 289 MiB per worker pod;
+# 200 runs at 16 concurrent, none failed; docs/substrate-eval.md).
+worker_memory_mib = 512
+actor_memory_mib = 384
 sandbox_class = "gvisor"
 registry = "localhost:5001"
 deploy_dir = "deploy/substrate"
@@ -223,8 +227,8 @@ last_subject_field = "RFENDTC"
 visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
 
 [agents.audit_trail_reviewer]
-# quality.audit_trail_reviewer 1.1.0 (1.0.0 phase 3 step 4b; 1.1.0 phase 4a: substrate is a
-# sandboxed executor), deterministic. It reads the audit
+# quality.audit_trail_reviewer 1.2.0 (1.0.0 phase 3 step 4b; 1.1.0 phase 4a: substrate is a
+# sandboxed executor; 1.2.0: a run starts at ActorWoke's started_at), deterministic. It reads the audit
 # extract of the ledger (no evidence, narratives or subject ids), staged only for
 # policies/quality.audit_trail.yaml. Thresholds (docs/audit-notes.md):
 rapid_decisions = 10        # 10 or more decisions by one person ...

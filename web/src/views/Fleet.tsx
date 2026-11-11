@@ -61,7 +61,8 @@ export function PolicyPair({
 
 /** Where an Agent Substrate run happened (phase 4a), labelled the same way here and in a
  * finding's traceability: release, template and its spec hash, pool, sandbox class, the
- * golden snapshot the actor was cloned from, and the actor. */
+ * golden snapshot the actor was cloned from, the commit the image was built from, and
+ * the actor. */
 export function SubstratePlacement({
   run,
   of,
@@ -90,6 +91,13 @@ export function SubstratePlacement({
         <Hash
           value={run.template_file_sha256}
           label={`template file sha256 of ${of}`}
+        />
+      </dd>
+      <dt>image source commit</dt>
+      <dd>
+        <Hash
+          value={run.image_source_commit}
+          label={`image source commit of ${of}`}
         />
       </dd>
       <dt>worker pool, sandbox</dt>

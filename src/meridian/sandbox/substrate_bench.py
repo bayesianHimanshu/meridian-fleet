@@ -30,6 +30,9 @@ class BenchRun:
     wall_ms: int
     phases: dict[str, int] = field(default_factory=dict)
     error: str | None = None
+    started_at: float = 0.0  # time.time() when the run started
+    actor: str | None = None
+    worker_pod: str | None = None
 
 
 def percentile(values: Sequence[float], q: float) -> float:
@@ -53,19 +56,46 @@ def summary(values: Sequence[float]) -> dict[str, float]:
 
 def run_many(run: Callable[[], ExecutionResult], runs: int, concurrency: int = 1) -> list[BenchRun]:
     def one(_: int) -> BenchRun:
+        started_at = time.time()
         start = time.perf_counter()
         try:
             result = run()
         except ExecutionError as exc:
             return BenchRun(
-                False, round((time.perf_counter() - start) * 1000), error=str(exc)[:300]
+                False,
+                round((time.perf_counter() - start) * 1000),
+                error=str(exc)[:300],
+                started_at=started_at,
             )
-        return BenchRun(True, round((time.perf_counter() - start) * 1000), dict(result.phases_ms))
+        sub = result.substrate
+        return BenchRun(
+            True,
+            round((time.perf_counter() - start) * 1000),
+            dict(result.phases_ms),
+            started_at=started_at,
+            actor=None if sub is None else sub.actor,
+            worker_pod=None if sub is None else sub.worker_pod,
+        )
 
     if concurrency <= 1:
         return [one(i) for i in range(runs)]
     with ThreadPoolExecutor(max_workers=concurrency) as pool:
         return list(pool.map(one, range(runs)))
+
+
+def each(runs: Sequence[BenchRun]) -> list[dict[str, Any]]:
+    """One row per run, for finding slow steps (docs/substrate-eval.md, slow restores)."""
+    return [
+        {
+            "ok": r.ok,
+            "wall_ms": r.wall_ms,
+            "started_at": round(r.started_at, 3),
+            "actor": r.actor,
+            "worker_pod": r.worker_pod,
+            **r.phases,
+        }
+        for r in runs
+    ]
 
 
 def report(runs: Sequence[BenchRun]) -> dict[str, Any]:

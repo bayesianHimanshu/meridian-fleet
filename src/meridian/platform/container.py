@@ -1,7 +1,7 @@
 """Explicit wiring. Everything is constructed here and passed by constructor."""
 
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
 from typing import Self
@@ -39,7 +39,15 @@ from meridian.sandbox.image import default_image
 from meridian.sandbox.local_model import OpenShellLocalModelExecutor
 from meridian.sandbox.narration import OpenShellNarrationExecutor
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
-from meridian.sandbox.substrate import KubectlAteClient, SubstrateClient, read_install_record
+from meridian.sandbox.substrate import (
+    RUNNER_VERBS,
+    KubectlAteClient,
+    ServiceAccountToken,
+    SubstrateClient,
+    free_workers,
+    pool_ready_workers,
+    read_install_record,
+)
 from meridian.sandbox.substrate_executor import (
     SUBSTRATE,
     SubstrateExecutor,
@@ -55,6 +63,8 @@ class Container:
     settings: Settings
     clock: Clock
     ledger: SqliteLedger
+    # One runner token per container (minted on first use, shared by its clients).
+    _tokens: dict[str, ServiceAccountToken] = field(default_factory=dict, repr=False)
 
     @classmethod
     def build(cls, settings: Settings, clock: Clock | None = None) -> Self:
@@ -278,7 +288,36 @@ class Container:
     def sandbox_tracker(self) -> SandboxTracker:
         return SandboxTracker(self.settings.runtime.sandboxes_log, self.clock)
 
-    def substrate_client(self) -> KubectlAteClient:
+    def runner_token(self) -> ServiceAccountToken:
+        """The runner's ServiceAccount token, minted on first use and shared by its clients."""
+        s = self.settings.substrate
+        if "runner" not in self._tokens:
+            self._tokens["runner"] = ServiceAccountToken(
+                path=s.runner_token_file,
+                namespace=s.namespace,
+                service_account=s.runner_service_account,
+                audience=s.api_audience,
+                kubectl=s.kubectl,
+                context=s.context,
+            )
+        return self._tokens["runner"]
+
+    def substrate_client(self, *, guarded: bool = True) -> KubectlAteClient:
+        """The runner's client: its own identity (atespace editor) and the verb allow-list,
+        so it refuses suspend, revert and tag before Substrate sees them. guarded=False is
+        the same identity without the allow-list (only the guard check uses it)."""
+        s = self.settings.substrate
+        return KubectlAteClient(
+            s.atespace,
+            kubectl=s.kubectl,
+            context=s.context,
+            timeout_seconds=s.request_timeout_seconds,
+            token_file=self.runner_token(),
+            allowed=RUNNER_VERBS if guarded else None,
+        )
+
+    def substrate_admin_client(self) -> KubectlAteClient:
+        """The shared bootstrap identity, unguarded: deploy and the proofs' positive control."""
         s = self.settings.substrate
         return KubectlAteClient(
             s.atespace,
@@ -314,7 +353,11 @@ class Container:
         client: SubstrateClient | None = None,
         policies: Sequence[str] | None = None,
     ) -> SubstrateExecutor:
-        from meridian.sandbox.substrate_deploy import registry_config_digest
+        from meridian.sandbox.image import REVISION_LABEL
+        from meridian.sandbox.substrate_deploy import (
+            registry_config_digest,
+            registry_image_labels,
+        )
 
         self.check_substrate_release()
         resolved = client or self.substrate_client()
@@ -322,12 +365,14 @@ class Container:
         images = {t.image for t in templates.values()}
         if len(images) != 1:
             raise ExecutionError(f"the substrate templates name {len(images)} images: {images}")
+        image_ref = images.pop()
         return SubstrateExecutor(
             client=resolved,
             registry=self.agent_registry(),
             settings=self.settings.substrate,
             templates=templates,
-            image_digest=registry_config_digest(images.pop()),
+            image_digest=registry_config_digest(image_ref),
+            image_source_commit=registry_image_labels(image_ref).get(REVISION_LABEL),
             study_root=self.settings.curated_root / self.settings.study_id,
             tracker=SandboxTracker(self.settings.substrate.actors_log, self.clock),
             log=log,
@@ -335,7 +380,19 @@ class Container:
             etmf_root=self.settings.etmf_root / self.settings.study_id,
             audit_root=self.settings.audit_root,
             delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
+            free_workers=None if client is not None else self._free_workers(resolved),
+            placement_wait_seconds=self.settings.substrate.placement_wait_seconds,
         )
+
+    def _free_workers(self, client: SubstrateClient) -> Callable[[], int] | None:
+        if not isinstance(client, KubectlAteClient):
+            return None
+        s = self.settings.substrate
+
+        def ready() -> int:
+            return pool_ready_workers(s.kubectl, s.context, s.namespace, s.worker_pool)
+
+        return lambda: free_workers(client, ready)
 
     def zoned_executor(self, log: structlog.typing.FilteringBoundLogger) -> ZonedExecutor:
         """openshell for every policy, except those [runtime] executors sends to substrate."""

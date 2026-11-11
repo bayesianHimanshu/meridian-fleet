@@ -175,6 +175,18 @@
             ],
             "title": "Review To Seq"
           },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
           "substrate": {
             "anyOf": [
               {
@@ -3558,7 +3570,9 @@
                 "enum": [
                   "harness",
                   "openshell_log",
-                  "substrate_log"
+                  "substrate_log",
+                  "runner_guard",
+                  "substrate_authz"
                 ],
                 "type": "string"
               },
@@ -4518,6 +4532,18 @@
             "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$",
             "title": "Image",
             "type": "string"
+          },
+          "image_source_commit": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{40}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Source Commit"
           },
           "sandbox_class": {
             "minLength": 1,

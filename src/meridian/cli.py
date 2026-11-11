@@ -2,6 +2,7 @@
 
 import json
 import sys
+import time
 from collections.abc import MutableMapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal
@@ -453,8 +454,13 @@ def agents_run(
         bool,
         typer.Option(
             "--rerun",
-            help="With --cut: also run pairs already completed (findings dedup as skipped).",
+            help="With --cut or --all-cuts: also run pairs already completed (findings "
+            "dedup as skipped).",
         ),
+    ] = False,
+    all_cuts: Annotated[
+        bool,
+        typer.Option("--all-cuts", help="With --rerun: every recorded cut, said explicitly."),
     ] = False,
 ) -> None:
     """One runner pass over every pending (agent, DataCut) pair."""
@@ -478,11 +484,15 @@ def agents_run(
                 if isinstance(e.payload, DataCut)
                 and e.payload.cut_id not in settings.cuts.operational
             }
-        if rerun and not only_cuts:
-            typer.echo("error: --rerun needs --cut", err=True)
+        if rerun and not only_cuts and not all_cuts:
+            typer.echo("error: --rerun needs --cut or --all-cuts", err=True)
+            raise typer.Exit(code=2)
+        if all_cuts and (only_cuts or not rerun):
+            typer.echo("error: --all-cuts goes with --rerun and without --cut", err=True)
             raise typer.Exit(code=2)
         if only_cuts:
             cuts = set(only_cuts) if cuts is None else cuts & set(only_cuts)
+        started = time.perf_counter()
         try:
             report = c.agent_runner(log).run_pending(cuts=cuts, rerun=rerun)
         except SandboxRequiredError as exc:
@@ -496,6 +506,11 @@ def agents_run(
             f"findings appended {len(report.findings_appended)}, "
             f"skipped as duplicates {len(report.findings_skipped)}"
         )
+        per = ", ".join(
+            f"{n} {k} ({report.capacity.get(n, 1)} at a time)"
+            for n, k in sorted(report.executors.items())
+        )
+        typer.echo(f"  {time.perf_counter() - started:.1f} s; runs per executor: {per or 'none'}")
         for agent_id, seq in report.completed:
             typer.echo(f"  done   {agent_id} on DataCut seq {seq}")
         for agent_id, seq, error in report.failed:
@@ -937,6 +952,8 @@ def image_build(
     typer.echo(f"image {info.ref}")
     typer.echo(f"digest {info.digest}")
     typer.echo(f"size {info.size_bytes} bytes ({info.size_bytes / 1e6:.1f} MB), user {info.user}")
+    state = "dirty: deploy will refuse it" if info.dirty else "clean"
+    typer.echo(f"built from {info.revision} ({state})")
 
 
 @policy_app.command("render")

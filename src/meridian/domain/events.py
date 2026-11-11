@@ -68,6 +68,11 @@ class SubstrateRun(BaseModel):
     golden_snapshot: Annotated[str, Field(min_length=1)]  # the snapshot uuid of that tag
     actor_uid: str | None = None
     worker_pod: str | None = None
+    # Phase 4a step 3: the git commit the agent image was built from, read from the image's
+    # org.opencontainers.image.revision label in the registry. deploy refuses an image built
+    # from a dirty tree, so the commit names the image's sources exactly. Null on older
+    # events and for images without the label.
+    image_source_commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")] | None = None
 
 
 class ActorWoke(BaseModel):
@@ -87,6 +92,10 @@ class ActorWoke(BaseModel):
     review_to_seq: PositiveInt | None = None
     # executor "substrate" (phase 4a step 2): the planned placement. Null otherwise.
     substrate: SubstrateRun | None = None
+    # When the run started (phase 4a step 3). The parallel runner appends ActorWoke after
+    # the run, so the event's own times are the commit, not the start. Null on events
+    # written before step 3, whose ActorWoke was appended as the run started.
+    started_at: UtcDatetime | None = None
 
     @model_validator(mode="after")
     def _range(self) -> Self:
@@ -147,7 +156,13 @@ class PolicyDenied(BaseModel):
     # refusal: "harness" (the exit code and stderr seen from outside the sandbox) or
     # "openshell_log" (the OpenShell supervisor's log line, stored verbatim in raw_line).
     # "substrate_log" (phase 4a): an atenet-egress log line naming the refused target.
-    source: Literal["harness", "openshell_log", "substrate_log"] | None = None
+    # "runner_guard" (phase 4a step 3): the runner's own client refused a kubectl ate verb
+    # outside its allow-list before sending it. "substrate_authz": ate-api-server answered
+    # PermissionDenied to the runner's identity (raw_line holds its text).
+    source: (
+        Literal["harness", "openshell_log", "substrate_log", "runner_guard", "substrate_authz"]
+        | None
+    ) = None
     zone: str | None = None
     check: str | None = None
     sandbox: str | None = None

@@ -85,6 +85,9 @@
     ],
     "1.1.0": [
       "audit_failed_run_unresolved:safety.sae_reconciler/1.0.0/1/2"
+    ],
+    "1.2.0": [
+      "audit_failed_run_unresolved:safety.sae_reconciler/1.0.0/1/2"
     ]
   }
 }

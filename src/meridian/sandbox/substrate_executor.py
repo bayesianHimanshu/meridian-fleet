@@ -40,7 +40,12 @@ from meridian.sandbox.executor import (
     stage_run,
 )
 from meridian.sandbox.policies import policy_for_agent, sha256_bytes
-from meridian.sandbox.substrate import NotFoundError, SubstrateClient, SubstrateError
+from meridian.sandbox.substrate import (
+    NotFoundError,
+    ResourceExhaustedError,
+    SubstrateClient,
+    SubstrateError,
+)
 from meridian.sandbox.substrate_templates import (
     PORT,
     SUBSTRATE_POLICIES,
@@ -166,6 +171,7 @@ class SubstrateExecutor:
         templates: Mapping[str, ZoneTemplate],
         image_digest: str,
         study_root: Path,
+        image_source_commit: str | None = None,
         tracker: SandboxTracker,
         log: structlog.typing.FilteringBoundLogger,
         safety_root: Path | None = None,
@@ -175,7 +181,13 @@ class SubstrateExecutor:
         name_factory: Callable[[str, int], str] = sandbox_name,
         post: Callable[..., httpx.Response] = httpx.post,
         delete_confirm_seconds: float = 60.0,
+        free_workers: Callable[[], int] | None = None,
+        placement_wait_seconds: float = 120.0,
+        sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        """free_workers reports how many workers of the pool hold no actor (capacity());
+        a resume that finds no room (ResourceExhausted) is retried for up to
+        placement_wait_seconds, so a run waits for a worker instead of failing."""
         unknown = set(templates) - set(SUBSTRATE_POLICIES)
         if unknown:
             raise ExecutionError(f"no substrate template may exist for {sorted(unknown)}")
@@ -184,6 +196,7 @@ class SubstrateExecutor:
         self._settings = settings
         self._templates = dict(templates)
         self._image_digest = image_digest  # the image id, as the OpenShell executor records
+        self._image_source_commit = image_source_commit
         self._study_root = study_root
         self._safety_root = safety_root
         self._etmf_root = etmf_root
@@ -194,6 +207,9 @@ class SubstrateExecutor:
         self._name_factory = name_factory
         self._post = post
         self._confirm = delete_confirm_seconds
+        self._free_workers = free_workers
+        self._placement_wait = placement_wait_seconds
+        self._sleep = sleep
         self._created: list[str] = []
 
     def template_for_policy(self, policy: str) -> ZoneTemplate:
@@ -223,10 +239,31 @@ class SubstrateExecutor:
             actor=actor,
             golden_tag=template.golden_tag,
             golden_snapshot=template.golden_snapshot,
+            image_source_commit=self._image_source_commit,
         )
 
     def executor_name(self, agent_id: str) -> str:
         return self.name
+
+    def capacity(self, executor: str) -> int:
+        """The pool's free workers now (one actor per worker), at least 1."""
+        if self._free_workers is None:
+            return 1
+        return max(1, self._free_workers())
+
+    def _resume(self, actor: str) -> int:
+        """Resume, waiting for a free worker if none has room; returns ms spent waiting."""
+        start = time.monotonic()
+        delay = 0.25
+        while True:
+            try:
+                self._client.resume_actor(actor)
+                return round((time.monotonic() - start) * 1000) if delay > 0.25 else 0
+            except ResourceExhaustedError:
+                if time.monotonic() - start + delay > self._placement_wait:
+                    raise
+                self._sleep(delay)
+                delay = min(delay * 2, 2.0)
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
         template = self.template_for(agent_id)
@@ -273,8 +310,10 @@ class SubstrateExecutor:
         try:
             self._client.create_actor(actor, template.name)
             t = lap("create", t)
-            self._client.resume_actor(actor)
+            waited = self._resume(actor)
             t = lap("resume", t)
+            if waited:
+                phases.append(("placement_wait", waited))
             with self._client.proxy(actor, PORT) as address:
                 t = lap("proxy", t)
                 response = self._post(

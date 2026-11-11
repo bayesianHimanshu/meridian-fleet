@@ -1,5 +1,6 @@
 """The audit stress set: each case's outcome must stay what was recorded when the set was
-run once at the end of step 4b, and for 1.1.0 once in phase 4a step 2
+run once at the end of step 4b, for 1.1.0 once in phase 4a step 2 and for 1.2.0 once in
+phase 4a step 3
 (tests/fixtures/audit_stress/README.md). This pins
 behaviour so a change shows up; docs/audit-eval.md compares it with the ideal."""
 

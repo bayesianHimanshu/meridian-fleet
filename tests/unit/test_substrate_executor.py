@@ -33,7 +33,7 @@ from meridian.platform.config import AgentsSettings, SubstrateSettings
 from meridian.platform.tmf_reference import load_tmf_reference
 from meridian.sandbox.executor import ExecutionError, stage_run
 from meridian.sandbox.policies import ALL_POLICIES
-from meridian.sandbox.substrate import NotFoundError
+from meridian.sandbox.substrate import NotFoundError, ResourceExhaustedError
 from meridian.sandbox.substrate_executor import (
     SubstrateExecutor,
     ZoneTemplate,
@@ -218,6 +218,49 @@ def test_a_failed_create_still_deletes_and_is_tracked(roots: Path) -> None:
         executor.run("rbqm.csm", cut_trigger(), "DC-TINY")
     tracker = SandboxTracker(roots / "actors.jsonl", FixedClock(NOW))
     assert tracker.pending() == []
+
+
+@dataclass
+class _BusyClient(FakeActorClient):
+    """No worker has room for the first `busy` resumes."""
+
+    busy: int = 0
+
+    def resume_actor(self, name: str) -> dict[str, Any]:
+        if self.busy > 0:
+            self.busy -= 1
+            raise ResourceExhaustedError("no worker has room for the actor")
+        return super().resume_actor(name)
+
+
+def test_a_run_waits_for_a_free_worker_instead_of_failing(roots: Path) -> None:
+    client = _BusyClient(templates={})
+    client.busy = 3
+    slept: list[float] = []
+    executor = _executor(roots, client, sleep=slept.append, placement_wait_seconds=60)
+    result = executor.run("rbqm.csm", cut_trigger(), "DC-TINY")
+    assert slept == [0.25, 0.5, 1.0]
+    assert client.busy == 0
+    assert result.substrate is not None
+
+
+def test_a_run_gives_up_after_the_placement_wait(roots: Path) -> None:
+    client = _BusyClient(templates={})
+    client.busy = 1000
+    executor = _executor(roots, client, sleep=lambda _: None, placement_wait_seconds=0)
+    with pytest.raises(ExecutionError, match="no worker has room"):
+        executor.run("rbqm.csm", cut_trigger(), "DC-TINY")
+    assert client.live == {}
+
+
+def test_capacity_is_the_pools_free_workers_and_at_least_one(roots: Path) -> None:
+    client = FakeActorClient(templates={})
+    free = [5]
+    executor = _executor(roots, client, free_workers=lambda: free[0])
+    assert executor.capacity("substrate") == 5
+    free[0] = 0
+    assert executor.capacity("substrate") == 1
+    assert _executor(roots, client).capacity("substrate") == 1
 
 
 def test_a_policy_with_network_rules_has_no_template(roots: Path) -> None:

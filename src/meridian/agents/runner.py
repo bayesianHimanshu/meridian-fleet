@@ -1,7 +1,19 @@
-"""One runner pass: wake each enabled agent once per DataCut and record what it finds."""
+"""One runner pass: wake each enabled agent once per DataCut and record what it finds.
+
+A pass runs independent (agent, DataCut) runs concurrently, as many at a time per executor
+as its capacity() allows (for substrate, the pool's free workers); the rest wait in that
+executor's queue. The ledger stays single writer: runs never append, the host does, in
+one order fixed before anything runs (trigger seq, then agent id). Each run's events
+(ActorWoke, its findings, ActorSuspended) are appended together once it and every run
+before it in that order have finished, so a pass gives the same ledger content however
+long each run takes. ActorWoke is therefore appended after its run, not before, and
+carries the run's real start in started_at.
+"""
 
 from collections.abc import Callable, Collection, Sequence
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol
 
 import structlog
@@ -74,6 +86,10 @@ class AgentExecutor(Protocol):
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan: ...
 
+    def capacity(self, executor: str) -> int:
+        """How many runs may go to the named executor at once (at least 1)."""
+        ...
+
     def run(
         self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
     ) -> RunOutcome: ...
@@ -96,6 +112,16 @@ class RunReport:
     failed: list[tuple[str, int, str]] = field(default_factory=list)
     findings_appended: list[str] = field(default_factory=list)
     findings_skipped: list[str] = field(default_factory=list)
+    executors: dict[str, int] = field(default_factory=dict)  # runs sent to each executor
+    capacity: dict[str, int] = field(default_factory=dict)  # runs at a time, per executor
+
+
+@dataclass(frozen=True, slots=True)
+class _Planned:
+    registered: RegisteredAgent
+    trigger: Event
+    cut_id: str
+    plan: RunPlan
 
 
 class AgentRunner:
@@ -174,11 +200,63 @@ class AgentRunner:
             if rerun
             or (registered.agent.agent_id, registered.agent.version, trigger.seq) not in done
         ]
+        pending.sort(key=lambda pair: (pair[1].seq, pair[0].agent.agent_id))
         self._require_sandbox(pending)
+        planned: list[_Planned] = []
         for registered, trigger in pending:
-            self._run_one(registered, trigger, report)
+            assert isinstance(trigger.payload, DataCut)
+            plan = self._plan(registered, trigger, report)
+            if plan is not None:
+                planned.append(_Planned(registered, trigger, trigger.payload.cut_id, plan))
+        self._run_concurrently(planned, report)
         self._executor.drain()  # a pass ends only when every sandbox is torn down
         return report
+
+    def _plan(
+        self, registered: RegisteredAgent, trigger: Event, report: RunReport
+    ) -> RunPlan | None:
+        agent = registered.agent
+        try:
+            return self._executor.plan(agent.agent_id, trigger)
+        except Exception as exc:  # no template, no golden snapshot: nothing is recorded
+            self._log.error(
+                "agent.plan_failed",
+                agent_id=agent.agent_id,
+                trigger_seq=trigger.seq,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            report.failed.append((agent.agent_id, trigger.seq, f"{type(exc).__name__}: {exc}"))
+            return None
+
+    def _run_concurrently(self, planned: Sequence[_Planned], report: RunReport) -> None:
+        """One queue per executor, capacity() runs at a time each; commit in plan order."""
+        names = sorted({p.plan.executor for p in planned})
+        capacity = {n: max(1, self._executor.capacity(n)) for n in names}
+        report.capacity.update(capacity)
+        pools = {n: ThreadPoolExecutor(capacity[n], thread_name_prefix=f"run-{n}") for n in names}
+        try:
+            futures: list[Future[tuple[datetime, RunOutcome | Exception]]] = []
+            for p in planned:
+                report.executors[p.plan.executor] = report.executors.get(p.plan.executor, 0) + 1
+                futures.append(pools[p.plan.executor].submit(self._timed_run, p))
+            for p, future in zip(planned, futures, strict=True):
+                started_at, outcome = future.result()
+                self._commit(p, outcome, report, started_at=started_at)
+        finally:
+            for pool in pools.values():
+                pool.shutdown(wait=True)
+
+    def _timed_run(self, p: _Planned) -> tuple[datetime, RunOutcome | Exception]:
+        """Run one planned run; return when it started (read as it leaves the queue) and its
+        outcome or the exception it raised. ActorWoke is appended later, at commit, and
+        carries this start time."""
+        started_at = self._clock.now()
+        try:
+            return started_at, self._executor.run(
+                p.registered.agent.agent_id, p.trigger, p.cut_id, p.plan
+            )
+        except Exception as exc:  # an agent failure must never stop the pass
+            return started_at, exc
 
     def _allowed(self) -> str:
         return " or ".join(self._operational_executors)
@@ -251,25 +329,37 @@ class AgentRunner:
         registered: RegisteredAgent,
         trigger: Event,
         report: RunReport,
-        cut_id: str | None = None,
-        review: tuple[int, int] | None = None,
+        cut_id: str,
+        review: tuple[int, int],
     ) -> None:
-        agent = registered.agent
-        if cut_id is None:
-            assert isinstance(trigger.payload, DataCut)
-            cut_id = trigger.payload.cut_id
+        """One audit review run, in the calling thread."""
+        plan = self._plan(registered, trigger, report)
+        if plan is None:
+            return
+        p = _Planned(registered, trigger, cut_id, plan)
+        report.executors[plan.executor] = report.executors.get(plan.executor, 0) + 1
+        started_at, outcome = self._timed_run(p)
+        self._commit(p, outcome, report, review, started_at=started_at)
+
+    def _commit(
+        self,
+        p: _Planned,
+        outcome: RunOutcome | Exception,
+        report: RunReport,
+        review: tuple[int, int] | None = None,
+        *,
+        started_at: datetime,
+    ) -> None:
+        """Append one finished run: ActorWoke, then (if it succeeded) its findings and
+        ActorSuspended. A failed run leaves only ActorWoke, as before."""
+        agent = p.registered.agent
+        trigger, plan = p.trigger, p.plan
         log = self._log.bind(
             agent_id=agent.agent_id,
             agent_version=agent.version,
             trigger_seq=trigger.seq,
-            cut_id=cut_id,
+            cut_id=p.cut_id,
         )
-        try:
-            plan = self._executor.plan(agent.agent_id, trigger)
-        except Exception as exc:  # no template, no golden snapshot: nothing is recorded
-            log.error("agent.plan_failed", error=f"{type(exc).__name__}: {exc}")
-            report.failed.append((agent.agent_id, trigger.seq, f"{type(exc).__name__}: {exc}"))
-            return
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
@@ -281,10 +371,12 @@ class AgentRunner:
                 review_from_seq=None if review is None else review[0],
                 review_to_seq=None if review is None else review[1],
                 substrate=plan.substrate,
+                started_at=started_at,
             ),
         )
         try:
-            outcome = self._executor.run(agent.agent_id, trigger, cut_id, plan)
+            if isinstance(outcome, Exception):
+                raise outcome
             drafts = list(outcome.drafts)
             prefix = dedup_prefix(agent.agent_id, agent.version)
             for draft in drafts:
@@ -305,7 +397,7 @@ class AgentRunner:
             return
 
         for draft in drafts:
-            self._record(registered, draft, report)
+            self._record(p.registered, draft, report)
         self._append(
             agent.agent_id,
             Visibility.BLINDED,

@@ -3,13 +3,13 @@
 # src/meridian/sandbox/substrate_templates.py; do not edit by hand.
 metadata:
   atespace: meridian
-  name: rbqm-ce7bdedb6c8a
+  name: rbqm-49d1c5259345-m384
 workerSelector:
   matchLabels:
     workload: meridian
 containers:
   - name: worker
-    image: "localhost:5001/meridian-agent@sha256:ce7bdedb6c8a31ef90bf101723948d8da5ba8d1eb71a9bc7b90be4a2a40e5587"
+    image: "localhost:5001/meridian-agent@sha256:49d1c52593459cb6f96306f679106ade631294fcbde3fb5336143777c160d9d6"
     command:
       - "/opt/meridian/venv/bin/meridian-worker"
       - serve
@@ -24,6 +24,6 @@ containers:
 resources:
   limits:
     cpuMillicores: 1000
-    memoryBytes: 805306368
+    memoryBytes: 402653184
 snapshotConfig:
   preferredFidelity: "SNAPSHOT_FIDELITY_MEMORY"

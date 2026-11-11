@@ -458,7 +458,7 @@ class Repository:
         self._executors = dict(executors or {})
         self._default_executor = default_executor
         # A started detector run without its ActorSuspended counts as running, not failed,
-        # until this many seconds after its ActorWoke ([runtime] exec_timeout_seconds).
+        # until this many seconds after it started ([runtime] exec_timeout_seconds).
         self._run_timeout = timedelta(seconds=run_timeout_seconds)
         self._ledger = ledger
         self.person = person
@@ -793,7 +793,7 @@ class Repository:
         runs = _runs(snap.woke, snap.suspended)
 
         def running(r: _Run) -> bool:
-            return r.suspended is None and now - r.woke.recorded_at <= self._run_timeout
+            return r.suspended is None and now - _started(r) <= self._run_timeout
 
         def failed(r: _Run) -> bool:
             return r.suspended is None and not running(r)
@@ -806,7 +806,7 @@ class Repository:
             mine = [r for r in runs if _woke(r).agent_id == a.agent_id]
             current = [r for r in mine if _woke(r).agent_version == a.version]
             last = current[-1] if current else None
-            recent = [r for r in mine if r.woke.recorded_at >= since]
+            recent = [r for r in mine if _started(r) >= since]
             failures = [r for r in mine if failed(r)]
             done = [r for r in current if r.suspended is not None]
             last_done = done[-1].suspended.payload if done and done[-1].suspended else None
@@ -821,7 +821,7 @@ class Repository:
                     policy_file=policy.as_posix(),
                     policy_file_sha256=_file_sha256(policy),
                     applied_policy_sha256=applied_sha256(policy_name),
-                    last_run_at=None if last is None else last.woke.recorded_at,
+                    last_run_at=None if last is None else _started(last),
                     last_outcome=None
                     if last is None
                     else "completed"
@@ -832,7 +832,7 @@ class Repository:
                     last_trigger_seq=None if last is None else _trigger(last.woke),
                     runs_7d=len(recent),
                     failed_7d=sum(1 for r in recent if failed(r)),
-                    last_failure_at=failures[-1].woke.recorded_at if failures else None,
+                    last_failure_at=_started(failures[-1]) if failures else None,
                     run_event_types=[EventType.ACTOR_WOKE, EventType.ACTOR_SUSPENDED],
                     executor=self._executors.get(policy_name, self._default_executor),
                     substrate=last_done.substrate
@@ -1461,6 +1461,12 @@ def _woke(run: _Run) -> ActorWoke:
     p = run.woke.payload
     assert isinstance(p, ActorWoke)
     return p
+
+
+def _started(run: _Run) -> datetime:
+    """When a run started: ActorWoke.started_at (the parallel runner appends ActorWoke after
+    the run), or the event's time on older events, appended as the run started."""
+    return _woke(run).started_at or run.woke.recorded_at
 
 
 def _trigger(e: Event) -> int | None:

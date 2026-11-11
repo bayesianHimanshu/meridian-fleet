@@ -73,6 +73,7 @@
   "ideal": "Nothing to report: both runs are sandboxed (substrate with image, template spec and golden snapshot; openshell with image and applied policy).",
   "ideal_findings": [],
   "actual": {
-    "1.1.0": []
+    "1.1.0": [],
+    "1.2.0": []
   }
 }

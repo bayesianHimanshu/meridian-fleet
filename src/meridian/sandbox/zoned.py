@@ -45,6 +45,9 @@ class ZonedExecutor:
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
         return self.executor_for(agent_id).plan(agent_id, trigger)
 
+    def capacity(self, executor: str) -> int:
+        return self._executors[executor].capacity(executor)
+
     def run(
         self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
     ) -> ExecutionResult:

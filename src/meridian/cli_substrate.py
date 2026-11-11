@@ -37,22 +37,29 @@ def _fail(exc: Exception, code: int = 1) -> typer.Exit:
 
 def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
     from meridian.sandbox.substrate_templates import (
+        ACCESS_POLICY_FILE,
         CONFORMANCE,
         POOL_FILE,
+        RUNNER_FILE,
         SUBSTRATE_POLICIES,
         PoolSpec,
+        check_sizes,
+        render_access_policy,
         render_pool,
+        render_runner,
         render_template,
         template_path,
     )
 
     s = settings.substrate
+    check_sizes(s.actor_memory_mib, s.worker_memory_mib)
     root = s.deploy_dir
     written = []
     for policy in (*SUBSTRATE_POLICIES, CONFORMANCE):
         path = template_path(root, policy)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_template(policy, s.atespace, image_ref), encoding="utf-8")
+        text = render_template(policy, s.atespace, image_ref, s.actor_memory_mib)
+        path.write_text(text, encoding="utf-8")
         written.append(path)
     pool = PoolSpec(
         namespace=s.namespace,
@@ -60,9 +67,16 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
         replicas=s.workers,
         worker_image=s.worker_image,
         sandbox_class=s.sandbox_class,
+        worker_memory_mib=s.worker_memory_mib,
     )
     (root / POOL_FILE).write_text(render_pool(pool), encoding="utf-8")
     written.append(root / POOL_FILE)
+    sa = s.runner_service_account
+    (root / RUNNER_FILE).write_text(render_runner(s.namespace, sa), encoding="utf-8")
+    (root / ACCESS_POLICY_FILE).write_text(
+        render_access_policy(s.atespace, s.namespace, sa), encoding="utf-8"
+    )
+    written += [root / RUNNER_FILE, root / ACCESS_POLICY_FILE]
     return written
 
 
@@ -89,11 +103,16 @@ def substrate_deploy(
 ) -> None:
     """Push the agent image to the kind registry, render deploy/substrate for its digest,
     apply the WorkerPool, create the atespace and templates, and wait for golden snapshots."""
+    from meridian.sandbox import image
     from meridian.sandbox import substrate_deploy as d
+    from meridian.sandbox.image import ImageError
     from meridian.sandbox.substrate_templates import (
+        ACCESS_POLICY_FILE,
         CONFORMANCE,
         POOL_FILE,
+        RUNNER_FILE,
         SUBSTRATE_POLICIES,
+        access_policy_spec,
         template_path,
     )
 
@@ -102,13 +121,24 @@ def substrate_deploy(
     with Container.build(settings) as c:
         try:
             c.check_substrate_release()
+            commit = d.require_clean_source(image.inspect(c.image_ref()))
+            typer.echo(f"{c.image_ref()} was built from {commit} (clean)")
             pushed = d.push_image(c.image_ref(), s.registry)
             typer.echo(f"pushed {pushed.ref} (image id {pushed.config_digest})")
             write_rendered(settings, pushed.ref)
             d.apply_pool(s.kubectl, s.context, s.deploy_dir / POOL_FILE)
             d.wait_pool(s.kubectl, s.context, s.namespace, s.worker_pool, timeout=300)
-            client = c.substrate_client()
+            client = c.substrate_admin_client()
             d.ensure_atespace(client, s.kubectl, s.context)
+            outcome = d.ensure_runner_identity(
+                s.kubectl,
+                s.context,
+                s.atespace,
+                s.deploy_dir / RUNNER_FILE,
+                s.deploy_dir / ACCESS_POLICY_FILE,
+                access_policy_spec(s.namespace, s.runner_service_account)["bindings"],
+            )
+            typer.echo(f"runner identity and access policy: {outcome}")
             names = [
                 d.create_template(client, s.kubectl, s.context, template_path(s.deploy_dir, p))
                 for p in (*SUBSTRATE_POLICIES, CONFORMANCE)
@@ -118,7 +148,7 @@ def substrate_deploy(
             if prune:
                 for name in d.prune_templates(client, s.kubectl, s.context, names):
                     typer.echo(f"deleted template {name}")
-        except (d.DeployError, SubstrateError, ExecutionError, OSError) as exc:
+        except (d.DeployError, SubstrateError, ExecutionError, ImageError, OSError) as exc:
             raise _fail(exc) from exc
 
 
@@ -410,7 +440,8 @@ def substrate_canary(
                             },
                             timeout=120,
                         ).raise_for_status()
-                    client.suspend_actor(actor)
+                    # The runner's client refuses suspend; the bootstrap identity may.
+                    c.substrate_admin_client().suspend_actor(actor)
                     report["positive_control_suspended"] = search_all("suspended")
                 finally:
                     with contextlib.suppress(SubstrateError):
@@ -501,11 +532,64 @@ def substrate_bench(
         "worker_memory_after": mem_after,
         **sb.report(results),
         "wall_ms_each": [r.wall_ms for r in results],
+        "runs_each": sb.each(results),
     }
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(line, sort_keys=True) + "\n")
-    shown = {k: v for k, v in line.items() if k not in ("wall_ms_each",)}
+    shown = {k: v for k, v in line.items() if k not in ("wall_ms_each", "runs_each")}
     typer.echo(json.dumps(shown, indent=1)[:4000])
     if line["failed"]:
+        raise typer.Exit(code=1)
+
+
+@substrate_app.command("guard-check")
+def substrate_guard_check(
+    show_gap: Annotated[
+        bool,
+        typer.Option(
+            "--show-gap/--no-show-gap",
+            help="Also suspend a data-free conformance actor as the runner's identity without "
+            "the client guard, to show Substrate itself allows it.",
+        ),
+    ] = False,
+    record: Annotated[bool, typer.Option("--record/--no-record")] = True,
+) -> None:
+    """The runner may not suspend, revert or tag an actor: its client refuses, Substrate
+    refuses its identity outside the atespace, and the actor keeps only its golden
+    snapshot (meridian.sandbox.substrate_guard). Refusals go to the ledger."""
+    from meridian.sandbox import substrate_guard as sg
+    from meridian.sandbox.substrate_executor import load_template
+    from meridian.sandbox.substrate_templates import CONFORMANCE
+
+    with Container.build(Settings()) as c:
+        s = c.settings.substrate
+        runner = c.substrate_client()
+        unguarded = c.substrate_client(guarded=False)
+        try:
+            c.check_substrate_release()
+            template = load_template(runner, s.deploy_dir, "rbqm")
+            probe = load_template(runner, s.deploy_dir, CONFORMANCE, probe=True)
+            result = sg.run_guard_check(
+                runner=runner,
+                runner_unguarded=unguarded,
+                template=template,
+                probe_template=probe,
+                show_gap=show_gap,
+            )
+        except (SubstrateError, ExecutionError) as exc:
+            raise _fail(exc) from exc
+        typer.echo(f"actor {result.actor} ({result.template})")
+        for a in result.attempts:
+            typer.echo(f"  {a.layer:<16} {a.check:<15} {a.outcome:<8} {a.message[:150]}")
+        typer.echo(
+            f"  after the attempts: state {result.state_after}, "
+            f"snapshots other than golden: {result.foreign_after or 'none'}"
+        )
+        if record:
+            for draft in sg.ledger_drafts(result, c.clock):
+                event = c.ledger.append(draft)
+                typer.echo(f"  recorded PolicyDenied seq {event.seq}")
+    typer.echo("pass" if result.passed else "FAIL")
+    if not result.passed:
         raise typer.Exit(code=1)

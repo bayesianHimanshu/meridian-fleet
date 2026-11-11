@@ -15,6 +15,7 @@ import {
 
 const TEMPLATE_SHA = "7".repeat(64);
 const COMMIT = "b34fbee742906494b5eb4f1f36987176bf8770a4";
+const SOURCE = "563170a0b1c2d3e4f5061728394a5b6c7d8e9f01";
 
 const placement: Schemas["SubstrateRun"] = {
   version: "v1.0.0",
@@ -32,6 +33,7 @@ const placement: Schemas["SubstrateRun"] = {
   golden_snapshot: "f52e7bb5-6906-4f56-87df-c546b858d8b3",
   actor_uid: "17079247-2153-4678-ad9f-f9770e0c0627",
   worker_pod: "meridian-798dbc5455-v68vc",
+  image_source_commit: SOURCE,
 };
 
 describe("Agent Substrate placement (phase 4a)", () => {
@@ -108,6 +110,7 @@ describe("Agent Substrate placement (phase 4a)", () => {
     expect(box.getByText("v1.0.0")).toBeTruthy();
     expect(box.getByTitle(COMMIT)).toBeTruthy();
     expect(box.getByTitle(TEMPLATE_SHA)).toBeTruthy();
+    expect(box.getByTitle(SOURCE)).toBeTruthy();
     expect(box.getByText(placement.golden_snapshot)).toBeTruthy();
     expect(
       box.getByText(`${placement.actor} (${placement.actor_uid ?? ""})`),

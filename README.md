@@ -138,6 +138,13 @@ uv run meridian audit review                      # one review of the whole ledg
 PYTHONPATH=. uv run python scripts/audit_stress.py   # the hand-written audit stress set (run once)
 ```
 
+## Phase 4a status
+
+Phase 4a status: complete. The four no-network zones run in Agent Substrate v1.0.0 actors
+(gVisor, one fresh actor per run from a golden snapshot) and the narrator and local model
+stay on OpenShell; runs go in parallel up to the pool's free workers. Summary, proofs and
+open gaps: [docs/phase4a-summary.md](docs/phase4a-summary.md).
+
 ## Setup
 
 ```sh

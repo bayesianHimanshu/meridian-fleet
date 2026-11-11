@@ -1,4 +1,7 @@
-# Agent Substrate: proofs and measurements (phase 4a step 2)
+# Agent Substrate: proofs and measurements (phase 4a steps 2 and 3)
+
+Step 2's proofs and measurements come first; step 3's (the runner's identity, the slow
+restores, worker size, the full pass) are in "Step 3" at the end.
 
 Setup: Agent Substrate v1.0.0 (`b34fbee7`) on a single-node kind cluster (Kubernetes 1.37)
 on this laptop (16 CPUs, 15 GiB RAM), gVisor only. One WorkerPool, meridian/meridian, of
@@ -177,3 +180,86 @@ Substrate steps (100 warm runs; p50 / p95 / max, in ms):
 baseline, and 8.4 times faster than OpenShell measured now on the same agent, cut and laptop.
 Today the OpenShell run is 10.1 s rather than 8 s, probably because the cluster shares the
 laptop. A pass of the 6 DC-BASE agents takes about 7 s instead of about a minute.
+
+## Step 3
+
+### Slow restores: the node's image cache evicts the agent image
+
+`meridian substrate bench` now writes one row per run (actor, worker pod, start time,
+steps) to its JSON line (`runs_each`). 200 sequential runs (var/substrate/restore.jsonl):
+p50 1.19 s, p95 1.26 s, one slow run, the first (resume 3,009 ms). atelet's "Restore
+timing breakdown" line for that actor: `oci_unpack` 2.77 s (median of 220 restores:
+0.5 ms), snapshot download 0.3 ms, gVisor restore 0.15 s. atelet had logged `Image cache
+miss` for the agent image just before, and `Image cache GC pass complete ... evicted_images
+1, evicted_layers 9` (574 MB) at the previous 5-minute GC pass.
+
+atelet's image GC (`cmd/atelet/imagegc.go` in v1.0.0) runs every 5 minutes and, while the
+cache volume is above 85% full, evicts images older than 2 minutes that no actor uses. The
+kind node's /var is this laptop's disk, 89% full. Five benches of 4 runs after idle gaps
+(var/substrate/restore-gaps.jsonl) match the GC schedule exactly:
+
+| Idle gap before the bench | GC pass with the image idle over 2 min? | First resume |
+|---|---|---:|
+| 0 s (twice) | no | 242 ms, 252 ms |
+| 60 s | no | 209 ms |
+| 180 s | no (the 20:50:04 pass saw 1 min 43 s) | 192 ms |
+| 300 s | yes (20:55:04, evicted) | **2,817 ms** |
+
+The second run of the 300 s bench, on the other worker, resumed in 220 ms: the cache is
+per node, not per worker. So this is not a first restore per template or per worker, and
+pre-warming workers after deploy would not help (the image is evicted again after a few
+idle minutes). Fixes are outside this project's remit: free space on the laptop's disk, or
+raise atelet's `--image-cache-high-percent` in ate-system. A pass pays it once, at its
+first wave of runs (they share one pull).
+
+### Worker size: 512 MiB workers, 384 MiB actors (kept)
+
+A 512 MiB worker offers 448 MiB to actors, so the actor limit went from 768 to 384 MiB
+(templates `<zone>-3f954d2c8c3e-m384`). All six agent types ran three times each in 384
+MiB actors without failure; worker pods peaked at 266 to 289 MiB. Concurrency was raised
+with the pool scaled to K workers, K runs at a time, while a sampler recorded the lowest
+host MemAvailable; the ladder stopped before a level whose predicted minimum was below
+1.5 GB (each extra concurrent run costs about 210 MB of host memory). Raw: 
+var/substrate/size512/.
+
+| Workers | K at a time | Runs | Failed | p50 | p95 | Min host MemAvailable |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 GiB (step 2) | 12 | 120 | 0 | 2.50 s | 2.95 s | (3.91 GB after) |
+| 512 MiB | 12 | 60 | 0 | 2.14 s | 2.68 s | 2.59 GB |
+| 512 MiB | 16 | 80 | 0 | 2.94 s | 3.56 s | 1.79 GB |
+| **512 MiB** | **16** | **200** | **0** | **3.52 s** | **5.57 s** | (4.23 GB after) |
+| 512 MiB | 20 | | | | | stopped: predicted 0.95 GB |
+
+- **The largest sustained concurrency is 16** (the limit is now the laptop's memory, not
+  the pods' reservations: 14 x 1 GiB could not be placed). 200 runs at 16 had no failure,
+  so the size is kept: `[substrate] worker_memory_mib = 512`, `actor_memory_mib = 384`.
+- **More workers do not mean more throughput here.** 16 at a time finished about 4.5 runs
+  per second, 12 at a time about 4.8 to 5.6. In the 200-run test the `kubectl ate proxy`
+  start grew to 2.6 s p50 (0.57 s sequentially): the host's CPU, one kubectl process and
+  port-forward per run, is the bottleneck. 12 workers is the efficient setting on this
+  laptop; the config stays at 2 workers when idle.
+
+### The full pass on the final image
+
+Image `sha256:ee5a9a2b...` built from 1dfee1b (clean), templates `<zone>-49d1c5259345-m384`;
+conformance passed in all four zones (seq 6529 to 6556). The Substrate part of the pass,
+`meridian agents run --rerun --all-cuts` with the pool at 12 workers, then the audit review
+with the pool back at 2, each run alone with a sampler stopping it below 1.5 GB of host
+MemAvailable. Raw: var/substrate/fullpass/.
+
+| Step | Runs | Failed | Wall-clock | p50 | p95 | Max | Min host MemAvailable | Seq |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| Four zones, every cut, 12 at a time | 910 | 0 | 198.4 s | 2.56 s | 3.07 s | 3.41 s | 1.96 GB | 6629 to 8448 |
+| Audit review 1.2.0, seq 1 to 8448 | 1 | 0 | 4.1 s | | | | 4.06 GB | 8449 to 8458 |
+
+- Every ActorWoke names commit 1dfee1b and the new image and carries `started_at`.
+- 12 at a time gives about the same wall-clock as 16 did on the previous image (196.9 s for
+  the same 910 runs), with lower per-run times (p50 2.56 s against 3.52 s in the 200-run
+  test at 16): the host side, not the workers, sets the pace.
+- The reviewer raised 7 findings (QA-0164 to QA-0170, high): runs of rbqm.csm,
+  rbqm.kri_monitor and rbqm.qtl_detector on DC-BASE in phase 1 without a sandbox record,
+  the same 7 that 1.1.0 raised in C5. Nothing about any Substrate or OpenShell run of
+  phase 4a.
+- The local narrator could not finish: with phi4-mini loaded, llama-server peaks at 3.65 GB
+  and host memory fell below 1.5 GB in 90 to 110 s, even with the pool at 0
+  (docs/phase4a-summary.md). 104 of 173 local narrations were recorded; 69 stay pending.

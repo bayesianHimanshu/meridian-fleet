@@ -207,7 +207,11 @@ class SubstrateSettings(BaseModel):
     atespace: str = "meridian"
     namespace: str = "meridian"  # the Kubernetes namespace of the WorkerPool
     worker_pool: str = "meridian"
-    workers: int = Field(2, ge=1, le=16)  # WorkerPool replicas: one actor per worker
+    workers: int = Field(2, ge=1, le=32)  # WorkerPool replicas: one actor per worker
+    # Each worker pod requests and is limited to worker_memory_mib; each actor to
+    # actor_memory_mib, which must fit what a worker offers (64 MiB less).
+    worker_memory_mib: int = Field(1024, ge=256, le=8192)
+    actor_memory_mib: int = Field(768, ge=128, le=8128)
     # ateworker-gvisor built with ko from the pinned release (docs/substrate-eval.md).
     worker_image: str = Field(
         "localhost:5001/ateworker-gvisor@sha256:"
@@ -220,6 +224,13 @@ class SubstrateSettings(BaseModel):
     port: int = Field(8080, ge=1024, le=65535)  # what meridian-worker serve listens on
     request_timeout_seconds: float = Field(180.0, gt=0)
     actors_log: Path = Path("var/actors.jsonl")
+    # The runner's own identity: a ServiceAccount in `namespace` with `editor` on the
+    # atespace only (deploy/substrate/access-policy.yaml), and a short-lived token for it.
+    runner_service_account: str = "meridian-runner"
+    runner_token_file: Path = Path("var/substrate/runner.token")
+    api_audience: str = "api.ate-system.svc"  # the audience ate-api-server accepts
+    # A run that finds no free worker (ResourceExhausted) waits and retries this long.
+    placement_wait_seconds: float = Field(120.0, ge=0)
 
 
 class ApiSettings(BaseModel):

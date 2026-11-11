@@ -53,7 +53,8 @@ from meridian.ledger.hashing import GENESIS_HASH
 from meridian.platform.agent_settings import AuditTrailReviewerConfig
 
 AGENT_ID = "quality.audit_trail_reviewer"
-VERSION = "1.1.0"  # 1.1.0: substrate is a sandboxed executor (phase 4a step 2)
+VERSION = "1.2.0"  # 1.1.0: substrate is a sandboxed executor (phase 4a step 2)
+# 1.2.0: a run's start is ActorWoke's STARTED_AT when present (phase 4a step 3)
 VISIBLE_TO_MAX = frozenset({Role.CLINICAL_OPS_LEAD, Role.QA_AUDITOR})
 SEVERITY: dict[str, Severity] = {
     a.CHAIN_LINKAGE: Severity.HIGH,
@@ -125,6 +126,12 @@ class Row:
 
     def get(self, column: str) -> str:
         return _str(self.values.get(column))
+
+    @property
+    def started(self) -> datetime | None:
+        """When a run started: STARTED_AT, which the parallel runner records because it
+        appends ActorWoke after the run; RECORDED_AT on older events, appended at the start."""
+        return _time(self.get(a.STARTED_AT)) or self.at
 
     def int(self, column: str) -> int | None:
         v = self.values.get(column)
@@ -419,7 +426,8 @@ def runs(p: Parsed, cfg: AuditTrailReviewerConfig, now: datetime) -> list[Hit]:
             w = at.woke
             if w is None or at.done is not None:
                 continue
-            if w.at is not None and now - w.at < timedelta(seconds=cfg.in_progress_seconds):
+            start = w.started
+            if start is not None and now - start < timedelta(seconds=cfg.in_progress_seconds):
                 continue  # may still be running
             if any(s > w.seq for s in completed_after):
                 continue
@@ -429,13 +437,13 @@ def runs(p: Parsed, cfg: AuditTrailReviewerConfig, now: datetime) -> list[Hit]:
                     f"{record}/{w.seq}",
                     f"{agent} {version} failed on operational cut {cut} and never completed",
                     f"The run that started at seq {w.seq}"
-                    + (f" ({_clock(w.at)})" if w.at else "")
+                    + (f" ({_clock(start)})" if start else "")
                     + f" has no completion, and no later run of {agent} completed on {cut}.",
                     (
                         _ev(
                             f"SEQ={w.seq}; AGENT={agent}; TRIGGER_SEQ={trig}",
                             "run:started",
-                            _clock(w.at) if w.at else f"seq {w.seq}",
+                            _clock(start) if start else f"seq {w.seq}",
                             value=float(w.seq),
                         ),
                         _ev(f"CUT_ID={cut}", "run:later_completed", "none", role="supporting"),

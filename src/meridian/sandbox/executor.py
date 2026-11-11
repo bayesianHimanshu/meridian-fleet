@@ -89,6 +89,10 @@ class Executor(Protocol):
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan: ...
 
+    def capacity(self, executor: str) -> int:
+        """Runs this executor takes at once; the runner queues the rest."""
+        ...
+
     def run(
         self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None
     ) -> ExecutionResult: ...
@@ -192,6 +196,10 @@ class InProcessExecutor:
 
     def executor_name(self, agent_id: str) -> str:
         return self.name
+
+    def capacity(self, executor: str) -> int:
+        """One run at a time, as before phase 4a step 3."""
+        return 1
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
         return RunPlan(self.name)
@@ -299,6 +307,10 @@ class OpenShellExecutor:
 
     def executor_name(self, agent_id: str) -> str:
         return self.name
+
+    def capacity(self, executor: str) -> int:
+        """One run at a time, as before phase 4a step 3."""
+        return 1
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
         return RunPlan(self.name)

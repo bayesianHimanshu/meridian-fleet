@@ -82,7 +82,7 @@ this trade for these four zones in phase 4a.
   area_slash_file` and `test_a_link_member_is_refused` cover traversal and links.
 
 **No outbound network (fact 3) holds:** these actors have no EgressPolicy, so atenet-egress
-refuses every connection. `meridian substrate conformance` shows it per zone in real actors:
+refuses every connection (a refused name lookup leaves no record; see Known gaps). `meridian substrate conformance` shows it per zone in real actors:
 TCP to 192.0.2.1:443, to the host 172.17.0.1:11434, to another actor's worker IP and to the
 cluster API is refused, each with a gateway log line (`code=403`, PolicyDenied
 source `substrate_log`), and a name outside any policy does not resolve.
@@ -96,11 +96,29 @@ a unique string in the staged inputs of 20 runs, then searches the snapshot buck
 the kind node's filesystem and var/: not found; its positive control suspends one canary actor
 and finds the string in that snapshot, so the search would see a leak.
 
-**What is procedure, not enforcement:** the runner acts as Substrate's shared bootstrap
-identity, which may suspend actors; nothing in Substrate forbids snapshotting a data actor.
-An AccessPolicy without suspend rights for the runner is backlog. Snapshots are not encrypted
-and the kind install's rustfs uses its default credentials, acceptable only because no data
-snapshot should exist.
+**Suspend: prevented in our client, not by Substrate (phase 4a step 3).**
+* The runner acts as its own identity, the ServiceAccount meridian/meridian-runner with a
+  short-lived token, whose only grant is `editor` on the meridian atespace
+  (deploy/substrate/access-policy.yaml). Substrate refuses it everything outside the
+  atespace: listing atespaces and workers, another atespace, changing the access policy.
+* Substrate v1.0.0 cannot refuse an editor suspend, revert or tag: creating and deleting
+  actors needs `editor`, and `can_suspend`, `can_revert` and `can_create_tag` are `editor`
+  too (cmd/ateapi/internal/authz/model.fga in the release; roles are only owner, editor
+  and viewer, cmd/ateapi/internal/apivalidation/access_policy.go; no per-actor grants,
+  docs/guides/authorization.md "Known limitations"). `meridian substrate guard-check
+  --show-gap` shows it: the runner's identity without the guard suspends a data-free actor.
+* So the runner's client carries a verb allow-list (create, resume, proxy, get and delete
+  actor; get template and tag) and refuses suspend, revert and tag before anything is sent.
+  This is code in the runner's process, not a server control: a compromised host process
+  with the token could still suspend. The per-run snapshot check and the canary proof stay
+  as the second layer.
+* Evidence: `meridian substrate guard-check`, ledger seq 4607 to 4613: three PolicyDenied
+  with source `runner_guard` (suspend, revert, tag) and four with source `substrate_authz`
+  (the server's PermissionDenied text in raw_line); the actor still RUNNING with only its
+  golden snapshot afterwards.
+
+Snapshots are not encrypted and the kind install's rustfs uses its default credentials,
+acceptable only because no data snapshot should exist.
 
 ## Other controls, briefly
 
@@ -130,6 +148,38 @@ snapshot should exist.
 
 * **Substrate zones have no read allow-list** (section 4): a staging bug would deliver what it
   staged; the actor refuses only areas its template does not name.
+* **Suspend is refused by our code, not by Substrate** (section 4). Substrate 1.0.0 grants
+  `can_suspend`, `can_revert` and `can_create_tag` to `editor`, the least role that can
+  create and delete actors, so the runner's identity may suspend as far as the server is
+  concerned (`meridian substrate guard-check --show-gap` shows it). The guard that refuses
+  it is the verb allow-list in the runner's own process (`RUNNER_VERBS` in
+  src/meridian/sandbox/substrate.py). Anything running as the host user with the runner's
+  token (var/substrate/runner.token, 0600, short-lived) could suspend a live actor and leave
+  its inputs in a snapshot. What would catch it: the per-run check that the actor holds only
+  its golden snapshot before deletion (fails the run), and the canary proof. Closing it
+  needs a Substrate role without suspend, or a per-actor grant, neither of which 1.0.0 has.
+* **Substrate refuses a name lookup without any record.** A name outside every policy does not
+  resolve inside an actor (the probe sees NXDOMAIN), but neither atenet-egress nor any other
+  Substrate component logs the refused lookup (v1.0.0 docs say DNS refusals are not logged).
+  So a lookup refusal is recorded from what the probe saw (`source = "harness"`), like
+  OpenShell's file refusals below, not from an independent record. TCP refusals do have the
+  gateway's line. Per Substrate's docs (docs/guides/network-egress.md in the release), the
+  sandbox's DNS relay answers NXDOMAIN itself for an actor without an egress policy and
+  forwards nothing, so the name asked for does not leave the worker; that is the vendor's
+  statement, not something this project observed.
+* **Each run's actor is reached through its own host process, and that is the throughput
+  limit.** A run starts `kubectl ate proxy actor`, which mints a client certificate and
+  forwards an ephemeral loopback port (127.0.0.1) to the actor for the length of the run.
+  At 16 concurrent runs its start grew from 0.57 s (one at a time) to 2.6 s p50, and
+  throughput stopped rising past about 12 (docs/substrate-eval.md, worker size); the host's
+  CPU, one kubectl and port-forward per run, is the limit, not the cluster. Two
+  consequences for this model: availability, not confidentiality, is what degrades under
+  load (no run failed in 200 at 16, but a slower start eats into the 120 s placement wait);
+  and while a run lasts, any process of the host user could connect to that loopback port
+  and reach the actor's worker endpoint, which takes the staged archive and returns drafts.
+  The host is trusted in this model (it stages the data in the first place), so this adds
+  no new reader of study data, but it is a reason a long-lived router connection with one
+  client certificate, owned by the runner, would be better than a process per run.
 * **Substrate's refusal evidence names the actor, not the policy.** The gateway's line has the
   destination, the actor's SPIFFE id and code 403, but no policy version; the template spec
   hash on the run records what the actor was.
