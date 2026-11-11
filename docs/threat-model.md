@@ -148,6 +148,16 @@ acceptable only because no data snapshot should exist.
 
 * **Substrate zones have no read allow-list** (section 4): a staging bug would deliver what it
   staged; the actor refuses only areas its template does not name.
+* **Suspend is refused by our code, not by Substrate** (section 4). Substrate 1.0.0 grants
+  `can_suspend`, `can_revert` and `can_create_tag` to `editor`, the least role that can
+  create and delete actors, so the runner's identity may suspend as far as the server is
+  concerned (`meridian substrate guard-check --show-gap` shows it). The guard that refuses
+  it is the verb allow-list in the runner's own process (`RUNNER_VERBS` in
+  src/meridian/sandbox/substrate.py). Anything running as the host user with the runner's
+  token (var/substrate/runner.token, 0600, short-lived) could suspend a live actor and leave
+  its inputs in a snapshot. What would catch it: the per-run check that the actor holds only
+  its golden snapshot before deletion (fails the run), and the canary proof. Closing it
+  needs a Substrate role without suspend, or a per-actor grant, neither of which 1.0.0 has.
 * **Substrate refuses a name lookup without any record.** A name outside every policy does not
   resolve inside an actor (the probe sees NXDOMAIN), but neither atenet-egress nor any other
   Substrate component logs the refused lookup (v1.0.0 docs say DNS refusals are not logged).
@@ -157,6 +167,19 @@ acceptable only because no data snapshot should exist.
   sandbox's DNS relay answers NXDOMAIN itself for an actor without an egress policy and
   forwards nothing, so the name asked for does not leave the worker; that is the vendor's
   statement, not something this project observed.
+* **Each run's actor is reached through its own host process, and that is the throughput
+  limit.** A run starts `kubectl ate proxy actor`, which mints a client certificate and
+  forwards an ephemeral loopback port (127.0.0.1) to the actor for the length of the run.
+  At 16 concurrent runs its start grew from 0.57 s (one at a time) to 2.6 s p50, and
+  throughput stopped rising past about 12 (docs/substrate-eval.md, worker size); the host's
+  CPU, one kubectl and port-forward per run, is the limit, not the cluster. Two
+  consequences for this model: availability, not confidentiality, is what degrades under
+  load (no run failed in 200 at 16, but a slower start eats into the 120 s placement wait);
+  and while a run lasts, any process of the host user could connect to that loopback port
+  and reach the actor's worker endpoint, which takes the staged archive and returns drafts.
+  The host is trusted in this model (it stages the data in the first place), so this adds
+  no new reader of study data, but it is a reason a long-lived router connection with one
+  client certificate, owned by the runner, would be better than a process per run.
 * **Substrate's refusal evidence names the actor, not the policy.** The gateway's line has the
   destination, the actor's SPIFFE id and code 403, but no policy version; the template spec
   hash on the run records what the actor was.
