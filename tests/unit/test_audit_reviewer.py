@@ -65,6 +65,7 @@ class Ledger:
         cut: str = "DC-BASE",
         scope: str = a.OPERATIONAL,
         at: datetime = T0,
+        started: datetime | None = None,
     ) -> None:
         common = {
             a.AGENT: agent,
@@ -75,7 +76,8 @@ class Ledger:
             a.EXECUTOR: executor,
             a.ACTOR: agent,
         }
-        self.add("actor_woke", at, RUN_STATUS=a.STARTED, **common)
+        start = {a.STARTED_AT: started.isoformat()} if started else {}
+        self.add("actor_woke", at, RUN_STATUS=a.STARTED, **common, **start)
         if done:
             extra = (
                 {a.IMAGE_DIGEST: "sha256:" + "a" * 64, a.POLICY_SHA256: "b" * 64} if image else {}
@@ -341,3 +343,26 @@ def test_chain_and_unsandboxed_findings_are_high() -> None:
     assert SEVERITY[a.CHAIN_LINKAGE] is Severity.HIGH
     assert SEVERITY[a.UNSANDBOXED_OPERATIONAL_RUN] is Severity.HIGH
     assert set(sev) == {a.CHAIN_LINKAGE, a.UNSANDBOXED_OPERATIONAL_RUN}
+
+
+def test_a_failed_runs_timing_is_its_start_not_when_actor_woke_was_appended() -> None:
+    """Phase 4a step 3: the parallel runner appends ActorWoke after the run, with the run's
+    start in STARTED_AT. in_progress_seconds counts from that start."""
+    # Appended 30 s before the review, but started 10 minutes before: it is over.
+    lg = Ledger()
+    c = lg.cut()
+    lg.run(
+        c,
+        done=False,
+        at=NOW - timedelta(seconds=30),
+        started=NOW - timedelta(minutes=10),
+    )
+    hits = review(lg.table(), 1, len(lg.rows), CFG, NOW)
+    assert [x.check for x in hits] == [a.FAILED_RUN_UNRESOLVED]
+    assert "(8 Nov 2026, 09:50:00 UTC)" in hits[0].summary
+    assert hits[0].evidence[0].display == "8 Nov 2026, 09:50:00 UTC"
+    # Started 30 s before the review: it may still be running.
+    lg = Ledger()
+    c = lg.cut()
+    lg.run(c, done=False, at=NOW - timedelta(seconds=5), started=NOW - timedelta(seconds=30))
+    assert lg.found() == set()

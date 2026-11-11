@@ -175,6 +175,18 @@
             ],
             "title": "Review To Seq"
           },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
           "substrate": {
             "anyOf": [
               {

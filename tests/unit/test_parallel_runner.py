@@ -5,6 +5,7 @@ same pass gives the same ledger whatever the timing."""
 import random
 import threading
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +18,7 @@ from meridian.data.datacut import record_data_cut
 from meridian.domain.events import ActorSuspended, ActorWoke, Event, FindingRaised
 from meridian.ledger.store import SqliteLedger
 from meridian.ledger.verify import verify
-from meridian.platform.clock import FixedClock
+from meridian.platform.clock import FixedClock, SystemClock
 from meridian.sandbox.executor import InProcessExecutor
 from tests.support import T0, make_ledger
 from tests.unit.test_runner import STUDY, FakeAgent, StubReader
@@ -172,3 +173,68 @@ def test_the_ledger_is_written_only_from_the_calling_thread(tmp_path: Path) -> N
     finally:
         SqliteLedger.append = original  # type: ignore[method-assign]
     assert writers == {threading.current_thread().name}
+
+
+class _Timed(_Jittery):
+    """_Jittery that records when each run really started and ended."""
+
+    def __init__(self, inner: InProcessExecutor, capacity: int, seed: int) -> None:
+        super().__init__(inner, capacity, seed)
+        self.started: dict[tuple[str, int], datetime] = {}
+        self.ended: dict[tuple[str, int], datetime] = {}
+
+    def run(self, agent_id: str, trigger: Event, cut_id: str, plan: RunPlan | None = None) -> Any:
+        self.started[(agent_id, trigger.seq)] = datetime.now(UTC)
+        try:
+            return super().run(agent_id, trigger, cut_id, plan)
+        finally:
+            self.ended[(agent_id, trigger.seq)] = datetime.now(UTC)
+
+
+def test_actor_woke_carries_the_runs_real_start_not_its_commit(tmp_path: Path) -> None:
+    """ActorWoke is appended after the run, so its own time is the commit. Its payload's
+    started_at is when the run left the queue: before the run began, and before it ended."""
+    with make_ledger(tmp_path / "l.sqlite3", SystemClock()) as ledger:
+        for cut in CUTS:
+            record_data_cut(
+                ledger,
+                clock=SystemClock(),
+                actor="system.ingest",
+                study_id=STUDY,
+                cut_id=cut,
+                path=Path(cut),
+            )
+        registry = AgentRegistry()
+        for agent_id in AGENTS:
+            registry.register(FakeAgent(agent_id, sites=["1001"]), AgentConfig())
+        inner = InProcessExecutor(
+            registry=registry, reader_factory=StubReader, log=structlog.get_logger()
+        )
+        executor = _Timed(inner, capacity=2, seed=11)  # half the runs wait in the queue
+        AgentRunner(
+            ledger=ledger,
+            registry=registry,
+            executor=executor,
+            clock=SystemClock(),
+            study_id=STUDY,
+            log=structlog.get_logger(),
+            operational_cuts=(),
+        ).run_pending()
+        woke = [
+            e for e in ledger.read() if isinstance(e, Event) and isinstance(e.payload, ActorWoke)
+        ]
+    assert len(woke) == len(AGENTS) * len(CUTS)
+    for e in woke:
+        assert isinstance(e.payload, ActorWoke)
+        key = (e.payload.agent_id, e.payload.trigger_seq)
+        started = e.payload.started_at
+        assert started is not None
+        assert started <= executor.started[key] < started + timedelta(seconds=1)
+        assert started < executor.ended[key] <= e.occurred_at  # appended after the run
+    # Queued runs started later than the first ones, which the commit time cannot show.
+    starts = sorted(
+        e.payload.started_at
+        for e in woke
+        if isinstance(e.payload, ActorWoke) and e.payload.started_at is not None
+    )
+    assert starts[-1] > starts[0]

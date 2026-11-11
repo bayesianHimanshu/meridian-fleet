@@ -137,6 +137,8 @@ def extract_rows(
                 a.EXECUTOR: p.executor,
                 a.RUN_STATUS: a.STARTED if isinstance(p, ActorWoke) else a.COMPLETED,
             }
+            if isinstance(p, ActorWoke) and p.started_at is not None:
+                row[a.STARTED_AT] = format_utc(p.started_at)
             if isinstance(p, ActorSuspended):
                 row |= {
                     a.IMAGE_DIGEST: p.image_digest,

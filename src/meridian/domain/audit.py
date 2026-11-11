@@ -39,6 +39,9 @@ IMAGE_DIGEST = "IMAGE_DIGEST"
 POLICY_SHA256 = "POLICY_SHA256"  # the applied policy
 POLICY_FILE_SHA256 = "POLICY_FILE_SHA256"
 RUN_STATUS = "RUN_STATUS"  # ActorWoke: started; ActorSuspended: completed
+# ActorWoke: when the run started, ISO 8601 UTC (phase 4a step 3: ActorWoke is appended
+# after the run, so RECORDED_AT is its commit). Empty on older events: use RECORDED_AT.
+STARTED_AT = "STARTED_AT"
 DECISION_ACTION = "DECISION_ACTION"
 DECISION_REASON = "DECISION_REASON"
 # Phase 4a: a run in Agent Substrate (ActorSuspended with executor substrate) records the
@@ -71,6 +74,7 @@ COLUMNS: tuple[str, ...] = (
     DECISION_REASON,
     TEMPLATE_SHA256,
     GOLDEN_SNAPSHOT,
+    STARTED_AT,
 )
 INT_COLUMNS: tuple[str, ...] = (SEQ, FINDING_GROUP, TRIGGER_SEQ)
 # The only columns a redacted row fills.

@@ -21,8 +21,9 @@ Each file has:
   decisions), `<decision seq>` or `<actor>/reused/<first seq>` (reason quality),
   `<decision seq>` (decision on a retired or superseded finding);
 - `actual`: per agent version, what the agent reported when the set was run once at the end
-  of step 4b (1.0.0) and once in phase 4a step 2 (1.1.0) (docs/audit-eval.md). Empty until
-  then.
+  of step 4b (1.0.0), once in phase 4a step 2 (1.1.0) and once in phase 4a step 3 (1.2.0)
+  (docs/audit-eval.md). Empty until then. 1.2.0 reports the same as 1.1.0 on every case:
+  no case fills STARTED_AT, so a run's start is its RECORDED_AT as before.
 
 Phase 4a step 2 added two cases, 17_clean_substrate_runs and
 18_substrate_run_records_incomplete, written by hand with their ideals before 1.1.0 was run

@@ -92,6 +92,10 @@ class ActorWoke(BaseModel):
     review_to_seq: PositiveInt | None = None
     # executor "substrate" (phase 4a step 2): the planned placement. Null otherwise.
     substrate: SubstrateRun | None = None
+    # When the run started (phase 4a step 3). The parallel runner appends ActorWoke after
+    # the run, so the event's own times are the commit, not the start. Null on events
+    # written before step 3, whose ActorWoke was appended as the run started.
+    started_at: UtcDatetime | None = None
 
     @model_validator(mode="after")
     def _range(self) -> Self:

@@ -446,6 +446,8 @@ export interface components {
             review_from_seq?: number | null;
             /** Review To Seq */
             review_to_seq?: number | null;
+            /** Started At */
+            started_at?: string | null;
             substrate?: components["schemas"]["SubstrateRun"] | null;
             /** Trigger Seq */
             trigger_seq: number;

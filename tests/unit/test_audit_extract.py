@@ -3,6 +3,7 @@ ids or payloads of restricted events leave the host."""
 
 import json
 import re
+from datetime import UTC, datetime
 from pathlib import Path
 
 import polars as pl
@@ -11,7 +12,13 @@ import pytest
 from meridian.audit.extract import SUBJECT_MASK, extract_rows, frame, write_extract
 from meridian.domain import audit as a
 from meridian.domain.enums import DecisionAction, FindingKind, Role, Severity, Visibility
-from meridian.domain.events import FindingNarrative, FindingRaised, HumanDecision
+from meridian.domain.events import (
+    ActorWoke,
+    DataCut,
+    FindingNarrative,
+    FindingRaised,
+    HumanDecision,
+)
 from meridian.domain.findings import Decision, Evidence, Finding
 from tests.api_support import Fixture, build
 
@@ -141,3 +148,21 @@ def test_a_range_is_exported_and_written_once(tmp_path: Path) -> None:
     assert back.equals(frame(rows))
     with pytest.raises(FileExistsError):
         write_extract(rows, tmp_path / "audit")
+
+
+def test_a_runs_start_goes_to_started_at_and_older_runs_leave_it_empty(tmp_path: Path) -> None:
+    """Phase 4a step 3: ActorWoke is appended after the run and carries its start."""
+    fx = build(tmp_path)
+    cut = next(e for e in fx.events if isinstance(e.payload, DataCut))
+    started = datetime(2026, 11, 7, 9, 59, 58, tzinfo=UTC)
+    new = fx.append(ActorWoke(agent_id="rbqm.csm", trigger_seq=cut.seq, started_at=started))
+    old = fx.append(ActorWoke(agent_id="rbqm.csm", trigger_seq=cut.seq))
+    rows = {
+        r[a.SEQ]: r
+        for r in extract_rows(
+            fx.events, from_seq=1, through_seq=fx.events[-1].seq, operational_cuts=["DC-BASE"]
+        )
+    }
+    assert rows[new.seq][a.STARTED_AT] == "2026-11-07T09:59:58.000000Z"
+    assert rows[new.seq][a.RECORDED_AT] != rows[new.seq][a.STARTED_AT]
+    assert rows[old.seq][a.STARTED_AT] is None

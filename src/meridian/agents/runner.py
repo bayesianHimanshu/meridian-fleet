@@ -6,12 +6,14 @@ executor's queue. The ledger stays single writer: runs never append, the host do
 one order fixed before anything runs (trigger seq, then agent id). Each run's events
 (ActorWoke, its findings, ActorSuspended) are appended together once it and every run
 before it in that order have finished, so a pass gives the same ledger content however
-long each run takes. ActorWoke is therefore appended after its run, not before.
+long each run takes. ActorWoke is therefore appended after its run, not before, and
+carries the run's real start in started_at.
 """
 
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol
 
 import structlog
@@ -233,23 +235,28 @@ class AgentRunner:
         report.capacity.update(capacity)
         pools = {n: ThreadPoolExecutor(capacity[n], thread_name_prefix=f"run-{n}") for n in names}
         try:
-            futures: list[Future[RunOutcome]] = []
+            futures: list[Future[tuple[datetime, RunOutcome | Exception]]] = []
             for p in planned:
                 report.executors[p.plan.executor] = report.executors.get(p.plan.executor, 0) + 1
-                futures.append(
-                    pools[p.plan.executor].submit(
-                        self._executor.run, p.registered.agent.agent_id, p.trigger, p.cut_id, p.plan
-                    )
-                )
+                futures.append(pools[p.plan.executor].submit(self._timed_run, p))
             for p, future in zip(planned, futures, strict=True):
-                try:
-                    outcome: RunOutcome | Exception = future.result()
-                except Exception as exc:  # an agent failure must never stop the pass
-                    outcome = exc
-                self._commit(p, outcome, report)
+                started_at, outcome = future.result()
+                self._commit(p, outcome, report, started_at=started_at)
         finally:
             for pool in pools.values():
                 pool.shutdown(wait=True)
+
+    def _timed_run(self, p: _Planned) -> tuple[datetime, RunOutcome | Exception]:
+        """Run one planned run; return when it started (read as it leaves the queue) and its
+        outcome or the exception it raised. ActorWoke is appended later, at commit, and
+        carries this start time."""
+        started_at = self._clock.now()
+        try:
+            return started_at, self._executor.run(
+                p.registered.agent.agent_id, p.trigger, p.cut_id, p.plan
+            )
+        except Exception as exc:  # an agent failure must never stop the pass
+            return started_at, exc
 
     def _allowed(self) -> str:
         return " or ".join(self._operational_executors)
@@ -331,13 +338,8 @@ class AgentRunner:
             return
         p = _Planned(registered, trigger, cut_id, plan)
         report.executors[plan.executor] = report.executors.get(plan.executor, 0) + 1
-        try:
-            outcome: RunOutcome | Exception = self._executor.run(
-                registered.agent.agent_id, trigger, cut_id, plan
-            )
-        except Exception as exc:  # an agent failure must never stop the pass
-            outcome = exc
-        self._commit(p, outcome, report, review)
+        started_at, outcome = self._timed_run(p)
+        self._commit(p, outcome, report, review, started_at=started_at)
 
     def _commit(
         self,
@@ -345,6 +347,8 @@ class AgentRunner:
         outcome: RunOutcome | Exception,
         report: RunReport,
         review: tuple[int, int] | None = None,
+        *,
+        started_at: datetime,
     ) -> None:
         """Append one finished run: ActorWoke, then (if it succeeded) its findings and
         ActorSuspended. A failed run leaves only ActorWoke, as before."""
@@ -367,6 +371,7 @@ class AgentRunner:
                 review_from_seq=None if review is None else review[0],
                 review_to_seq=None if review is None else review[1],
                 substrate=plan.substrate,
+                started_at=started_at,
             ),
         )
         try:
