@@ -29,6 +29,7 @@ import httpx
 import structlog
 
 from meridian.agents.registry import AgentRegistry
+from meridian.agents.runner import RetryableRunError
 from meridian.domain.events import Event, SubstrateRun
 from meridian.platform.config import SubstrateSettings
 from meridian.sandbox.executor import (
@@ -149,6 +150,117 @@ def load_template(
     )
 
 
+class WorkerLostError(ExecutionError, RetryableRunError):
+    """The actor's worker went away mid-run (a Spot preemption, a node lost): the run
+    failed, nothing of it was kept, and the runner may retry it once on a new actor."""
+
+
+@dataclass(frozen=True, slots=True)
+class ActorReply:
+    """What one actor run produced, before any check: the actor's HTTP answer, the actor
+    as read back before deletion (None if it was gone), and the phase timings."""
+
+    status_code: int
+    text: str
+    final: dict[str, Any] | None
+    phases: tuple[tuple[str, int], ...]
+
+
+# send(actor, body, headers, lap): lap(step) closes a phase the transport times itself.
+Send = Callable[[str, bytes, Mapping[str, str], Callable[[str], None]], httpx.Response]
+
+
+def crashed(actor: Mapping[str, Any] | None) -> bool:
+    """The actor lost its worker: gone, CRASHED, or no worker assignment any more."""
+    if actor is None:
+        return True
+    status = dict(actor.get("status", {}))
+    return str(status.get("state", "")).endswith("CRASHED") or not status.get("workerAssignment")
+
+
+def run_in_actor(
+    *,
+    client: SubstrateClient,
+    actor: str,
+    template: str,
+    agent_id: str,
+    body: bytes,
+    body_sha: str,
+    send: Send,
+    resume: Callable[[str], int],
+    delete: Callable[[str], None],
+) -> ActorReply:
+    """Create the actor from the template (golden snapshot), resume it, send the archive
+    to /run, read the actor back, and always delete it. Shared by the laptop's direct
+    executor and the in-cluster dispatcher; send is how /run is reached (kubectl ate proxy
+    on the laptop, atenet-router in the cluster). A run whose worker is lost raises
+    WorkerLostError; any other Substrate or HTTP failure raises ExecutionError."""
+    phases: list[tuple[str, int]] = []
+    t = time.perf_counter()
+
+    def lap(step: str) -> None:
+        nonlocal t
+        now = time.perf_counter()
+        phases.append((step, round((now - t) * 1000)))
+        t = now
+
+    response: httpx.Response | None = None
+    final: dict[str, Any] | None = None
+    failure: Exception | None = None
+    sent = False  # the actor was placed and the request went out
+    try:
+        client.create_actor(actor, template)
+        lap("create")
+        waited = resume(actor)
+        lap("resume")
+        if waited:
+            phases.append(("placement_wait", waited))
+        sent = True
+        response = send(
+            actor,
+            body,
+            {AGENT_HEADER: agent_id, SHA_HEADER: body_sha, "Content-Type": "application/x-tar"},
+            lap,
+        )
+        lap("request")
+    except (SubstrateError, httpx.HTTPError) as exc:
+        failure = exc
+    try:
+        final = client.get_actor(actor)
+    except SubstrateError:
+        final = None
+    finally:
+        delete(actor)
+        lap("delete")
+    gateway_error = response is not None and response.status_code in (502, 503, 504)
+    if sent and (failure is not None or gateway_error) and crashed(final):
+        raise WorkerLostError(f"actor {actor} lost its worker: {failure or response}")
+    if response is None:
+        raise ExecutionError(f"substrate failed for {actor}: {failure}") from failure
+    return ActorReply(response.status_code, response.text, final, tuple(phases))
+
+
+def resume_waiting(
+    client: SubstrateClient,
+    actor: str,
+    wait_seconds: float,
+    sleep: Callable[[float], None] = time.sleep,
+) -> int:
+    """Resume, waiting for a free worker if none has room (ResourceExhausted, retried
+    with backoff for up to wait_seconds); returns the ms spent waiting."""
+    start = time.monotonic()
+    delay = 0.25
+    while True:
+        try:
+            client.resume_actor(actor)
+            return round((time.monotonic() - start) * 1000) if delay > 0.25 else 0
+        except ResourceExhaustedError:
+            if time.monotonic() - start + delay > wait_seconds:
+                raise
+            sleep(delay)
+            delay = min(delay * 2, 2.0)
+
+
 def foreign_snapshots(actor: Mapping[str, Any], golden: str) -> list[str]:
     """Every snapshot of the actor other than the golden one it was created from."""
     snapshots = dict(actor.get("status", {})).get("snapshots", [])
@@ -253,17 +365,7 @@ class SubstrateExecutor:
 
     def _resume(self, actor: str) -> int:
         """Resume, waiting for a free worker if none has room; returns ms spent waiting."""
-        start = time.monotonic()
-        delay = 0.25
-        while True:
-            try:
-                self._client.resume_actor(actor)
-                return round((time.monotonic() - start) * 1000) if delay > 0.25 else 0
-            except ResourceExhaustedError:
-                if time.monotonic() - start + delay > self._placement_wait:
-                    raise
-                self._sleep(delay)
-                delay = min(delay * 2, 2.0)
+        return resume_waiting(self._client, actor, self._placement_wait, self._sleep)
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
         template = self.template_for(agent_id)
@@ -276,12 +378,6 @@ class SubstrateExecutor:
     ) -> ExecutionResult:
         start = time.perf_counter()
         phases: list[tuple[str, int]] = []
-
-        def lap(step: str, since: float) -> float:
-            now = time.perf_counter()
-            phases.append((step, round((now - since) * 1000)))
-            return now
-
         registered = self._registry.get(agent_id)
         template = self.template_for(agent_id)
         planned = (plan or self.plan(agent_id, trigger)).substrate
@@ -303,37 +399,13 @@ class SubstrateExecutor:
             )
             body = archive(staged.stage)
         body_sha = hashlib.sha256(body).hexdigest()
-        t = lap("stage", start)
+        phases.append(("stage", round((time.perf_counter() - start) * 1000)))
         self._tracker.record(actor, "created", template.name)
         self._created.append(actor)
-        final: dict[str, Any] | None = None
-        try:
-            self._client.create_actor(actor, template.name)
-            t = lap("create", t)
-            waited = self._resume(actor)
-            t = lap("resume", t)
-            if waited:
-                phases.append(("placement_wait", waited))
-            with self._client.proxy(actor, PORT) as address:
-                t = lap("proxy", t)
-                response = self._post(
-                    f"http://{address}/run",
-                    content=body,
-                    headers={
-                        AGENT_HEADER: agent_id,
-                        SHA_HEADER: body_sha,
-                        "Content-Type": "application/x-tar",
-                    },
-                    timeout=self._settings.request_timeout_seconds,
-                )
-            t = lap("request", t)
-            final = self._client.get_actor(actor)
-        except (SubstrateError, httpx.HTTPError) as exc:
-            raise ExecutionError(f"substrate failed for {actor}: {exc}") from exc
-        finally:
-            self._delete(actor, log)
-            t = lap("delete", t)
-        result = self._read(response, registered.agent.agent_id, registered.agent.version, actor)
+        reply = self._execute(actor, template, agent_id, body, body_sha, log)
+        phases.extend(reply.phases)
+        final = reply.final
+        result = self._read(reply, registered.agent.agent_id, registered.agent.version, actor)
         if result["archive_sha256"] != body_sha:
             raise ExecutionError(f"actor {actor} received a different archive")
         if result["inputs_manifest_sha256"] != staged.inputs_manifest_sha256:
@@ -373,14 +445,46 @@ class SubstrateExecutor:
         log.info("substrate.run_done", duration_ms=out.duration_ms, drafts=len(out.drafts))
         return out
 
-    @staticmethod
-    def _read(response: httpx.Response, agent_id: str, version: str, actor: str) -> dict[str, Any]:
-        if response.status_code != 200:
-            raise ExecutionError(
-                f"actor {actor} answered {response.status_code}: {response.text[:500]}"
+    def _execute(
+        self,
+        actor: str,
+        template: ZoneTemplate,
+        agent_id: str,
+        body: bytes,
+        body_sha: str,
+        log: structlog.typing.FilteringBoundLogger,
+    ) -> ActorReply:
+        """The run in its actor, from the laptop: kubectl ate per verb and one proxy."""
+        return run_in_actor(
+            client=self._client,
+            actor=actor,
+            template=template.name,
+            agent_id=agent_id,
+            body=body,
+            body_sha=body_sha,
+            send=self._send,
+            resume=self._resume,
+            delete=lambda name: self._delete(name, log),
+        )
+
+    def _send(
+        self, actor: str, body: bytes, headers: Mapping[str, str], lap: Callable[[str], None]
+    ) -> httpx.Response:
+        with self._client.proxy(actor, PORT) as address:
+            lap("proxy")
+            return self._post(
+                f"http://{address}/run",
+                content=body,
+                headers=dict(headers),
+                timeout=self._settings.request_timeout_seconds,
             )
+
+    @staticmethod
+    def _read(reply: ActorReply, agent_id: str, version: str, actor: str) -> dict[str, Any]:
+        if reply.status_code != 200:
+            raise ExecutionError(f"actor {actor} answered {reply.status_code}: {reply.text[:500]}")
         try:
-            payload = response.json()
+            payload = json.loads(reply.text)
         except ValueError as exc:
             raise ExecutionError(f"actor {actor} answered no JSON") from exc
         if payload.get("exit_code") != 0 or payload.get("document") is None:

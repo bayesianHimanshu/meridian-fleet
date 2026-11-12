@@ -1928,6 +1928,8 @@ export interface components {
             atespace: string;
             /** Commit */
             commit: string;
+            /** Dispatcher Image */
+            dispatcher_image?: string | null;
             /** Golden Snapshot */
             golden_snapshot: string;
             /** Golden Tag */
