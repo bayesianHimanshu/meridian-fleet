@@ -455,6 +455,46 @@ export function FindingDetail() {
               <FindingLink id={f.superseded_by ?? ""} />.
             </p>
           ) : null}
+          {f.previously_decided ? (
+            <p className="message" data-testid="previously-decided">
+              Already decided: {f.previously_decided.actor} (
+              {f.previously_decided.role}) {f.previously_decided.action}{" "}
+              <FindingLink id={f.previously_decided.finding_id} />, the same
+              finding from version{" "}
+              <span className="mono">{f.previously_decided.agent_version}</span>
+              , at <Time iso={f.previously_decided.recorded_at} /> (ledger seq{" "}
+              {f.previously_decided.seq})
+              {f.previously_decided.reason
+                ? `: "${f.previously_decided.reason}"`
+                : ""}
+              . The primary evidence is unchanged, so it is not in the review
+              queue.
+            </p>
+          ) : null}
+          {f.evidence_changed_since ? (
+            <div className="message" data-testid="evidence-changed">
+              <p>
+                Changed since {f.evidence_changed_since.decision.actor}{" "}
+                {f.evidence_changed_since.decision.action}{" "}
+                <FindingLink
+                  id={f.evidence_changed_since.decision.finding_id}
+                />{" "}
+                (version{" "}
+                <span className="mono">
+                  {f.evidence_changed_since.decision.agent_version}
+                </span>
+                , ledger seq {f.evidence_changed_since.decision.seq}):
+              </p>
+              <ul>
+                {f.evidence_changed_since.removed.map((x) => (
+                  <li key={`was-${x}`}>was: {x}</li>
+                ))}
+                {f.evidence_changed_since.added.map((x) => (
+                  <li key={`now-${x}`}>now: {x}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
       </div>
 

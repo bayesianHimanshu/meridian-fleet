@@ -230,3 +230,59 @@ describe("finding detail, step 3a polish", () => {
     expect(screen.getAllByTestId("raw-answer").map((e) => e.textContent)).toEqual([textA, textB]);
   });
 });
+
+describe("finding detail, decisions that survive agent upgrades", () => {
+  const prev = {
+    finding_id: "RBQM-0001",
+    agent_version: "2.2.0",
+    action: "dismissed" as const,
+    actor: "asha.rao",
+    role: "clinical_ops_lead" as const,
+    reason: "known site backlog",
+    recorded_at: "2026-11-07T17:31:50.000000Z",
+    seq: 42,
+    primary_evidence_sha256: "a".repeat(64),
+  };
+
+  it("shows the earlier decision on a previously decided finding", async () => {
+    server.use(
+      http.get(`${BASE}/findings/:id`, () =>
+        HttpResponse.json(detail("RBQM-0003", { previously_decided: prev })),
+      ),
+    );
+    renderApp("/findings/RBQM-0003");
+    const note = await screen.findByTestId("previously-decided");
+    expect(note.textContent).toContain("asha.rao");
+    expect(note.textContent).toContain("dismissed");
+    expect(note.textContent).toContain("2.2.0");
+    expect(note.textContent).toContain("ledger seq 42");
+    expect(note.textContent).toContain("known site backlog");
+    expect(note.textContent).toContain("not in the review queue");
+    expect(screen.queryByTestId("evidence-changed")).toBeNull();
+  });
+
+  it("shows what changed since the earlier decision", async () => {
+    server.use(
+      http.get(`${BASE}/findings/:id`, () =>
+        HttpResponse.json(
+          detail("RBQM-0003", {
+            evidence_changed_since: {
+              decision: { ...prev, action: "accepted", reason: null },
+              before: ["18 observed (5.1 expected)"],
+              after: ["25 observed (5.1 expected)"],
+              removed: ["18 observed (5.1 expected)"],
+              added: ["25 observed (5.1 expected)"],
+              primary_evidence_sha256: "b".repeat(64),
+            },
+          }),
+        ),
+      ),
+    );
+    renderApp("/findings/RBQM-0003");
+    const note = await screen.findByTestId("evidence-changed");
+    expect(note.textContent).toContain("accepted");
+    expect(note.textContent).toContain("was: 18 observed (5.1 expected)");
+    expect(note.textContent).toContain("now: 25 observed (5.1 expected)");
+    expect(screen.queryByTestId("previously-decided")).toBeNull();
+  });
+});
