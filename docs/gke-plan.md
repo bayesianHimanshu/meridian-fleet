@@ -1,7 +1,9 @@
 # Phase 4b plan: the Substrate zones on GKE (us-central1)
 
-Phase 4b step 1. This is a plan. It creates nothing in Google Cloud: every command in it is
-for a person to run, in order, once the open questions at the end are settled. The rbqm,
+Phase 4b step 1, updated in step 2 with the account check, your answers, the dispatcher as
+built and measured on kind (section 2a), and the park, resume and teardown scripts. This is
+still a plan: it creates nothing in Google Cloud, and every command in it is for a person
+to run, in order. The rbqm,
 safety, quality and quality.audit_trail zones move from Agent Substrate on kind to Agent
 Substrate on GKE. The narrator (OpenShell provider to Anthropic) and the local model zone
 (Ollama) stay on OpenShell on the laptop, and the ledger stays on the laptop with one writer.
@@ -18,32 +20,40 @@ the docs nor gcloud states.
 
 ## 1. Account check
 
-**Not completed: gcloud needs you to log in again.** Read-only commands run on 13 Nov 2026:
+Read-only commands, 13 Nov 2026, gcloud 539.0.0, configuration `bayesianhimanshu-org`
+(the GKE and Compute APIs were enabled by you during step 2):
 
-| Command | Result |
+| Check | Result |
 |---|---|
-| `gcloud --version` | Google Cloud SDK 539.0.0 |
-| `gcloud config list` | configuration `bayesianhimanshu-org`, project **`meridian-fleet-agents`**, an organization account |
-| `gcloud projects describe meridian-fleet-agents` | `Reauthentication failed. cannot prompt during non-interactive execution.` |
+| `gcloud projects describe meridian-fleet-agents` | ACTIVE, number 932415716644, created 2026-11-07 |
+| `gcloud billing projects describe` | billing enabled, account `billingAccounts/01DC09-5AAF08-94EFA4` ("bayesianHimanshuBillingAccount", open); a second account, "My Billing Account", is closed |
+| Projects on that billing account | `meridian-fleet-agents` and one other project. I did not read the other one (outside this brief), so whether a GKE cluster there uses the free tier credit is **your answer** (open question 1) |
+| Enabled APIs before the plan | `container`, `compute`, `logging`, `monitoring`, `cloudtrace`, `telemetry`, `storage` (and storage-api, storage-component), `serviceusage`, `servicemanagement`, the BigQuery family, `datastore`, `dataplex`, `dataform`, `analyticshub`, `apptopology`, `cloudapis`, `sql-component`. Not yet: `artifactregistry`, `iam`, `iamcredentials`, `cloudresourcemanager`, `networkconnectivity`, `billingbudgets` (6.1 and 6.2) |
+| `gcloud container get-server-config --location=us-central1` | Regular: default **1.36.4-gke.2377000**, valid **1.37.1-gke.1552000**. Rapid: default 1.37.1-gke.2097000, also 1.37.2-gke.1042000. Stable: no 1.37. Extended: 1.37.1-gke.1552000 (not usable). Valid node versions include 1.37.1-gke.1552000 |
+| Google's release schedule | 1.37 in Regular since 2026-10-22, in Stable estimated 2027-01 (https://docs.cloud.google.com/kubernetes-engine/docs/release-schedule) |
+| `gcloud compute machine-types describe c3-standard-4` | 4 vCPU, 16,384 MB, offered in us-central1-a and us-central1-c |
+| GKE clusters in the project | none |
 
-Every other check (billing, enabled APIs, GKE versions, machine types) needs the same
-login, so section 6.0 lists them for you to run after `gcloud auth login`. Until then, what
-the requirements are, from the sources:
+**Consequence:** Regular's default is 1.36, below Substrate's minimum, so the cluster is
+created with `--cluster-version=1.37.1-gke.1552000` on the Regular channel (6.4).
+
+**Machine type, the exact sentence.** Google's install guide, "Cluster requirements"
+(https://docs.cloud.google.com/kubernetes-engine/ai-ml/install-overview-substrate, read
+13 Nov 2026): "Uses `c3-standard-4` or larger machine types for nodes." Its "Limitations"
+add: "you can't use machine series that run on mixed CPU architectures (such as E2 machine
+types)." The guide names `c3-standard-4`, so by your rule **C3 stays** for both pools and
+the cost table in section 5 is unchanged.
 
 | Requirement | Source | This plan |
 |---|---|---|
-| GKE **1.37 or later**, control plane and every node pool | substrate-gke README lines 125-130; Google install guide | `--cluster-version=1.37`; 6.0 checks a channel carries it |
-| **Standard**, not Autopilot | Google install guide ("Autopilot is not supported") | Standard |
-| Not the **Extended** channel (explicit beta APIs not allowed there) | README lines 140-142; Google install guide | Regular |
-| **Workload Identity Federation** | README lines 400-402; Google install guide | `--workload-pool=$PROJECT_ID.svc.id.goog` |
-| **Dataplane V2** | Google install guide | `--enable-dataplane-v2` |
-| **No E2**: "machine series that run on mixed CPU architectures (such as E2 machine types)" cannot be used; no Arm | Google install guide and design page | no E2 anywhere (setup-gcp's own system-pool default is `e2-standard-4`, `cmd/systempools.go:75-80`: not used) |
-| Nodes "**`c3-standard-4` or larger**"; for gVisor, x86 general-purpose or compute-optimized "such as N4, C3, C4, or N2" | Google install guide | `c3-standard-4` for both pools |
-| APIs | setup-gcp `cmd/api.go:35-46` (12 APIs); Google: only the GKE API beforehand | 6.2 |
-
-Google pages: https://docs.cloud.google.com/kubernetes-engine/ai-ml/install-overview-substrate
-and https://docs.cloud.google.com/kubernetes-engine/docs/how-to/design-substrate-infrastructure
-(read 13 Nov 2026; neither shows a last-updated date).
+| GKE **1.37 or later**, control plane and every node pool | install guide: "Runs GKE version 1.37 or later on both the control plane and the node pools."; substrate-gke README lines 125-130 | 1.37.1-gke.1552000, Regular |
+| **Standard**, not Autopilot | install guide | Standard |
+| Not the **Extended** channel | README lines 140-142; install guide | Regular |
+| **Workload Identity Federation** | README lines 400-402; install guide | `--workload-pool=$PROJECT_ID.svc.id.goog` |
+| **Dataplane V2** | install guide: "Uses GKE Dataplane V2." | `--enable-dataplane-v2` |
+| **No E2**, no Arm | install guide, design page | no E2 node anywhere |
+| Nodes `c3-standard-4` or larger | install guide (quoted above) | `c3-standard-4` |
+| APIs | setup-gcp `cmd/api.go:35-46` | 6.2 |
 
 ## 2. Topology: how the laptop reaches Substrate on GKE
 
@@ -83,8 +93,8 @@ external address either and admits a client only if its SPIFFE ID is in
 ```
 laptop (single writer)                         GKE zonal cluster, us-central1-a
 +-----------------------------+   one TLS      +---------------------------------------------+
-| runner -> SubstrateExecutor |   tunnel over  | ns meridian                                 |
-|   (dispatch mode)           |   the control  |  meridian-dispatcher (SA meridian-runner)   |
+| runner ->                   |   tunnel over  | ns meridian-dispatch                        |
+|   DispatcherExecutor        |   the control  |  meridian-dispatcher (SA dispatcher)        |
 |   http://127.0.0.1:PORT ----+-- plane DNS -->|   create/resume/delete -> ate-api-server   |
 | ledger.sqlite3 (only here)  |   endpoint,    |   POST /run -> atenet-router :8444 (mTLS,  |
 +-----------------------------+   IAM + RBAC   |     header ate-target-actor) -> actor      |
@@ -99,41 +109,124 @@ laptop (single writer)                         GKE zonal cluster, us-central1-a
   name and the run's tar (the same archive `stage_run` builds today) and answers with the
   drafts, the actor's snapshot list as read back before deletion, the image digest, and the
   per-phase timings that `SubstrateRun` records now. It keeps nothing on disk: no volume,
-  read-only root filesystem, payloads never logged. It runs as the existing
-  `meridian/meridian-runner` ServiceAccount, so the atespace access policy
-  (`deploy/substrate/access-policy.yaml`, editor on atespace `meridian` only) is unchanged,
-  and the runner's verb guard (create, resume, get, delete; never suspend, revert, tag)
-  moves into it.
+  read-only root filesystem, payloads never logged. As built in step 2 it runs in its own
+  namespace `meridian-dispatch` as its own ServiceAccount `dispatcher`, which the atespace
+  access policy makes editor on atespace `meridian` only, and its client's verb guard
+  (create, resume, get, delete; never suspend, revert, tag, proxy) refuses everything else.
 - **It reaches actors the way an in-cluster client does**: an mTLS `CONNECT` to
   `atenet-router.ate-system.svc:8444` with `ate-target-actor: meridian/<actor>`, presenting
   a Pod Identity CA certificate from a projected volume (`docs/reference/api-guide.md:234-248`;
-  Substrate's own `benchmarking/nighthawk-ingress` client does exactly this). Install with
-  `--ingress-allowed-spiffe-ids=spiffe://cluster.local/ns/meridian/sa/meridian-runner`, so it
+  Substrate's own `benchmarking/nighthawk-ingress` client does exactly this).
+  Install with
+  `--ingress-allowed-spiffe-ids=spiffe://cluster.local/ns/meridian-dispatch/sa/dispatcher`, so it
   is the only client the router admits (the podidentity signer issues
   `spiffe://cluster.local/ns/<namespace>/sa/<service-account>`, `cmd/ate-setup/commands.md:29`).
 - **The ledger stays single-writer.** The dispatcher returns results; the laptop runner
   writes ActorWoke, the findings and ActorSuspended exactly as now, in the same fixed commit
-  order (docs/phase4a-summary.md, Lessons 5). Executor stays one protocol: a third
-  implementation, `SubstrateDispatchExecutor`, beside OpenShell and Substrate-on-kind,
-  selected per zone by `[runtime] executors`.
-- **The tunnel**: `kubectl port-forward -n meridian deploy/meridian-dispatcher 0:8080`,
+  order (docs/phase4a-summary.md, Lessons 5). Executor stays one protocol:
+  `DispatcherExecutor` is the Substrate executor with the actor's life moved into the
+  dispatcher, selected by `[substrate] via = "dispatcher"`.
+- **The tunnel**: `kubectl port-forward -n meridian-dispatch deployment/meridian-dispatcher 0:8090`,
   started once per pass. It goes over the DNS endpoint (TLS, IAM-authorized), then the API
   server's stream to the kubelet. Concurrent runs are concurrent HTTP requests on it, not
   new processes. Google's pages on the DNS endpoint say nothing about port-forward or
   streaming (searched; not found), so **guess** that it works as it does over an IP
-  endpoint; the first command after the cluster exists tests it. **Guess:** one port-forward carries 12 to 32 concurrent ~1 MB requests
-  without becoming the limit; the measurement plan checks it, and the fallback is a small
-  pool of tunnels.
+  endpoint; the first command after the cluster exists tests it. On kind one port-forward
+  is not the limit: 1, 2 or 4 tunnels give the same 10.3 to 10.7 runs a second (section 2a).
+  If port-forward over the DNS endpoint fails, the fallback is the IAP bastion (6.11).
 - **The laptop's identity** needs only: IAM `container.clusters.get` and
   `container.clusters.connect` on the cluster (both in `roles/container.clusterViewer`,
   https://docs.cloud.google.com/iam/docs/roles-permissions/container), and Kubernetes RBAC `pods/portforward` on the
-  dispatcher's pods in namespace `meridian`. It no longer holds a Substrate editor token at
+  dispatcher's pods in namespace `meridian-dispatch`, plus the shared token. It no longer holds a Substrate editor token at
   all, which closes phase 4a's open gap "a compromised host process with the token could
   still suspend": only the dispatcher's code holds it.
 
-What A costs: one new image and about 300 lines of code (dispatcher plus executor), which
-the next step builds and tests against kind first (the dispatcher runs the same on kind,
-reached by the same `kubectl port-forward`), so the GKE step only changes where it runs.
+What A cost: one new image and about 700 lines of code with tests (step 2, section 2a).
+
+## 2a. The dispatcher as built, and measured on kind (phase 4b step 2)
+
+**What runs where.**
+- Laptop: `DispatcherExecutor` (`src/meridian/sandbox/dispatcher_executor.py`) stages only
+  the zone's folders, builds the archive, checks the deployed template against the
+  committed file, sends one request per run, and checks the answer: archive sha256, inputs
+  manifest sha256, only the golden snapshot, sandbox class. The runner appends to the
+  ledger in its fixed order. **No Substrate token on the laptop** in this mode.
+- Cluster: `meridian-dispatcher serve` (`src/meridian/dispatcher_serve.py`), image
+  `docker/dispatcher.Dockerfile` (the agent image's pinned base and locked packages, plus
+  the `kubectl-ate` binary built from go.ate.dev/substrate v1.0.0, its sha256 in the
+  Deployment's annotation). Manifests: `deploy/dispatcher/dispatcher.yaml`, rendered by
+  `src/meridian/sandbox/dispatcher_deploy.py`: namespace `meridian-dispatch` (labelled
+  `ate.dev/api-access=true`, which ate-api-server's NetworkPolicy admits), a default-deny
+  ingress NetworkPolicy, ServiceAccount `dispatcher`, RBAC to read the WorkerPool and
+  ClusterTrustBundles, read-only root filesystem, non-root, no capabilities, in-memory
+  `/tmp`.
+- Mutual authentication (`src/meridian/sandbox/dispatch.py`): a 32-byte random token, on
+  the laptop in `~/.config/meridian/dispatcher.token` (0600, refused if group- or
+  world-readable; outside the repository), in the cluster in a Secret mounted read-only for
+  uid 1000. The runner sends it as a bearer token with a fresh nonce; the dispatcher answers
+  with an HMAC-SHA256 of the nonce and the response body under the token, and the runner
+  refuses any answer without a valid proof. The token is never logged or put on a command
+  line (`kubectl apply -f -` from stdin).
+- Timeouts: request timeout plus the 120 s placement wait plus 30 s per request; the
+  dispatcher waits up to 120 s for a free worker (ResourceExhausted, backoff). A dropped
+  tunnel is restarted once and the request retried; the dispatcher deletes any actor of the
+  same name first, so a retry is safe.
+- A lost worker (Spot preemption) is reported as `worker_lost`, raised on the laptop as
+  `WorkerLostError`, and the runner retries the run **once on a new actor**. Both attempts
+  are in the ledger: the lost one as an ActorWoke without ActorSuspended
+  (tests/unit/test_preemption.py, simulated).
+- On kind only: `meridian dispatcher deploy` adds the dispatcher's SPIFFE ID to
+  atenet-router's existing allow-list (keeping `ate-system/atenet-client` for the direct
+  executor) and lists both principals in the access policy. On GKE only the dispatcher's
+  ID and principal (6.7, 6.8).
+
+**Proofs on kind** (dispatcher image `localhost:5001/meridian-dispatcher@sha256:58d1ba25...`,
+built from bf0dc78, clean):
+
+| Proof | Result |
+|---|---|
+| C1 canary, 20 runs through the dispatcher, every zone | found in none of: the snapshot bucket (40 objects, 0.66 GB decoded), the kind node filesystem (80,236 files, 10.9 GB), host `var/` (72 files), **the dispatcher pod's filesystem** (11,256 files, 637 MB, streamed with tar), **the dispatcher's logs**. Positive controls: the canary planted in the pod's `/tmp` is found; a suspended canary actor's snapshot is found, and gone after deletion. Bucket layout: 5 golden tag snapshots, nothing outside `tags/`. `var/substrate/canary-dispatcher.json` |
+| C2, 12 pairs byte-identical to OpenShell | 12 of 12 identical (Substrate 417 to 610 ms, OpenShell 4.2 to 4.6 s) |
+| C3 no network from actors | 4 zones pass; every egress refused, **including a new probe from an actor to the dispatcher pod** (`egress_dispatcher`), with atenet-egress lines; controls allowed |
+| C4 zone folders only | CI test per zone (staging unchanged), and through the dispatcher: the actor received exactly `meta`, `blinded`, `ops` for rbqm (tests/unit/test_dispatcher.py) |
+| Unauthenticated requests | live: no header, a wrong token, a random token: 401 on `GET /v1/actors`, `POST /v1/runs`, `DELETE /v1/actors/x`, nothing run, one log line each without a body; `/healthz` 200 |
+| Suspend, revert, tag, proxy | refused by the dispatcher's guard inside its pod before anything is sent; Substrate refuses its identity in another atespace (PermissionDenied) |
+| Audit reviewer | 1.2.0 through the dispatcher reviewed seq 1 to 12130 (including 1,820 dispatched runs): the same 7 phase 1 findings, skipped as duplicates, nothing about any dispatched run |
+| Ledger | verifies, 12,133 events |
+| Substrate survives a full stop (the kind analogue of park) | every ate-system Deployment, Postgres, the dispatcher and the WorkerPool to 0 and back in 24 s: Postgres and rustfs claims (same uids and volumes), the 5 golden tags and the templates identical; 5 dispatched runs then 458 to 576 ms |
+
+**Measurements on kind, against phase 4a** (four zones, every cut, `agents run --rerun
+--all-cuts`, 910 runs each; per run from ActorWoke started_at to ActorSuspended):
+
+| | 4a direct, 12 workers | Dispatcher, 12 workers | Dispatcher, 16 workers |
+|---|---:|---:|---:|
+| Wall-clock | 198.4 s | **81.3 s** | 84.3 s |
+| Failed | 0 | 0 | 0 |
+| p50 / p95 / max per run | 2.56 / 3.07 / 3.41 s | **1.12 / 1.33 / 1.94 s** | 1.59 / 1.95 / 2.28 s |
+| Lowest host MemAvailable | 1.96 GB | 6.58 GB | 5.81 GB |
+| Seq | 6629 to 8448 | 8491 to 10310 | 10311 to 12130 |
+
+One run alone (5 sequential, warm): 425 to 924 ms, against 1.20 s p50 direct; the router
+CONNECT costs about 45 ms and the tunnel about 40 ms.
+
+**The per-run proxy is gone, and what limits throughput now.** 200-run benches:
+
+| At a time | Runs/s | p50 | create | resume | request | delete | tunnel (p50 ms) |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 1 (5 runs) | 1.6 | 557 | 26 | 215 | 61 | 101 | 42 |
+| 4 | 7.3 | 540 | 30 | 192 | 94 | 112 | 40 |
+| 8 | 9.9 | 800 | 48 | 272 | 146 | 173 | 63 |
+| 16 | 10.4 | 1,498 | 116 | 441 | 269 | 352 | 138 |
+
+Throughput levels off at about 10 to 11 runs a second from 8 at a time up, and every
+Substrate phase (create, resume, request, delete) lengthens with concurrency. Ruled out by
+experiment: the tunnel (1, 2 and 4 port-forwards give 10.7, 10.3 and 10.5 runs/s), the
+dispatcher's CPU (its limit raised from 2 to 6 cores: 19.1 s against 19.4 s for 200 runs),
+host CPU (50% busy of 16 threads during the bench; worker pods about 5 cores, dispatcher
+about 1.9, ate-api-server about 0.5). **What limits it now is Substrate's own path on the
+single kind node:** ate-api-server, Postgres and the node's one atelet doing every create,
+restore and delete. **Guess:** atelet, which is per node. If so, two GKE worker nodes (two
+atelets) should raise the plateau, and section 7 measures that.
 
 ## 3. Data: what travels, how, and where it may rest
 
@@ -173,7 +266,7 @@ billed; the drafts coming back are internet egress (section 5).
 | Artifact Registry | Images only (meridian-worker, the dispatcher) | The image holds no data (C1 searched images on kind) |
 | The laptop's tunnel | Nothing: a port-forward does not buffer to disk | n/a |
 
-### What changes in docs/threat-model.md (when the cluster exists, not now)
+### What changes in docs/threat-model.md (the GKE part when the cluster exists; the dispatcher part is in it since step 2)
 
 Section 4 gains a part "On GKE (phase 4b)":
 
@@ -189,9 +282,9 @@ Section 4 gains a part "On GKE (phase 4b)":
    can only port-forward to the dispatcher. A compromised laptop process can still send a
    run, but cannot suspend, revert or tag. The remaining gap is the dispatcher's own code;
    Substrate v1.0.0 still cannot refuse an editor suspend.
-4. **Who can reach actors**: atenet-router admits only
-   `spiffe://cluster.local/ns/meridian/sa/meridian-runner`. On kind it admitted
-   `ate-system/atenet-client` (the `kubectl ate proxy` identity).
+4. **Who can reach actors**: on GKE atenet-router admits only
+   `spiffe://cluster.local/ns/meridian-dispatch/sa/dispatcher`. On kind it admits that and
+   `ate-system/atenet-client` (the `kubectl ate proxy` identity of the direct executor).
 5. **Spot preemption** (section 4) can kill a worker mid-run. The actor goes to `CRASHED`
    and is deleted; it never suspends on its own, so no data snapshot results. The run
    fails and the runner retries it, as for any failed run.
@@ -246,20 +339,25 @@ Settings copied from `cmd/cluster.go` and `cmd/systempools.go`:
 | Images | Artifact Registry Docker repository `meridian` in `us-central1` | meridian-worker and the dispatcher. Substrate's own images come from its release registry `ghcr.io/agent-substrate/substrate` at tag v1.0.0 (`ate-setup --image-repo/--image-tag`, `cmd/ate-setup/README.md:10-40`), nothing to build. |
 | Network | The `default` VPC; nodes with external IPs (GKE's default) so they can pull from ghcr.io | No Cloud NAT to pay for. Nodes accept no inbound traffic but GKE's own (firewall defaults); see Risks for private nodes. |
 
-**Spot where safe.** The worker pool: a run is never suspended, so a preempted worker loses
-only the run in flight, which fails and is retried, and its actor is deleted. That
+**Spot where safe (decided: yes for workers).** The worker pool: actors are never
+suspended and hold nothing between runs, so a preemption only fails the run in progress,
+which the runner retries once on a new actor (section 2a), and its actor is deleted. The
+system pool stays on-demand. That
 contradicts setup-gcp's warning "do not use spot or preemptible nodes" for workers
 (README lines 144-170), and Google's design page says "avoid using Spot VMs for stateful
 WorkerPool nodes" (15 seconds to 2 minutes of notice). Both are about actors that **keep
-state** and go `CRASHED`; ours never do. The system pool: not safe (Postgres, API server). If it
-turns out that a preemption leaves state the dispatcher cannot clean up, the worker pool
-goes on-demand (section 5 gives both prices).
+state** and go `CRASHED`; ours never do.
 
 **Scaling to zero.** The cluster autoscaler removes the worker nodes only when no worker pod
 is left, so the pass scripts the WorkerPool: scale it to 12 before a pass (nodes come up in
 about a minute or two, **guess** until measured), back to 0 after, and the autoscaler
 removes the nodes after its scale-down delay. atelet is a DaemonSet and does not hold a
-node. The system node stays: "idle with the cluster up" is one node.
+node. The system node stays while a session lasts. **Between sessions the cluster is
+parked** (decided): `deploy/gke/park.sh` takes the WorkerPool, the worker pool and the system
+pool to 0, keeps the control plane, the Postgres claim, the bucket and the images, and
+`deploy/gke/resume.sh` brings the system node back and checks that the Postgres claim and
+the golden tags are the same ones (6.10). Full teardown at the end of phase 4b, or before an
+idle week.
 
 ## 5. Cost
 
@@ -333,9 +431,10 @@ scale-down), so about 25 minutes of one Spot worker node:
 | Per run, incremental | **0.00004** |
 | A whole session: create, one pass, measure, teardown, about 2 hours with the system node | **about 0.46** (0.0005 a run) |
 
-The budget of USD 30 a month is about **140 hours** of the idle cluster. The plan is to
-create the cluster for a working session and tear it down (or park it) at the end, not to
-leave it up.
+The budget of USD 30 a month is about **140 hours** of the idle cluster. Decided: park
+between sessions (about USD 0.03 a day, about USD 1 a month), teardown at the end of the
+phase. On kind the dispatched pass took 81 s, so the 5-minute guess above is generous; the
+cold start from 0 nodes and the scale-down delay dominate a pass's cost on GKE.
 
 ## 6. Commands, in order
 
@@ -344,22 +443,17 @@ interactive `gcloud auth login` plus `gcloud auth application-default login` (se
 the client libraries, README line 33). Nothing here prints a credential. setup-gcp runs
 from the substrate-gke checkout at v1.0.0-gke.0 and needs Go (installed, go1.27.0).
 
-### 6.0 Before anything: the read-only account check (section 1)
+### 6.0 The account check (done, section 1)
+
+Rerun before creating anything, to see the versions of that day:
 
 ```bash
-gcloud auth login                                   # interactive, in your terminal
-gcloud auth application-default login               # setup-gcp needs ADC
 source deploy/gke/env.sh
-gcloud projects describe "$PROJECT_ID" --format='yaml(projectId,projectNumber,lifecycleState)'
-gcloud billing projects describe "$PROJECT_ID" --format='value(billingEnabled,billingAccountName)'
-gcloud services list --enabled --project="$PROJECT_ID" --format='value(config.name)' | sort
 gcloud container get-server-config --location="$REGION" --project="$PROJECT_ID" \
-  --format='yaml(channels,validMasterVersions[0:8],validNodeVersions[0:8])'
-gcloud compute machine-types list --zones="$ZONE" --project="$PROJECT_ID" \
-  --filter='name~^(c3|n2|n4)-standard-4$' --format='table(name,guestCpus,memoryMb)'
+  --flatten=channels --filter='channels.channel=REGULAR' --format='yaml(channels)'
 ```
-Success: billing enabled; the Regular (or Rapid) channel lists a 1.37 version; the
-machine types are offered in the zone. **Stop if no channel carries 1.37.**
+Success: Regular lists the `CLUSTER_VERSION` of env.sh (1.37.1-gke.1552000 on 13 Nov
+2026), or a newer 1.37 patch (then update env.sh). **Stop if Regular carries no 1.37.**
 
 ### 6.1 Budget, first, so alerts exist before anything bills
 
@@ -373,7 +467,9 @@ gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
 gcloud billing budgets list --billing-account="$BILLING_ACCOUNT" \
   --filter="displayName=$BUDGET_NAME" --format='yaml(displayName,amount,thresholdRules)'
 ```
-Success: the listing shows USD 30 and three thresholds 0.5, 0.9, 1.0. Alerts go by email
+`BILLING_ACCOUNT` is `01DC09-5AAF08-94EFA4`, the project's billing account (section 1);
+confirm it is the one you meant. Success: the listing shows USD 30 and three thresholds
+0.5, 0.9, 1.0. Alerts go by email
 to the billing account's administrators. A budget never stops spending.
 
 ### 6.2 APIs (setup-gcp's list, `cmd/api.go:35-46`)
@@ -404,21 +500,20 @@ gcloud artifacts repositories add-iam-policy-binding "$AR_REPO" --project="$PROJ
 Success: `gcloud artifacts repositories describe "$AR_REPO" --location="$REGION"` shows
 format DOCKER in us-central1.
 
-Pushing the image changes no Docker configuration if it goes through `skopeo` with a
-one-off token on stdin (**guess** that skopeo is acceptable to you; `docker push` would
-need `gcloud auth configure-docker`, which edits `~/.docker/config.json`):
+Pushing the images: you run `gcloud auth configure-docker` yourself (decided; it edits
+`~/.docker/config.json`, which I do not change), then push the two images by their
+committed tags:
 
 ```bash
-IMG="$REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO/meridian-worker"
-gcloud auth print-access-token | skopeo login -u oauth2accesstoken --password-stdin \
-  --authfile "$XDG_RUNTIME_DIR/ar-auth.json" "$REGION-docker.pkg.dev"
-skopeo copy --authfile "$XDG_RUNTIME_DIR/ar-auth.json" \
-  docker-daemon:meridian-worker:<committed tag> "docker://$IMG:<same tag>"
-rm -f "$XDG_RUNTIME_DIR/ar-auth.json"
-gcloud artifacts docker images list "$IMG" --include-tags
+gcloud auth configure-docker us-central1-docker.pkg.dev            # you, once
+AR="$REGION-docker.pkg.dev/$PROJECT_ID/$AR_REPO"
+for img in meridian-agent:0.1.0 meridian-dispatcher:0.1.0; do
+  docker tag "$img" "$AR/$img" && docker push "$AR/$img"
+done
+gcloud artifacts docker images list "$AR" --include-tags --format='table(package,tags,version)'
 ```
-Success: the listing shows the same `sha256:` digest as the committed template
-(`deploy/substrate/templates`).
+Success: both images listed; the agent image's digest is the one the GKE templates will
+name (6.8 renders them for it).
 
 ### 6.4 The cluster (Standard, zonal, setup-gcp's settings) and the system pool
 
@@ -439,7 +534,7 @@ gcloud container clusters describe "$CLUSTER_NAME" --location="$ZONE" \
 gcloud container clusters get-credentials "$CLUSTER_NAME" --location="$ZONE" --dns-endpoint
 kubectl get nodes -o wide
 ```
-Success: version 1.37.x, workload pool `$PROJECT_ID.svc.id.goog`, datapath `ADVANCED_DATAPATH`
+Success: version 1.37.1-gke.1552000 (not Regular's 1.36 default), workload pool `$PROJECT_ID.svc.id.goog`, datapath `ADVANCED_DATAPATH`
 (Dataplane V2, required by Google's install guide), IP endpoints disabled,
 both beta APIs listed, one node Ready. `kubectl` reaches the API only through the DNS
 endpoint. (Managed OpenTelemetry is turned on in 6.7 by setup-gcp's own validator.)
@@ -517,7 +612,7 @@ go run ./cmd/ate-setup deploy ate-system \
   --storage-bucket-name="$BUCKET_NAME" --snapshot-location="gs://$BUCKET_NAME/" \
   --snapshot-transfer-gsa-name="$SNAPSHOT_TRANSFER_GSA_NAME" \
   --credential-provider='{"name":"k8s.io"}' \
-  --ingress-allowed-spiffe-ids=spiffe://cluster.local/ns/meridian/sa/meridian-runner \
+  --ingress-allowed-spiffe-ids=spiffe://cluster.local/ns/meridian-dispatch/sa/dispatcher \
   --sandbox-classes=gvisor \
   --image-repo=ghcr.io/agent-substrate/substrate --image-tag=v1.0.0
 kubectl get pvc -n ate-system data-postgres-0 -o jsonpath='{.status.capacity.storage}{"\n"}'
@@ -528,22 +623,111 @@ node, none on a worker node. (Flags from `cmd/ate-setup/internal/config/setting.
 `commands.md`; ate-setup prints a run report of every setting and its source, read it
 before saying yes. **Guess** that these are the full set for gVisor on GKE.)
 
-### 6.8 Meridian's side (next step's code; listed for completeness)
+### 6.8 Meridian's side: templates, WorkerPool, dispatcher (next step's code)
 
-`meridian substrate deploy` against the GKE context with image references in `$AR_REPO`,
-the WorkerPool rendered with the worker pool's `nodeSelector`/`tolerations`, the
-dispatcher Deployment, then the golden builds and `meridian substrate bucket-check`.
-Success: `bucket-check` lists only `atespaces/meridian/tags/<golden uid>` objects.
+On kind these are `meridian substrate deploy` and `meridian dispatcher deploy`. For GKE
+they need three changes, which the next step makes and tests on kind first. The registry
+becomes `$AR` instead of `localhost:5001`. The WorkerPool gets the worker pool's
+`nodeSelector` (`meridian.dev/pool: substrate`) and toleration
+(`meridian.dev/worker=true:NoSchedule`), both WorkerPool fields. The access policy lists
+only the dispatcher, with no laptop runner identity on GKE and no router patch, since the
+allow-list is set at install (6.7). Then:
 
-### 6.9 Teardown, one script, then the check
+```bash
+meridian dispatcher token                                  # the Secret in meridian-dispatch
+meridian substrate deploy && meridian dispatcher deploy    # with the GKE context and $AR
+meridian dispatcher status                                 # through one port-forward over the DNS endpoint
+meridian substrate bucket-check                            # next step: objects only under atespaces/meridian/tags/<golden uid>
+```
+Success: `status` lists the four zone templates with golden snapshots and free workers 0
+(pool at 0); `bucket-check` lists only golden tag objects. If `status` cannot open the
+port-forward over the DNS endpoint, use 6.11.
+
+### 6.9 The leak check before the safety zone (decided order)
+
+```bash
+# rbqm, quality, quality.audit_trail first; the safety zone stays on kind until this passes
+MERIDIAN_SUBSTRATE__VIA=dispatcher meridian substrate canary --runs 20   # next step: a --zones option, without safety
+gcloud logging read "textPayload:\"$CANARY\" OR jsonPayload.message:\"$CANARY\"" \
+  --project="$PROJECT_ID" --freshness=1d --limit=5         # $CANARY: the string the canary command printed
+# then the same with the safety zone included
+```
+Success: the canary is in none of these:
+- the snapshot bucket (decoded);
+- a worker node's `/var/lib/ate` and pod logs (through a debug pod);
+- the dispatcher pod and its logs;
+- Cloud Logging.
+
+The positive controls must find it. **Only then** does `[runtime.executors]` send
+`safety.sae_reconciler` to Substrate on GKE, and the same check runs with it. The
+canary's GKE searches (the bucket over the GCS API, Cloud Logging) are next step's code;
+on kind it searches rustfs, the kind node, the dispatcher pod and its logs.
+
+### 6.10 Between sessions: park and resume
+
+```bash
+deploy/gke/park.sh                # WorkerPool, worker pool and system pool to 0; bastion stopped; then the check
+deploy/gke/park.sh --check        # what still bills while parked
+WORKERS=12 deploy/gke/resume.sh   # system node back, Substrate's state compared, workers for a pass
+```
+Success, park: the check shows the cluster with 0 nodes, no running instance (a bastion,
+if any, TERMINATED), the 10 GiB Postgres disk unattached, the bucket and the repository,
+and exits 0.
+
+Success, resume:
+- "Postgres claim: same" and "golden tags: same", compared with what park recorded in
+  `var/gke/parked.json` (the uid, volume and size of `data-postgres-0`, and the golden
+  tag uids);
+- every ate-system pod and the dispatcher Ready.
+
+On kind the analogue (everything scaled to 0 and back) kept both claims and all golden
+tags (section 2a). On GKE the node goes too, so atelet restarts with it; resume.sh waits
+for that.
+
+### 6.11 Fallback only: IAP through a bastion with no public IP
+
+Use this only if the port-forward over the DNS endpoint fails (6.8). The dispatcher then
+gets an internal passthrough load balancer in the VPC, reachable only from the bastion,
+and the laptop reaches the bastion through IAP. The bastion is a VM, not a GKE node, so
+the E2 rule does not apply. **Guess** at the cost while up: about USD 0.01 an hour for the
+VM and about 0.025 an hour for the forwarding rule; neither was on the pricing pages read
+for section 5. park.sh stops the bastion; teardown.sh deletes it with its firewall rule
+(the load balancer goes with the cluster).
+
+```bash
+gcloud compute firewall-rules create allow-iap-ssh-bastion --project="$PROJECT_ID" \
+  --network=default --direction=INGRESS --action=allow --rules=tcp:22 \
+  --source-ranges=35.235.240.0/20 --target-tags=iap-bastion
+gcloud compute instances create "$BASTION_NAME" --project="$PROJECT_ID" --zone="$ZONE" \
+  --machine-type=e2-micro --no-address --tags=iap-bastion \
+  --shielded-secure-boot --shielded-integrity-monitoring --boot-disk-size=10GB
+kubectl -n meridian-dispatch expose deployment meridian-dispatcher --name=dispatcher-ilb \
+  --type=LoadBalancer --port=8090 \
+  --overrides='{"metadata":{"annotations":{"networking.gke.io/load-balancer-type":"Internal"}}}'
+# allow the bastion's internal IP through the namespace's default-deny ingress policy, then:
+gcloud compute ssh "$BASTION_NAME" --zone="$ZONE" --tunnel-through-iap -- \
+  -N -L 18090:"$(kubectl -n meridian-dispatch get svc dispatcher-ilb -o jsonpath='{.status.loadBalancer.ingress[0].ip}')":8090
+```
+Success: `curl -s http://127.0.0.1:18090/healthz` answers `"ok"` on the laptop, and an
+unauthenticated `curl http://127.0.0.1:18090/v1/actors` answers 401. The executor then
+uses `127.0.0.1:18090` instead of the port-forward (a setting the next step adds).
+
+### 6.12 Teardown, one script, then the check
 
 ```bash
 deploy/gke/teardown.sh          # asks for the project id, deletes, then checks
 deploy/gke/teardown.sh --check  # any time: lists what is left, changes nothing
 ```
-Success: the check prints `none` for clusters, instances, disks, snapshots, images,
-addresses, forwarding rules, routers, buckets and repositories, and exits 0. The next
-day's billing report (by SKU) shows no charge after the teardown hour.
+Success: the check exits 0 and prints `none` for each of these:
+- clusters, and instances including the bastion;
+- disks, snapshots and images;
+- addresses, forwarding rules and routers;
+- buckets and repositories.
+
+The next day's billing report (by SKU) shows no charge after the teardown hour. All three
+scripts share `deploy/gke/lib.sh`. Their checks were exercised against a stubbed `gcloud`
+in three states (parked, a node running, everything gone): park's check passes only with
+no running node, and teardown's only with nothing left.
 
 ## 7. Measurement plan against kind
 
@@ -552,14 +736,15 @@ docs/phase4a-summary.md and docs/substrate-eval.md.
 
 | Measure | How | kind baseline |
 |---|---|---|
-| One run, p50 and p95 | 100 sequential `rbqm.kri_monitor` runs on DC-BASE (`meridian substrate bench`, the step 3 bench), warm worker node | 1.20 s / 1.30 s |
+| One run, p50 and p95 | 100 sequential `rbqm.kri_monitor` runs on DC-BASE (`meridian substrate bench`), warm worker node | dispatcher on kind: about 0.5 s (direct 1.20 / 1.30 s) |
 | Per-phase breakdown | The dispatcher's timings per phase (tunnel request, create, resume, POST /run, read-back, delete), plus the laptop's round trip; tells WAN from Substrate | resume 225 ms p50 on kind |
-| Concurrency | 200 runs at 1, 4, 8, 12, 16, 24, 32 at a time; p50, p95 and runs per second at each; one worker node then two | 16 at once: 3.52 s / 5.57 s; plateau near 12 |
-| Full pass | `agents run --rerun --all-cuts` on the four zones, 12 at a time, then the best concurrency from the sweep; wall-clock, failed runs, p50 and p95 | 910 runs, 0 failed, 198.4 s; p50 2.56 s, p95 3.07 s |
+| Concurrency | 200 runs at 1, 4, 8, 12, 16, 24, 32 at a time; p50, p95 and runs per second at each; **one worker node then two** (tests the atelet guess) | dispatcher on kind: 10 to 11 runs/s from 8 up (section 2a) |
+| Full pass | `agents run --rerun --all-cuts` on the four zones, 12 at a time, then the best concurrency from the sweep; wall-clock, failed runs, p50 and p95 | dispatcher on kind: 81.3 s at 12 (p50 1.12, p95 1.33 s), 84.3 s at 16; direct 4a 198.4 s |
 | Cold start | First run after scaling the WorkerPool from 0: node provisioning, image pull, first restore from GCS | n/a on kind |
 | Determinism | The full pass's ledger compared with kind's (same findings, same drafts per run, C2) | 12 of 12 drafts byte-identical |
 | Cost per run | (worker node-hours + system node-hours + disks + egress over the pass's window) / runs, from the billing export's SKU lines for that day; the estimate in section 5 is the prediction | n/a |
-| Tunnel limit | Runs per second against the number of port-forwards (1, 2, 4) at the best concurrency | n/a |
+| Tunnel limit | Runs per second against the number of port-forwards (1, 2, 4) at the best concurrency; over the WAN it may matter where on kind it did not | kind: none (10.7, 10.3, 10.5 runs/s) |
+| Preemption | Delete a worker node mid-pass (or wait for a real preemption): the runs on it fail once and succeed on retry, the ledger shows the lost attempt | simulated in tests only |
 
 Done when: the full pass on GKE gives the same ledger findings as kind, the bucket proof and
 the canary pass, and the numbers above are in docs/substrate-eval.md with the day's bill.
@@ -586,8 +771,8 @@ the canary pass, and the numbers above are in docs/substrate-eval.md with the da
 6. **The port-forward tunnel** may drop (idle timeouts, a control plane upgrade) or cap
    throughput. The executor reconnects and retries a request whose answer it did not get;
    a retried run is a new actor, so a half-finished run leaves nothing but a deleted actor.
-   The dispatcher must make "same run id twice" safe (it deletes any actor of that run
-   first).
+   As built, the dispatcher deletes any actor of that name before a run, so "same run
+   twice" is safe; the fallback for a tunnel that does not work at all is 6.11.
 7. **The 500 GiB Postgres claim** if the pre-created claim is missed: about USD 50 a month
    on `pd-balanced` (section 5). The teardown check catches it; the install step checks the
    claim's size before going on.
@@ -608,31 +793,32 @@ the canary pass, and the numbers above are in docs/substrate-eval.md with the da
 12. **Region and data**: us-central1 for subject-level data needs a sponsor's privacy review
     in a real trial (section 3, threat model change 1).
 
-## Open questions
+## Decisions (step 2) and open questions
 
-1. **Log in to gcloud** (`! gcloud auth login` and `! gcloud auth application-default
-   login`), then I run section 6.0's read-only checks and fill section 1. Which billing
-   account should the budget go on, and does any other GKE cluster on it already use the
-   free tier credit (that adds USD 0.10 an hour)?
-2. **Machine type**: Google's guide says "c3-standard-4 or larger" and also names N2 and N4
-   as series. Is `c3-standard-4` your reading too? `n2-standard-4` on-demand would save
-   USD 0.007 an hour on the system node; on Spot, C3 is the cheapest.
-3. **Spot on the worker pool** goes against substrate-gke's and Google's advice for
-   *stateful* workers. Ours never suspend. Spot, or on-demand (0.13 an hour more while
-   running)?
-4. **Session or always-on**: tear down after each session (recommended; about USD 0.46 a
-   session) or park the cluster with the system pool at 0 (about USD 1 a month, keeps the
-   golden snapshots and Postgres)? Left up, it is USD 157 a month, five times the budget.
-5. **Data**: subject-level safety data (synthetic) will be in Google's us-central1 during
-   runs. Are you comfortable with that, and should the canary's Cloud Logging search be a
-   gate before the safety zone moves?
-6. **The dispatcher** (topology A) is new code. Build it in the next step against kind
-   first, as proposed? Or start with option B (today's executor, unchanged) to measure GKE
-   sooner and accept the throughput limit?
-7. **Pushing images** without editing `~/.docker/config.json`: is `skopeo` acceptable (6.3),
-   or do you want to run `gcloud auth configure-docker` yourself?
-8. **Port-forward over the DNS endpoint** is not documented either way by Google (searched;
-   not found). If it fails, the fallback is IAP TCP forwarding through a small bastion VM
-   (IAP TCP forwarding is free; **guess** USD 0.01 to 0.03 an hour for a small VM; it is a VM, not a
-   node, so the E2 rule does not apply) rather than Connect gateway (10 streams, sessions
-   end after 20 to 30 minutes). Agreed?
+Decided by you after step 1:
+
+- **Machine type:** C3 if the guide names it, and it does (section 1).
+- **Spot:** for the worker pool, with one retry on a new actor; the system pool on-demand.
+- **Between sessions:** park; teardown at the end of phase 4b or before an idle week.
+- **Data in us-central1:** acceptable. The leak check must pass for the other three zones
+  before the safety zone moves (6.9).
+- **Dispatcher:** built and measured on kind first (section 2a).
+- **Images:** you run `gcloud auth configure-docker` yourself; no skopeo.
+- **Fallback:** the IAP bastion with no public IP, included in teardown.sh and park.sh.
+
+Open:
+
+1. **Billing account and free tier.** Your answer arrived with its placeholders unfilled
+   (`<ID or name>`, `<not used by any other cluster / used>`). The project bills to
+   `01DC09-5AAF08-94EFA4`. Is that the account for the budget? And does any GKE cluster in
+   the other project on it use the free tier credit? If so, add USD 0.10 an hour (section 5).
+2. **The next step's code for GKE** (6.8, 6.9). It covers four pieces:
+   - the GKE registry and WorkerPool placement;
+   - the dispatcher alone in the access policy;
+   - `bucket-check`;
+   - the canary's GCS and Cloud Logging searches, with a `--zones` option.
+
+   Should all of it go on kind first?
+3. **The direct runner identity on kind.** The access policy keeps the laptop's
+   `meridian-runner` as editor, so the direct executor stays available for comparisons.
+   Should it be removed once GKE runs through the dispatcher?

@@ -263,3 +263,25 @@ MemAvailable. Raw: var/substrate/fullpass/.
 - The local narrator could not finish: with phi4-mini loaded, llama-server peaks at 3.65 GB
   and host memory fell below 1.5 GB in 90 to 110 s, even with the pool at 0
   (docs/phase4a-summary.md). 104 of 173 local narrations were recorded; 69 stay pending.
+
+## Phase 4b step 2: through the in-cluster dispatcher
+
+The proofs and measurements of the dispatcher on kind are in docs/gke-plan.md section 2a.
+In brief:
+
+- **C1 canary** (20 runs): found nowhere, including the dispatcher's pod filesystem and
+  logs.
+- **C2:** 12 of 12 pairs byte-identical.
+- **C3:** passes in all 4 zones, plus an actor-to-dispatcher probe, refused.
+- **Unauthenticated requests:** 401.
+- **Audit reviewer:** accepts the dispatched runs.
+- **Full pass:** 81.3 s at 12 workers (p50 1.12 s, p95 1.33 s), against 198.4 s direct;
+  84.3 s at 16.
+- **Throughput limit:** levels off at 10 to 11 runs/s, set by Substrate's own path on the
+  single kind node (not the tunnel, the dispatcher's CPU or host CPU).
+
+Raw data:
+- `var/substrate/canary-dispatcher.json`;
+- `var/substrate/bench-dispatcher.jsonl`;
+- `var/substrate/fullpass-dispatcher/` (`pass12.json`, `pass16.json`, the runner's output);
+- ledger seq 8491 to 12133.

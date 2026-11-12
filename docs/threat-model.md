@@ -120,6 +120,30 @@ and finds the string in that snapshot, so the search would see a leak.
 Snapshots are not encrypted and the kind install's rustfs uses its default credentials,
 acceptable only because no data snapshot should exist.
 
+**The dispatcher (phase 4b step 2, on kind).** With `[substrate] via = "dispatcher"` the
+laptop holds no Substrate token. Each run goes, through one `kubectl port-forward`, to
+`meridian-dispatcher` in namespace `meridian-dispatch`. That service runs as its own
+ServiceAccount, editor on the atespace only, and it creates, resumes, calls and deletes
+the actor in the cluster. What changes:
+- The suspend guard now lives in the dispatcher's client (DISPATCHER_VERBS: create,
+  resume, get, delete; proxy is refused too). A compromised laptop process can send runs
+  but cannot suspend, revert or tag. The remaining gap is the dispatcher's own code, since
+  Substrate v1.0.0 still lets an editor suspend.
+- The laptop and the dispatcher authenticate each other with a shared token: a bearer
+  token with a nonce one way, an HMAC proof of nonce and body the other
+  (meridian.sandbox.dispatch). The token sits in a 0600 file outside the repository and in
+  a Secret. A request without it is refused with 401 before anything runs.
+- atenet-router admits the dispatcher's SPIFFE ID; on kind also `ate-system/atenet-client`,
+  for the direct executor.
+- The inputs pass through the dispatcher's memory only. Its root filesystem is read-only,
+  its `/tmp` is in memory, and it logs no bodies. The canary searched its pod filesystem
+  and logs as well as the bucket and the node, and found nothing; the planted positive
+  control was found.
+- Actors cannot reach the dispatcher: conformance probe `egress_dispatcher` is refused in
+  every zone.
+
+Evidence and numbers: docs/gke-plan.md section 2a.
+
 ## Other controls, briefly
 
 * Agents get no ledger access and no credentials: the host runner is the only ledger
