@@ -44,6 +44,7 @@ from meridian.api.models import (
     DecisionResponse,
     DecisionView,
     Enrollment,
+    EvidenceChangedSince,
     FindingDetail,
     FindingPage,
     FindingStatus,
@@ -58,6 +59,7 @@ from meridian.api.models import (
     ObservationResponse,
     Portfolio,
     PortfolioAsset,
+    PreviousDecision,
     RbqmSites,
     Reconciliation,
     ReviewQueue,
@@ -167,6 +169,11 @@ class Snapshot:
     # finding id -> the newer agent version that completed a run on the finding's cut
     # and raised nothing with the same (kind, site, check).
     retired_by: dict[str, str] = field(default_factory=dict)
+    # finding id -> the closing decision on an earlier version's finding with the same
+    # (agent, cut, kind, site, check), for a finding with no decision of its own. Split by
+    # whether the primary evidence is unchanged since that decision.
+    previously_decided: dict[str, PriorDecision] = field(default_factory=dict)
+    changed_since: dict[str, PriorDecision] = field(default_factory=dict)
 
     @classmethod
     def build(cls, entries: Sequence[LedgerEntry], role: Role) -> Snapshot:
@@ -221,6 +228,7 @@ class Snapshot:
                 snap.decisions[e.payload.decision.finding_id].append(e)
         snap.superseded_by = _supersession(snap.raised.values())
         snap.retired_by = _retirement(snap)
+        snap.previously_decided, snap.changed_since = _prior_decisions(snap)
         return snap
 
     def decided(self, finding_id: str) -> FindingStatus:
@@ -244,6 +252,15 @@ class Snapshot:
         ids = (visibility.observation_id_of(r.finding) for r in self.raised.values())
         return {i for i in ids if i is not None}
 
+    def closing_decision(self, finding_id: str) -> Event | None:
+        """The finding's latest decision when it accepted or dismissed it, else None."""
+        history = self.decisions.get(finding_id, [])
+        if not history:
+            return None
+        last = history[-1].payload
+        assert isinstance(last, HumanDecision)
+        return history[-1] if last.decision.action in CLOSED else None
+
     def current(self, finding_id: str) -> bool:
         """Newest version's finding, still raised by the newest run: neither superseded
         nor retired."""
@@ -262,6 +279,40 @@ def _decision_view(e: Event) -> DecisionView:
         role=d.role,
         action=d.action,
         reason=d.reason,
+    )
+
+
+def _prior_view(p: PriorDecision | None) -> PreviousDecision | None:
+    if p is None:
+        return None
+    e = p.decision
+    assert isinstance(e.payload, HumanDecision)
+    d = e.payload.decision
+    return PreviousDecision(
+        finding_id=p.finding_id,
+        agent_version=p.agent_version,
+        action=d.action,
+        actor=d.actor,
+        role=d.role,
+        reason=d.reason,
+        recorded_at=e.recorded_at,
+        seq=e.seq,
+        primary_evidence_sha256=p.evidence_sha256,
+    )
+
+
+def _changed_view(p: PriorDecision | None, f: Finding) -> EvidenceChangedSince | None:
+    view = _prior_view(p)
+    if p is None or view is None:
+        return None
+    now = primary_displays(f)
+    return EvidenceChangedSince(
+        decision=view,
+        before=p.evidence,
+        after=now,
+        removed=[x for x in p.evidence if x not in now],
+        added=[x for x in now if x not in p.evidence],
+        primary_evidence_sha256=primary_evidence_sha256(f),
     )
 
 
@@ -395,6 +446,71 @@ def _retirement(snap: Snapshot) -> dict[str, str]:
     return out
 
 
+def primary_displays(f: Finding) -> list[str]:
+    """Display strings of the primary evidence, described the same way for old findings."""
+    return [e.display for e in describe(f.evidence) if e.role == "primary" and e.display]
+
+
+def primary_evidence_sha256(f: Finding) -> str:
+    """Canonical hash of the primary evidence: its display values, sorted (an order change
+    between agent versions is not a change of evidence), as compact JSON."""
+    canonical = json.dumps(sorted(primary_displays(f)), separators=(",", ":"), ensure_ascii=False)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True, slots=True)
+class PriorDecision:
+    """A person's closing decision on an earlier version's finding with the same identity."""
+
+    finding_id: str
+    agent_version: str
+    decision: Event  # the HumanDecision that accepted or dismissed it
+    evidence: list[str]  # that finding's primary evidence display values
+    evidence_sha256: str
+
+
+def _prior_decisions(
+    snap: Snapshot,
+) -> tuple[dict[str, PriorDecision], dict[str, PriorDecision]]:
+    """For each finding nobody has decided: the latest closing decision (accepted or
+    dismissed, by ledger seq) on a finding an earlier version of the same agent raised with
+    the same (cut, kind, site, check). Unchanged primary evidence (equal canonical hashes,
+    and not empty) puts the finding in the first map, which keeps it out of the queue;
+    otherwise in the second, so its page can show what changed. An earlier finding that is
+    open or escalated never counts. Derived at read time over what the caller may see; no
+    event is rewritten."""
+    groups: dict[tuple[str, str, str, str, str], list[_Raised]] = defaultdict(list)
+    for r in snap.raised.values():
+        f = r.finding
+        groups[(f.agent_id, r.cut_id, f.kind.value, f.site_id or "STUDY", r.check)].append(r)
+    unchanged: dict[str, PriorDecision] = {}
+    changed: dict[str, PriorDecision] = {}
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        closed = [(r, d) for r in members if (d := snap.closing_decision(r.finding_id))]
+        if not closed:
+            continue
+        for r in members:
+            if snap.decisions.get(r.finding_id):
+                continue  # its own decisions govern it
+            own = _version(r.finding.agent_version)
+            earlier = [(e, d) for e, d in closed if _version(e.finding.agent_version) < own]
+            if not earlier:
+                continue
+            e, d = max(earlier, key=lambda pair: pair[1].seq)
+            prior = PriorDecision(
+                finding_id=e.finding_id,
+                agent_version=e.finding.agent_version,
+                decision=d,
+                evidence=primary_displays(e.finding),
+                evidence_sha256=primary_evidence_sha256(e.finding),
+            )
+            same = prior.evidence and prior.evidence_sha256 == primary_evidence_sha256(r.finding)
+            (unchanged if same else changed)[r.finding_id] = prior
+    return unchanged, changed
+
+
 RECONCILER = "safety.sae_reconciler"
 
 
@@ -425,11 +541,13 @@ ScopeFilter = Literal["operational", "evaluation", "all"]
 
 @dataclass(frozen=True, slots=True)
 class FindingFilters:
-    """Defaults: operational cuts only, superseded findings left out."""
+    """Defaults: operational cuts only; superseded, retired and previously decided findings
+    left out."""
 
     scope: ScopeFilter = "operational"
     include_superseded: bool = False
     include_retired: bool = False
+    include_previously_decided: bool = False
     cut: str | None = None
     agent: str | None = None
     kind: str | None = None
@@ -504,9 +622,9 @@ class Repository:
             superseded_by=snap.superseded_by.get(r.finding_id),
             retired=r.finding_id in snap.retired_by,
             retired_by_version=snap.retired_by.get(r.finding_id),
-            primary_evidence=[
-                e.display for e in describe(f.evidence) if e.role == "primary" and e.display
-            ],
+            previously_decided=_prior_view(snap.previously_decided.get(r.finding_id)),
+            evidence_changed_since=_changed_view(snap.changed_since.get(r.finding_id), f),
+            primary_evidence=primary_displays(f),
             kind=f.kind,
             site_id=f.site_id,
             severity=f.severity,
@@ -588,6 +706,8 @@ class Repository:
             if not filters.include_superseded and r.finding_id in snap.superseded_by:
                 continue
             if not filters.include_retired and r.finding_id in snap.retired_by:
+                continue
+            if not filters.include_previously_decided and r.finding_id in snap.previously_decided:
                 continue
             if filters.cut is not None and r.cut_id != filters.cut:
                 continue
@@ -728,7 +848,8 @@ class Repository:
 
     def review_queue(self, filters: FindingFilters | None = None) -> ReviewQueue:
         """Open and escalated findings, newest first; by default operational cuts only and
-        no superseded findings, so evaluation cuts never reach it unless asked for."""
+        no superseded, retired or previously decided findings, so evaluation cuts never
+        reach it unless asked for."""
         snap = self.snapshot()
         items = [
             self._summary(r)

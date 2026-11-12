@@ -85,6 +85,7 @@ def findings(
     scope: Scope = "operational",
     include_superseded: bool = False,
     include_retired: bool = False,
+    include_previously_decided: bool = False,
     cut: str | None = None,
     agent: str | None = None,
     kind: FindingKind | None = None,
@@ -95,11 +96,13 @@ def findings(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> FindingPage:
     """Newest first (ledger seq descending). By default only operational cuts and no
-    superseded findings; widen with scope=all and include_superseded=true."""
+    superseded, retired or previously decided findings; widen with scope=all and the
+    include_ flags."""
     filters = FindingFilters(
         scope=scope,
         include_superseded=include_superseded,
         include_retired=include_retired,
+        include_previously_decided=include_previously_decided,
         cut=cut,
         agent=agent,
         kind=None if kind is None else kind.value,
@@ -128,12 +131,18 @@ def review_queue(
     scope: Scope = "operational",
     include_superseded: bool = False,
     include_retired: bool = False,
+    include_previously_decided: bool = False,
 ) -> ReviewQueue:
     """Open and escalated findings the caller may see, newest first. By default only
-    operational cuts (never evaluation cuts), and no superseded or retired findings."""
+    operational cuts (never evaluation cuts), and no superseded, retired or previously
+    decided findings (a person closed the same finding from an earlier agent version and
+    its primary evidence is unchanged)."""
     return repo.review_queue(
         FindingFilters(
-            scope=scope, include_superseded=include_superseded, include_retired=include_retired
+            scope=scope,
+            include_superseded=include_superseded,
+            include_retired=include_retired,
+            include_previously_decided=include_previously_decided,
         )
     )
 

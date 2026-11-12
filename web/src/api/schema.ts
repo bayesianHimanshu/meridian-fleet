@@ -14,7 +14,8 @@ export interface paths {
         /**
          * Findings
          * @description Newest first (ledger seq descending). By default only operational cuts and no
-         *     superseded findings; widen with scope=all and include_superseded=true.
+         *     superseded, retired or previously decided findings; widen with scope=all and the
+         *     include_ flags.
          */
         get: operations["findings_api_v1_findings_get"];
         put?: never;
@@ -278,7 +279,9 @@ export interface paths {
         /**
          * Review Queue
          * @description Open and escalated findings the caller may see, newest first. By default only
-         *     operational cuts (never evaluation cuts), and no superseded or retired findings.
+         *     operational cuts (never evaluation cuts), and no superseded, retired or previously
+         *     decided findings (a person closed the same finding from an earlier agent version and
+         *     its primary evidence is unchanged).
          */
         get: operations["review_queue_api_v1_review_queue_get"];
         put?: never;
@@ -1008,6 +1011,24 @@ export interface components {
             value: number;
         };
         /**
+         * EvidenceChangedSince
+         * @description The primary evidence differs from the finding a person already closed: before and
+         *     after are the display values, removed and added the difference.
+         */
+        EvidenceChangedSince: {
+            /** Added */
+            added: string[];
+            /** After */
+            after: string[];
+            /** Before */
+            before: string[];
+            decision: components["schemas"]["PreviousDecision"];
+            /** Primary Evidence Sha256 */
+            primary_evidence_sha256: string;
+            /** Removed */
+            removed: string[];
+        };
+        /**
          * Finding
          * @description Something an agent believes a human should look at.
          *
@@ -1249,6 +1270,7 @@ export interface components {
             decide_blocked_reason?: string | null;
             /** Decision Count */
             decision_count: number;
+            evidence_changed_since?: components["schemas"]["EvidenceChangedSince"] | null;
             /** Finding Id */
             finding_id: string;
             kind: components["schemas"]["FindingKind"];
@@ -1258,6 +1280,7 @@ export interface components {
              * @default false
              */
             may_decide: boolean;
+            previously_decided?: components["schemas"]["PreviousDecision"] | null;
             /** Primary Evidence */
             primary_evidence: string[];
             /**
@@ -1589,6 +1612,32 @@ export interface components {
             asset_id: string;
             live: components["schemas"]["AssetLive"] | null;
             static: components["schemas"]["AssetStatic"];
+        };
+        /**
+         * PreviousDecision
+         * @description A person's decision (accepted or dismissed) on the finding an earlier version of the
+         *     same agent raised with the same (cut, kind, site, check).
+         */
+        PreviousDecision: {
+            action: components["schemas"]["DecisionAction"];
+            /** Actor */
+            actor: string;
+            /** Agent Version */
+            agent_version: string;
+            /** Finding Id */
+            finding_id: string;
+            /** Primary Evidence Sha256 */
+            primary_evidence_sha256: string;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Recorded At
+             * Format: date-time
+             */
+            recorded_at: string;
+            role: components["schemas"]["Role"];
+            /** Seq */
+            seq: number;
         };
         /**
          * QtlView
@@ -2089,6 +2138,7 @@ export interface operations {
                 scope?: "operational" | "evaluation" | "all";
                 include_superseded?: boolean;
                 include_retired?: boolean;
+                include_previously_decided?: boolean;
                 cut?: string | null;
                 agent?: string | null;
                 kind?: components["schemas"]["FindingKind"] | null;
@@ -2572,6 +2622,7 @@ export interface operations {
                 scope?: "operational" | "evaluation" | "all";
                 include_superseded?: boolean;
                 include_retired?: boolean;
+                include_previously_decided?: boolean;
             };
             header?: {
                 /** @description Person id from config/people.toml (development only). */
