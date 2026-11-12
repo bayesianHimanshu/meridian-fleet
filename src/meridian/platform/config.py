@@ -231,6 +231,25 @@ class SubstrateSettings(BaseModel):
     api_audience: str = "api.ate-system.svc"  # the audience ate-api-server accepts
     # A run that finds no free worker (ResourceExhausted) waits and retries this long.
     placement_wait_seconds: float = Field(120.0, ge=0)
+    # Phase 4b step 2. via: who drives a run. "direct": the laptop calls kubectl ate per
+    # verb and opens one kubectl ate proxy per run (phase 4a). "dispatcher": the laptop
+    # sends each run to the in-cluster dispatcher through one long-lived port-forward and
+    # holds no Substrate token. The dispatcher runs in its own namespace as its own
+    # ServiceAccount (editor on the atespace only); its image is pinned by digest in
+    # deploy/dispatcher/dispatcher.yaml. The laptop's half of the shared token lives
+    # outside the repository (dispatcher_token_file, 0600).
+    via: Literal["direct", "dispatcher"] = "direct"
+    dispatcher_namespace: str = "meridian-dispatch"
+    dispatcher_service_account: str = "dispatcher"
+    dispatcher_deployment: str = "meridian-dispatcher"
+    dispatcher_port: int = Field(8090, ge=1024, le=65535)
+    dispatcher_token_file: Path = Path("~/.config/meridian/dispatcher.token")
+    dispatcher_deploy_dir: Path = Path("deploy/dispatcher")
+    # The CONNECT listener of atenet-router and ate-api-server's in-cluster address.
+    router_address: str = "https://atenet-router.ate-system.svc:8444"
+    api_endpoint: str = "api.ate-system.svc:443"
+    # A run is retried once on a new actor when its worker was lost (Spot preemption).
+    worker_lost_retries: int = Field(1, ge=0, le=1)
 
 
 class ApiSettings(BaseModel):

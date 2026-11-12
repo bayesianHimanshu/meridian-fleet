@@ -71,6 +71,9 @@ RUNNER_VERBS: frozenset[tuple[str, str]] = frozenset(
         ("delete", "actor"),
     }
 )
+# The in-cluster dispatcher's allow-list (phase 4b step 2): the runner's, less the proxy
+# (it reaches actors through atenet-router with its own certificate, not `proxy actor`).
+DISPATCHER_VERBS: frozenset[tuple[str, str]] = RUNNER_VERBS - {("proxy", "actor")}
 
 
 class SubstrateClient(Protocol):
@@ -105,15 +108,21 @@ class KubectlAteClient:
         timeout_seconds: float = 120.0,
         token_file: Callable[[], Path] | None = None,
         allowed: frozenset[tuple[str, str]] | None = None,
+        argv0: Sequence[str] | None = None,
+        endpoint: str | None = None,
     ) -> None:
         """token_file returns a current token file (the runner's identity); None acts as
-        the shared bootstrap identity. allowed, if given, is the verb allow-list."""
+        the shared bootstrap identity. allowed, if given, is the verb allow-list. argv0
+        replaces `kubectl ate` (the dispatcher runs the kubectl-ate binary itself) and
+        endpoint names ate-api-server directly instead of a port-forward."""
         self._atespace = atespace
         self._kubectl = kubectl
         self._context = context
         self._timeout = timeout_seconds
         self._token_file = token_file
         self._allowed = allowed
+        self._argv0 = list(argv0) if argv0 is not None else [kubectl, "ate"]
+        self._endpoint = endpoint
 
     @property
     def atespace(self) -> str:
@@ -124,7 +133,9 @@ class KubectlAteClient:
         return self._allowed is not None
 
     def _base(self) -> list[str]:
-        base = [self._kubectl, "ate"]
+        base = list(self._argv0)
+        if self._endpoint:
+            base += ["--endpoint", self._endpoint]
         if self._context:
             base += ["--context", self._context]
         if self._token_file is not None:

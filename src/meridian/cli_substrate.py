@@ -35,6 +35,16 @@ def _fail(exc: Exception, code: int = 1) -> typer.Exit:
     return typer.Exit(code=code)
 
 
+def access_principals(settings: Settings) -> list[str]:
+    """Who is editor on the atespace: the laptop runner (direct runs; kind only) and the
+    in-cluster dispatcher (phase 4b step 2)."""
+    from meridian.sandbox.dispatcher_deploy import principal
+    from meridian.sandbox.substrate_templates import runner_principal
+
+    s = settings.substrate
+    return [runner_principal(s.namespace, s.runner_service_account), principal(s)]
+
+
 def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
     from meridian.sandbox.substrate_templates import (
         ACCESS_POLICY_FILE,
@@ -74,7 +84,7 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
     sa = s.runner_service_account
     (root / RUNNER_FILE).write_text(render_runner(s.namespace, sa), encoding="utf-8")
     (root / ACCESS_POLICY_FILE).write_text(
-        render_access_policy(s.atespace, s.namespace, sa), encoding="utf-8"
+        render_access_policy(s.atespace, access_principals(settings)), encoding="utf-8"
     )
     written += [root / RUNNER_FILE, root / ACCESS_POLICY_FILE]
     return written
@@ -136,7 +146,7 @@ def substrate_deploy(
                 s.atespace,
                 s.deploy_dir / RUNNER_FILE,
                 s.deploy_dir / ACCESS_POLICY_FILE,
-                access_policy_spec(s.namespace, s.runner_service_account)["bindings"],
+                access_policy_spec(access_principals(settings))["bindings"],
             )
             typer.echo(f"runner identity and access policy: {outcome}")
             names = [

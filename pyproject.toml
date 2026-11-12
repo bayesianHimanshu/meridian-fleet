@@ -21,6 +21,7 @@ meridian = "meridian.cli:app"
 meridian-worker = "meridian.worker:entry"
 meridian-narrator-worker = "meridian.narrator_worker:entry"
 meridian-local-model-worker = "meridian.local_model_worker:entry"
+meridian-dispatcher = "meridian.dispatcher_serve:entry"
 
 [dependency-groups]
 # The Fleet API (meridian api serve). Host only: the agent image is exported with

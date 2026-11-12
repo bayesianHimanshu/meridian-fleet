@@ -28,6 +28,7 @@ from meridian.ledger.store import SqliteLedger
 from meridian.platform.clock import Clock, SystemClock
 from meridian.platform.config import LocalModelSettings, Settings
 from meridian.sandbox import image
+from meridian.sandbox.dispatcher_executor import DispatcherClient, PortForward
 from meridian.sandbox.executor import (
     OPENSHELL,
     ExecutionError,
@@ -65,6 +66,8 @@ class Container:
     ledger: SqliteLedger
     # One runner token per container (minted on first use, shared by its clients).
     _tokens: dict[str, ServiceAccountToken] = field(default_factory=dict, repr=False)
+    # Phase 4b step 2: the one port-forward to the dispatcher, opened on first use.
+    _tunnels: dict[str, PortForward] = field(default_factory=dict, repr=False)
 
     @classmethod
     def build(cls, settings: Settings, clock: Clock | None = None) -> Self:
@@ -347,7 +350,89 @@ class Container:
         wanted = self.substrate_policies() if policies is None else list(policies)
         return {p: load_template(client, deploy_dir, p) for p in wanted}
 
+    def dispatcher_tunnel(self) -> PortForward:
+        """The long-lived `kubectl port-forward` to the dispatcher (one per container)."""
+        if "dispatcher" not in self._tunnels:
+            s = self.settings.substrate
+            self._tunnels["dispatcher"] = PortForward(
+                [
+                    s.kubectl,
+                    "--context",
+                    s.context,
+                    "-n",
+                    s.dispatcher_namespace,
+                    "port-forward",
+                    f"deployment/{s.dispatcher_deployment}",
+                    f"0:{s.dispatcher_port}",
+                ]
+            )
+        return self._tunnels["dispatcher"]
+
+    def dispatcher_client(self) -> DispatcherClient:
+        """The dispatcher, through the tunnel, authenticated with the laptop's token."""
+        from meridian.sandbox.dispatcher_executor import read_token
+
+        s = self.settings.substrate
+        tunnel = self.dispatcher_tunnel()
+        return DispatcherClient(
+            address=tunnel.address,
+            token=read_token(s.dispatcher_token_file),
+            timeout=s.request_timeout_seconds + s.placement_wait_seconds + 30,
+            on_transport_error=tunnel.restart,
+            atespace=s.atespace,
+        )
+
     def substrate_executor(
+        self,
+        log: structlog.typing.FilteringBoundLogger,
+        client: SubstrateClient | None = None,
+        policies: Sequence[str] | None = None,
+    ) -> SubstrateExecutor:
+        """The Substrate executor [substrate] via names: the laptop drives each actor
+        (direct) or the in-cluster dispatcher does (dispatcher; no Substrate token here).
+        A client passed in (the proofs' bootstrap identity) always means direct."""
+        if client is None and self.settings.substrate.via == "dispatcher":
+            return self.dispatcher_executor(log, policies)
+        return self._direct_executor(log, client, policies)
+
+    def dispatcher_executor(
+        self, log: structlog.typing.FilteringBoundLogger, policies: Sequence[str] | None = None
+    ) -> SubstrateExecutor:
+        from meridian.sandbox.dispatcher_deploy import MANIFEST, committed_image
+        from meridian.sandbox.dispatcher_executor import DispatcherExecutor
+        from meridian.sandbox.image import REVISION_LABEL
+        from meridian.sandbox.substrate_deploy import (
+            registry_config_digest,
+            registry_image_labels,
+        )
+
+        self.check_substrate_release()
+        s = self.settings.substrate
+        dispatcher = self.dispatcher_client()
+        templates = self.substrate_templates(dispatcher, policies)
+        images = {t.image for t in templates.values()}
+        if len(images) != 1:
+            raise ExecutionError(f"the substrate templates name {len(images)} images: {images}")
+        image_ref = images.pop()
+        return DispatcherExecutor(
+            dispatcher=dispatcher,
+            dispatcher_image=committed_image(s.dispatcher_deploy_dir / MANIFEST),
+            registry=self.agent_registry(),
+            settings=s,
+            templates=templates,
+            image_digest=registry_config_digest(image_ref),
+            image_source_commit=registry_image_labels(image_ref).get(REVISION_LABEL),
+            study_root=self.settings.curated_root / self.settings.study_id,
+            tracker=SandboxTracker(s.actors_log, self.clock),
+            log=log,
+            safety_root=self.settings.safety_root / self.settings.study_id,
+            etmf_root=self.settings.etmf_root / self.settings.study_id,
+            audit_root=self.settings.audit_root,
+            delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
+            placement_wait_seconds=s.placement_wait_seconds,
+        )
+
+    def _direct_executor(
         self,
         log: structlog.typing.FilteringBoundLogger,
         client: SubstrateClient | None = None,
@@ -432,6 +517,8 @@ class Container:
         return ScorecardStore(self.settings.evals_dir)
 
     def close(self) -> None:
+        for tunnel in self._tunnels.values():
+            tunnel.close()
         self.ledger.close()
 
     def __enter__(self) -> Self:
