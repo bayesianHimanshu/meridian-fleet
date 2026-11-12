@@ -67,7 +67,13 @@ def test_inject_run_agents_and_report_on_real_data(tmp_path: Path) -> None:
         assert injected.cut_created
         report = c.agent_runner(structlog.get_logger()).run_pending()
         assert report.failed == []
-        assert len(report.completed) == 6
+        # Every enabled DataCut agent on both cuts (3 rbqm agents in phase 1; with
+        # safety.sae_reconciler and quality.tmf_completeness since phase 3, 5).
+        on_cuts = [
+            r for r in c.agent_registry().enabled() if EventType.DATA_CUT in r.agent.subscribes_to
+        ]
+        assert len(on_cuts) == 5
+        assert len(report.completed) == 2 * len(on_cuts)
         again = c.agent_runner(structlog.get_logger()).run_pending()
         assert again.completed == []
         assert len(c.ledger.read(event_types=[EventType.DATA_CUT])) == 2
