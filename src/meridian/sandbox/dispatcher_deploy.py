@@ -123,9 +123,18 @@ def manifests(s: SubstrateSettings, image: str, kubectl_ate_sha256: str) -> list
                 "spec": {
                     "serviceAccountName": sa,
                     "enableServiceLinks": False,
+                    # The mounted token, certificate and ServiceAccount token are group
+                    # readable by gid 1000 only (fsGroup), never world readable.
+                    "securityContext": {
+                        "runAsNonRoot": True,
+                        "runAsUser": 1000,
+                        "runAsGroup": 1000,
+                        "fsGroup": 1000,
+                        "seccompProfile": {"type": "RuntimeDefault"},
+                    },
                     "containers": [container],
                     "volumes": [
-                        {"name": "token", "secret": {"secretName": SECRET, "defaultMode": 0o400}},
+                        {"name": "token", "secret": {"secretName": SECRET, "defaultMode": 0o440}},
                         {
                             "name": "ate-token",
                             "projected": {
