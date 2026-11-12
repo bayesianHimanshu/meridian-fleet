@@ -37,7 +37,7 @@ from meridian.sandbox.substrate import (
     GuardRefusedError,
     KubectlAteClient,
 )
-from meridian.sandbox.substrate_executor import WorkerLostError
+from meridian.sandbox.substrate_executor import WorkerLostError, archive_members
 from meridian.sandbox.substrate_templates import SUBSTRATE_POLICIES
 from meridian.sandbox.tracking import SandboxTracker
 from tests.rbqm_support import NOW, STUDY
@@ -144,6 +144,10 @@ def test_a_dispatched_run_gives_the_same_drafts_and_deletes_its_actor(roots: Pat
     assert result.inputs_manifest_sha256 is not None
     steps = [step for step, _ in result.phases_ms]
     assert steps == ["stage", "create", "resume", "connect", "request", "delete", "tunnel"]
+    # C4 through the dispatcher: the actor received the laptop's archive, only the zone's
+    # areas (rbqm: meta, blinded, ops), byte for byte (the worker checked its sha256).
+    (received,) = fake.received
+    assert {m.split("/", 1)[0] for m in archive_members(received)} == {"meta", "blinded", "ops"}
 
 
 @pytest.mark.parametrize(
