@@ -87,6 +87,38 @@ class LatestNarrative(BaseModel):
     model: str = ""
 
 
+class PreviousDecision(BaseModel):
+    """A person's decision (accepted or dismissed) on the finding an earlier version of the
+    same agent raised with the same (cut, kind, site, check)."""
+
+    model_config = _FROZEN
+
+    finding_id: str
+    agent_version: str
+    action: DecisionAction
+    actor: str
+    role: Role
+    reason: str | None
+    recorded_at: datetime
+    seq: int
+    # Canonical hash of that finding's primary evidence display values.
+    primary_evidence_sha256: str
+
+
+class EvidenceChangedSince(BaseModel):
+    """The primary evidence differs from the finding a person already closed: before and
+    after are the display values, removed and added the difference."""
+
+    model_config = _FROZEN
+
+    decision: PreviousDecision
+    before: list[str]
+    after: list[str]
+    removed: list[str]
+    added: list[str]
+    primary_evidence_sha256: str
+
+
 class FindingSummary(BaseModel):
     model_config = _FROZEN
 
@@ -105,6 +137,12 @@ class FindingSummary(BaseModel):
     superseded_by: str | None
     retired: bool
     retired_by_version: str | None  # the newer agent version whose run raised nothing
+    # Phase 4b step 1. previously_decided: a person already accepted or dismissed the same
+    # finding from an earlier agent version and the primary evidence is unchanged; the
+    # finding then stays out of the review queue and the default list. Otherwise, when the
+    # evidence changed, evidence_changed_since says what changed since that decision.
+    previously_decided: PreviousDecision | None = None
+    evidence_changed_since: EvidenceChangedSince | None = None
     kind: FindingKind
     site_id: str | None
     severity: Severity

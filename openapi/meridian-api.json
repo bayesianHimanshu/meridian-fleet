@@ -1819,6 +1819,57 @@
         "title": "Evidence",
         "type": "object"
       },
+      "EvidenceChangedSince": {
+        "additionalProperties": false,
+        "description": "The primary evidence differs from the finding a person already closed: before and\nafter are the display values, removed and added the difference.",
+        "properties": {
+          "added": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Added",
+            "type": "array"
+          },
+          "after": {
+            "items": {
+              "type": "string"
+            },
+            "title": "After",
+            "type": "array"
+          },
+          "before": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Before",
+            "type": "array"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/PreviousDecision"
+          },
+          "primary_evidence_sha256": {
+            "title": "Primary Evidence Sha256",
+            "type": "string"
+          },
+          "removed": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decision",
+          "before",
+          "after",
+          "removed",
+          "added",
+          "primary_evidence_sha256"
+        ],
+        "title": "EvidenceChangedSince",
+        "type": "object"
+      },
       "Finding": {
         "additionalProperties": false,
         "description": "Something an agent believes a human should look at.\n\nfinding_id is issued by the ledger when the finding is first recorded, so a\nfinding inside an EventDraft carries finding_id=None.",
@@ -2571,6 +2622,16 @@
             "title": "Decision Count",
             "type": "integer"
           },
+          "evidence_changed_since": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/EvidenceChangedSince"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "finding_id": {
             "title": "Finding Id",
             "type": "string"
@@ -2592,6 +2653,16 @@
             "default": false,
             "title": "May Decide",
             "type": "boolean"
+          },
+          "previously_decided": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviousDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "primary_evidence": {
             "items": {
@@ -3653,6 +3724,67 @@
           "live"
         ],
         "title": "PortfolioAsset",
+        "type": "object"
+      },
+      "PreviousDecision": {
+        "additionalProperties": false,
+        "description": "A person's decision (accepted or dismissed) on the finding an earlier version of the\nsame agent raised with the same (cut, kind, site, check).",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/DecisionAction"
+          },
+          "actor": {
+            "title": "Actor",
+            "type": "string"
+          },
+          "agent_version": {
+            "title": "Agent Version",
+            "type": "string"
+          },
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "primary_evidence_sha256": {
+            "title": "Primary Evidence Sha256",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "recorded_at": {
+            "format": "date-time",
+            "title": "Recorded At",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "seq": {
+            "title": "Seq",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "finding_id",
+          "agent_version",
+          "action",
+          "actor",
+          "role",
+          "reason",
+          "recorded_at",
+          "seq",
+          "primary_evidence_sha256"
+        ],
+        "title": "PreviousDecision",
         "type": "object"
       },
       "QtlView": {
@@ -5105,7 +5237,7 @@
   "paths": {
     "/api/v1/findings": {
       "get": {
-        "description": "Newest first (ledger seq descending). By default only operational cuts and no\nsuperseded findings; widen with scope=all and include_superseded=true.",
+        "description": "Newest first (ledger seq descending). By default only operational cuts and no\nsuperseded, retired or previously decided findings; widen with scope=all and the\ninclude_ flags.",
         "operationId": "findings_api_v1_findings_get",
         "parameters": [
           {
@@ -5140,6 +5272,16 @@
             "schema": {
               "default": false,
               "title": "Include Retired",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_previously_decided",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Previously Decided",
               "type": "boolean"
             }
           },
@@ -6298,7 +6440,7 @@
     },
     "/api/v1/review-queue": {
       "get": {
-        "description": "Open and escalated findings the caller may see, newest first. By default only\noperational cuts (never evaluation cuts), and no superseded or retired findings.",
+        "description": "Open and escalated findings the caller may see, newest first. By default only\noperational cuts (never evaluation cuts), and no superseded, retired or previously\ndecided findings (a person closed the same finding from an earlier agent version and\nits primary evidence is unchanged).",
         "operationId": "review_queue_api_v1_review_queue_get",
         "parameters": [
           {
@@ -6333,6 +6475,16 @@
             "schema": {
               "default": false,
               "title": "Include Retired",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_previously_decided",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Previously Decided",
               "type": "boolean"
             }
           },
