@@ -8,8 +8,19 @@ one order fixed before anything runs (trigger seq, then agent id). Each run's ev
 before it in that order have finished, so a pass gives the same ledger content however
 long each run takes. ActorWoke is therefore appended after its run, not before, and
 carries the run's real start in started_at.
+
+A run whose worker is lost (a Spot preemption) is run once more on a new actor; both
+attempts are recorded, the lost one as an ActorWoke with worker_lost and where it ran.
+
+A rerun (--rerun) of a pair the ledger already holds is recorded only when it produced
+something new (phase 4b step 3): a failure, a lost worker, or a result whose provenance
+(run_provenance: executor, image, policy, inputs manifest, drafts, template, golden
+snapshot, dispatcher image) no earlier ActorSuspended of the same agent version and
+trigger has. An identical rerun appends nothing; the report counts it as unchanged.
 """
 
+import hashlib
+import json
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field, replace
@@ -122,6 +133,47 @@ class RunReport:
     capacity: dict[str, int] = field(default_factory=dict)  # runs at a time, per executor
     # Attempts whose worker was lost and that were run again: (agent, trigger seq, error).
     retried: list[tuple[str, int, str]] = field(default_factory=list)
+    # Reruns identical to a recorded run, so not recorded again: (agent, trigger seq).
+    unchanged: list[tuple[str, int]] = field(default_factory=list)
+
+
+Provenance = tuple[str | None, ...]
+
+
+def drafts_sha256(drafts: Sequence[FindingDraft]) -> str:
+    """sha256 of the drafts as canonical JSON, in the order the agent returned them."""
+    text = json.dumps(
+        [d.model_dump(mode="json") for d in drafts], sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def run_provenance(
+    executor: str | None,
+    image_digest: str | None,
+    policy_sha256: str | None,
+    policy_file_sha256: str | None,
+    inputs_manifest_sha256: str | None,
+    drafts: str | None,
+    substrate: SubstrateRun | None,
+) -> Provenance:
+    """What makes a run's result what it is. Not the actor, worker or times: those differ
+    on every run and are recorded by var/actors.jsonl."""
+    s = substrate
+    return (
+        executor,
+        image_digest,
+        policy_sha256,
+        policy_file_sha256,
+        inputs_manifest_sha256,
+        drafts,
+        None if s is None else s.version,
+        None if s is None else s.template_sha256,
+        None if s is None else s.template_file_sha256,
+        None if s is None else s.image,
+        None if s is None else s.golden_snapshot,
+        None if s is None else s.dispatcher_image,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -166,6 +218,7 @@ class AgentRunner:
         self._study_id = study_id
         self._log = log
         self._retries = lost_worker_retries
+        self._recorded_runs: dict[tuple[str, str | None, int], set[Provenance]] | None = None
 
     def _completed(self) -> set[tuple[str, str | None, int]]:
         """(agent_id, agent_version, trigger_seq) of every finished run.
@@ -179,6 +232,46 @@ class AgentRunner:
                 p = entry.payload
                 done.add((p.agent_id, p.agent_version, p.trigger_seq))
         return done
+
+    def _recorded(self) -> dict[tuple[str, str | None, int], set[Provenance]]:
+        """The provenance of every recorded completion, per (agent, version, trigger)."""
+        out: dict[tuple[str, str | None, int], set[Provenance]] = {}
+        for entry in self._ledger.read(event_types=[EventType.ACTOR_SUSPENDED]):
+            if isinstance(entry, Event) and isinstance(entry.payload, ActorSuspended):
+                p = entry.payload
+                out.setdefault((p.agent_id, p.agent_version, p.trigger_seq), set()).add(
+                    run_provenance(
+                        p.executor,
+                        p.image_digest,
+                        p.policy_sha256,
+                        p.policy_file_sha256,
+                        p.inputs_manifest_sha256,
+                        p.drafts_sha256,
+                        p.substrate,
+                    )
+                )
+        return out
+
+    def _unchanged(self, attempts: Sequence[_Attempt]) -> bool:
+        """A rerun with one attempt that succeeded exactly as a recorded run did."""
+        if self._recorded_runs is None or len(attempts) != 1:
+            return False
+        a = attempts[0]
+        outcome = a.outcome
+        if isinstance(outcome, Exception):
+            return False
+        agent = a.planned.registered.agent
+        known = self._recorded_runs.get((agent.agent_id, agent.version, a.planned.trigger.seq))
+        mine = run_provenance(
+            a.planned.plan.executor,
+            outcome.image_digest,
+            outcome.policy_sha256,
+            outcome.policy_file_sha256,
+            outcome.inputs_manifest_sha256,
+            drafts_sha256(outcome.drafts),
+            outcome.substrate,
+        )
+        return known is not None and mine in known
 
     def _append(self, actor: str, visibility: Visibility, payload: EventPayload) -> Event:
         return self._ledger.append(
@@ -200,7 +293,8 @@ class AgentRunner:
         """Every pending (enabled agent, DataCut) pair; optionally only some agents and
         cuts (the rest stay pending for a later pass). rerun also runs pairs already
         completed (for example DC-BASE again after the executor of a zone changed): their
-        findings are skipped as duplicates and the new run events record the executor."""
+        findings are skipped as duplicates, and the run is recorded only if it produced
+        something new (the module docstring); report.unchanged lists the others."""
         report = RunReport()
         triggers = [
             t
@@ -219,6 +313,7 @@ class AgentRunner:
         ]
         pending.sort(key=lambda pair: (pair[1].seq, pair[0].agent.agent_id))
         self._require_sandbox(pending)
+        self._recorded_runs = self._recorded() if rerun else None
         planned: list[_Planned] = []
         for registered, trigger in pending:
             assert isinstance(trigger.payload, DataCut)
@@ -290,10 +385,21 @@ class AgentRunner:
 
     def _commit_attempts(self, attempts: Sequence[_Attempt], report: RunReport) -> None:
         """Commit a run's attempts in order; a lost attempt that was retried is reported
-        as retried, not failed."""
+        as retried, not failed. A rerun identical to a recorded run appends nothing."""
+        if self._unchanged(attempts):
+            a = attempts[0]
+            report.unchanged.append((a.planned.registered.agent.agent_id, a.planned.trigger.seq))
+            return
         for i, a in enumerate(attempts):
             retried = i < len(attempts) - 1
-            self._commit(a.planned, a.outcome, report, started_at=a.started_at, retried=retried)
+            self._commit(
+                a.planned,
+                a.outcome,
+                report,
+                started_at=a.started_at,
+                retried=retried,
+                attempt=i + 1,
+            )
 
     def _allowed(self) -> str:
         return " or ".join(self._operational_executors)
@@ -379,7 +485,13 @@ class AgentRunner:
         for i, a in enumerate(attempts):
             retried = i < len(attempts) - 1
             self._commit(
-                a.planned, a.outcome, report, review, started_at=a.started_at, retried=retried
+                a.planned,
+                a.outcome,
+                report,
+                review,
+                started_at=a.started_at,
+                retried=retried,
+                attempt=i + 1,
             )
 
     def _commit(
@@ -391,6 +503,7 @@ class AgentRunner:
         *,
         started_at: datetime,
         retried: bool = False,
+        attempt: int = 1,
     ) -> None:
         """Append one finished run: ActorWoke, then (if it succeeded) its findings and
         ActorSuspended. A failed run leaves only ActorWoke, as before."""
@@ -402,6 +515,15 @@ class AgentRunner:
             trigger_seq=trigger.seq,
             cut_id=p.cut_id,
         )
+        lost = outcome if isinstance(outcome, RetryableRunError) else None
+        where = plan.substrate
+        if lost is not None and where is not None:
+            where = where.model_copy(
+                update={
+                    "worker_pod": getattr(lost, "worker_pod", None),
+                    "worker_node": getattr(lost, "node", None),
+                }
+            )
         self._append(
             agent.agent_id,
             Visibility.BLINDED,
@@ -412,8 +534,10 @@ class AgentRunner:
                 executor=plan.executor,
                 review_from_seq=None if review is None else review[0],
                 review_to_seq=None if review is None else review[1],
-                substrate=plan.substrate,
+                substrate=where,
                 started_at=started_at,
+                attempt=attempt if attempt > 1 else None,
+                worker_lost=None if lost is None else f"{type(lost).__name__}: {lost}"[:1000],
             ),
         )
         try:
@@ -459,6 +583,7 @@ class AgentRunner:
                 policy_file=outcome.policy_file,
                 policy_file_sha256=outcome.policy_file_sha256,
                 substrate=outcome.substrate,
+                drafts_sha256=drafts_sha256(drafts),
             ),
         )
         report.completed.append((agent.agent_id, trigger.seq))

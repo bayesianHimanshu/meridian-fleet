@@ -542,13 +542,20 @@ def test_a_plan_that_fails_records_nothing_and_reports_the_failure(ledger: Sqlit
     assert len(ledger.read()) == before
 
 
-def test_rerun_runs_completed_pairs_again_and_skips_their_findings(ledger: SqliteLedger) -> None:
+def test_rerun_runs_completed_pairs_again_and_records_only_what_is_new(
+    ledger: SqliteLedger,
+) -> None:
+    """Phase 4b step 3: an identical rerun runs but appends nothing (tests/unit/test_rerun.py
+    covers the reruns that are recorded)."""
     _cut(ledger, "DC-A")
     agent = FakeAgent(sites=["1001"])
     first = _runner(ledger, agent).run_pending()
     assert len(first.findings_appended) == 1
     assert _runner(ledger, agent).run_pending().completed == []
+    size = len(ledger.read())
     again = _runner(ledger, agent).run_pending(cuts={"DC-A"}, rerun=True)
-    assert len(again.completed) == 1
+    assert again.executors == {"inprocess": 1}  # it ran
+    assert again.completed == []
+    assert again.unchanged == [("rbqm.fake", 1)]
     assert again.findings_appended == []
-    assert again.findings_skipped == first.findings_appended
+    assert len(ledger.read()) == size

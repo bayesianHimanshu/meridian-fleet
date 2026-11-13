@@ -416,6 +416,8 @@ export interface components {
             agent_id: string;
             /** Agent Version */
             agent_version?: string | null;
+            /** Drafts Sha256 */
+            drafts_sha256?: string | null;
             /** Executor */
             executor?: string | null;
             /** Image Digest */
@@ -443,6 +445,8 @@ export interface components {
             agent_id: string;
             /** Agent Version */
             agent_version?: string | null;
+            /** Attempt */
+            attempt?: number | null;
             /** Executor */
             executor?: string | null;
             /** Review From Seq */
@@ -459,6 +463,8 @@ export interface components {
              * @enum {string}
              */
             type: "actor_woke";
+            /** Worker Lost */
+            worker_lost?: string | null;
         };
         /**
          * AnswerView
@@ -1950,6 +1956,8 @@ export interface components {
             template_sha256: string;
             /** Version */
             version: string;
+            /** Worker Node */
+            worker_node?: string | null;
             /** Worker Pod */
             worker_pod?: string | null;
             /** Worker Pool */
