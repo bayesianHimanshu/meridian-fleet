@@ -285,3 +285,18 @@ Raw data:
 - `var/substrate/bench-dispatcher.jsonl`;
 - `var/substrate/fullpass-dispatcher/` (`pass12.json`, `pass16.json`, the runner's output);
 - ledger seq 8491 to 12133.
+
+## Phase 4b step 3: the dispatcher alone, the leak check as code
+
+On kind, the dispatcher is now the only Substrate identity Meridian has: the laptop's
+runner ServiceAccount is deleted, and the access policy and atenet-router's allow-list
+name only the dispatcher. Conformance runs through it, with a new metadata-server check.
+`meridian leakcheck` replaces `substrate canary`: every source searched has a positive
+control, and the check fails if one is missing. The phase 4a guard-check proved the
+removed identity and is retired; its results above stand.
+
+On kind it passed for the three zones and then with safety included. Full passes at 12
+workers with the node tainted ran at the step 2 speed (81.5 s). A pass with worker pods
+force-deleted found that a worker lost during resume was not retried; fixed, all three
+losses were retried on new actors. An identical rerun now records nothing. Details and
+numbers: docs/gke-plan.md section 2b; the GKE session: docs/gke-session.md.

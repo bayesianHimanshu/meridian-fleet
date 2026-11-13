@@ -1,7 +1,9 @@
 # Phase 4b plan: the Substrate zones on GKE (us-central1)
 
 Phase 4b step 1, updated in step 2 with the account check, your answers, the dispatcher as
-built and measured on kind (section 2a), and the park, resume and teardown scripts. This is
+built and measured on kind (section 2a), and the park, resume and teardown scripts, and in
+step 3 with the GKE code exercised on kind (section 2b) and the session runbook
+(docs/gke-session.md). This is
 still a plan: it creates nothing in Google Cloud, and every command in it is for a person
 to run, in order. The rbqm,
 safety, quality and quality.audit_trail zones move from Agent Substrate on kind to Agent
@@ -227,6 +229,65 @@ about 1.9, ate-api-server about 0.5). **What limits it now is Substrate's own pa
 single kind node:** ate-api-server, Postgres and the node's one atelet doing every create,
 restore and delete. **Guess:** atelet, which is per node. If so, two GKE worker nodes (two
 atelets) should raise the plateau, and section 7 measures that.
+
+## 2b. Step 3 on kind: the GKE code, exercised where kind can
+
+Dispatcher `localhost:5001/meridian-dispatcher@sha256:090a369a...` (built from 075baa5);
+agent templates unchanged (`...-49d1c5259345-m384`).
+
+**What changed on kind.**
+- The node carries `meridian.dev/pool=substrate`, and the WorkerPool names it with the
+  toleration `meridian.dev/worker=true:NoSchedule`, exactly as on GKE.
+- The `meridian-runner` ServiceAccount is deleted (and `var/substrate/runner.token`).
+- The access policy names only the dispatcher (before: the runner and the dispatcher).
+- The router admits only the dispatcher (before: `atenet-client` and the dispatcher). The
+  bootstrap owner's `kubectl ate proxy` to an actor is now reset by the router.
+
+| Proof on kind | Result |
+|---|---|
+| `substrate placement-check --taint-node` | pass: selector and toleration in the WorkerPool; workers Running on the labelled, tainted node; a pod without the toleration refused ("1 node(s) had untolerated taint(s)"); taint removed after |
+| `substrate conformance` through the dispatcher | pass in all four zones: 6 egress targets refused (dispatcher, test net, host, peer actor, API service, metadata server), DNS refused, read-only `/opt`, controls allowed. A first run failed only on its verdict: the metadata server is refused inside the actor (no route), so there is no gateway log line for it; a line is now required only for targets whose connect reached the gateway. Both runs are in the ledger. |
+| `leakcheck --env kind`, rbqm, quality, audit trail, 20 runs | pass (table below) |
+| `leakcheck --env kind`, all four zones, 24 runs | pass, 80 s end to end |
+| marked tests | substrate 3, openshell 22, slow 3: all pass |
+
+Leak check sources (the second run; the first is the same within a few files):
+
+| Source | Items | Bytes searched | Canary | Positive control |
+|---|---:|---:|---|---|
+| dispatcher pod filesystem | 11,267 | 637 MB | none | found (marker in its /tmp) |
+| dispatcher logs | 1 | 30 kB | none | found (marker logged as a request path) |
+| snapshot bucket (rustfs), decoded | 40 objects | 663 MB | none | found in all 5 golden snapshots (the worker's path in their memory) |
+| node `kind-control-plane`, scan pod | 89,160 files | 12.6 GB (stored and decompressed) | none | found (marker in the scan pod's own layer) |
+| laptop `var/` | 81 | 32 MB | none | found (marker file) |
+| Cloud Logging | GKE only | | | unit tested against recorded gcloud answers |
+
+Bucket layout: 40 objects, all under the 5 golden tags, none outside.
+
+**Full passes at 12 workers, the node tainted throughout** (from the same 910 runs):
+
+| Pass | Wall clock | p50 | p95 | Recorded |
+|---|---:|---:|---:|---|
+| step 2 (for comparison) | 81.3 s | 1.12 s | 1.33 s | 1,820 events |
+| step 3, dispatcher from d62fb7f | 81.5 s | 1.10 s | 1.32 s | 1,820 events (new dispatcher image: new provenance) |
+| step 3, three worker pods force-deleted at 10, 25, 40 s (first try) | 85.6 s | | | 908 unchanged, not recorded; 1 lost mid-request, retried and completed; 1 lost while resuming, **failed** (the gap below) |
+| step 3, same, after the fix (dispatcher from 075baa5) | 84.6 s | 1.15 s | 3.13 s | all 3 lost while resuming, retried on a new actor and completed; 0 failed; 1,823 events (910 runs + 3 lost attempts) |
+| step 3, plain pass after it | 83.5 s | | | 910 unchanged: **0 events** |
+
+The gap the preemption pass found: a worker deleted while an actor restores on it fails
+the resume ("actor ... crashed ... wakeup probe cancelled"). That was treated as an
+ordinary failure. Any failure after the actor was created, with the actor crashed, is now
+a lost worker. For a loss during resume the worker pod is unknown (resume never
+answered), so the lost attempt's ActorWoke has `worker_lost` but no pod.
+
+**Reruns (E).** A rerun is recorded only if it produced something new: a failure, a lost
+worker, or provenance no recorded run of the pair has. Provenance means the executor,
+image, policy, inputs manifest, drafts sha256, template, golden snapshot and dispatcher
+image. Identical reruns are counted in the pass's report, and their actors are still in
+`var/actors.jsonl`. Why not record every rerun: an identical rerun adds no fact a reviewer
+needs; the pair's result and provenance are already in the ledger. What would need every
+run is an access log of each time data was read, and that is `var/actors.jsonl` (actor,
+created, deleted), not the findings ledger.
 
 ## 3. Data: what travels, how, and where it may rest
 
@@ -623,45 +684,30 @@ node, none on a worker node. (Flags from `cmd/ate-setup/internal/config/setting.
 `commands.md`; ate-setup prints a run report of every setting and its source, read it
 before saying yes. **Guess** that these are the full set for gVisor on GKE.)
 
-### 6.8 Meridian's side: templates, WorkerPool, dispatcher (next step's code)
+### 6.8 Meridian's side: templates, WorkerPool, dispatcher (code since step 3)
 
-On kind these are `meridian substrate deploy` and `meridian dispatcher deploy`. For GKE
-they need three changes, which the next step makes and tests on kind first. The registry
-becomes `$AR` instead of `localhost:5001`. The WorkerPool gets the worker pool's
-`nodeSelector` (`meridian.dev/pool: substrate`) and toleration
-(`meridian.dev/worker=true:NoSchedule`), both WorkerPool fields. The access policy lists
-only the dispatcher, with no laptop runner identity on GKE and no router patch, since the
-allow-list is set at install (6.7). Then:
+`deploy/gke/deploy.sh` (docs/gke-session.md step 13). Through `deploy/gke/run.sh`, which
+sets `MERIDIAN_CONFIG_OVERLAY=deploy/gke/meridian.toml` (`[substrate] target = "gke"`):
 
-```bash
-meridian dispatcher token                                  # the Secret in meridian-dispatch
-meridian substrate deploy && meridian dispatcher deploy    # with the GKE context and $AR
-meridian dispatcher status                                 # through one port-forward over the DNS endpoint
-meridian substrate bucket-check                            # next step: objects only under atespaces/meridian/tags/<golden uid>
-```
-Success: `status` lists the four zone templates with golden snapshots and free workers 0
-(pool at 0); `bucket-check` lists only golden tag objects. If `status` cannot open the
-port-forward over the DNS endpoint, use 6.11.
+- images by digest from Artifact Registry: the digest docker recorded when you pushed must
+  be the one Artifact Registry holds for the tag (`resolve_pushed`); nothing is pushed by me;
+- the WorkerPool's `nodeSelector` `meridian.dev/pool: substrate` and toleration
+  `meridian.dev/worker=true:NoSchedule` (exercised on kind by `substrate placement-check
+  --taint-node`);
+- the access policy with the dispatcher as its only member; the router's allow-list checked
+  to be exactly the dispatcher (set at install, 6.7);
+- the dispatcher's Workload Identity: its principal holds no role; deploy reads the project,
+  bucket, repository and service account IAM policies and refuses if any grant names it.
 
-### 6.9 The leak check before the safety zone (decided order)
+### 6.9 The leak check before the safety zone (code since step 3)
 
 ```bash
-# rbqm, quality, quality.audit_trail first; the safety zone stays on kind until this passes
-MERIDIAN_SUBSTRATE__VIA=dispatcher meridian substrate canary --runs 20   # next step: a --zones option, without safety
-gcloud logging read "textPayload:\"$CANARY\" OR jsonPayload.message:\"$CANARY\"" \
-  --project="$PROJECT_ID" --freshness=1d --limit=5         # $CANARY: the string the canary command printed
-# then the same with the safety zone included
+deploy/gke/run.sh leakcheck --env gke --zone rbqm --zone quality --zone quality.audit_trail
+deploy/gke/run.sh leakcheck --env gke          # then with the safety zone
 ```
-Success: the canary is in none of these:
-- the snapshot bucket (decoded);
-- a worker node's `/var/lib/ate` and pod logs (through a debug pod);
-- the dispatcher pod and its logs;
-- Cloud Logging.
-
-The positive controls must find it. **Only then** does `[runtime.executors]` send
-`safety.sae_reconciler` to Substrate on GKE, and the same check runs with it. The
-canary's GKE searches (the bucket over the GCS API, Cloud Logging) are next step's code;
-on kind it searches rustfs, the kind node, the dispatcher pod and its logs.
+Sources and their positive controls: meridian/sandbox/leakcheck.py and
+docs/gke-session.md steps 15 and 16. The check fails if the canary is found anywhere or if
+any source's positive control is not.
 
 ### 6.10 Between sessions: park and resume
 
@@ -793,7 +839,7 @@ the canary pass, and the numbers above are in docs/substrate-eval.md with the da
 12. **Region and data**: us-central1 for subject-level data needs a sponsor's privacy review
     in a real trial (section 3, threat model change 1).
 
-## Decisions (step 2) and open questions
+## Decisions (steps 2 and 3) and open questions
 
 Decided by you after step 1:
 
@@ -806,19 +852,24 @@ Decided by you after step 1:
 - **Images:** you run `gcloud auth configure-docker` yourself; no skopeo.
 - **Fallback:** the IAP bastion with no public IP, included in teardown.sh and park.sh.
 
+Decided after step 2:
+
+- **Billing account:** `01DC09-5AAF08-94EFA4`. **No free tier credit**: the management fee
+  of USD 0.10 an hour bills whenever the cluster exists, parked included (about USD 2.43 a
+  parked day, about 74 a parked month, more than the USD 30 budget). docs/gke-session.md
+  has the corrected session costs; section 5's "free tier" lines no longer apply.
+- **GKE code on kind first:** done in step 3 (deploy/gke/, `meridian leakcheck`,
+  `meridian substrate placement-check`); the bucket and Cloud Logging searches are unit
+  tested against recorded gcloud answers and run for real only on GKE.
+- **The laptop's runner identity:** removed on kind in step 3. The dispatcher is the only
+  member of the access policy and of atenet-router's ingress allow-list, on kind as on GKE.
+  The step 4a numbers stay the recorded comparison (section 2a).
+
+The first session's commands, in order, with their checks, times and costs:
+**docs/gke-session.md** (part 1 yours, part 2 mine). Sections 6.8 and 6.9 below are now code.
+
 Open:
 
-1. **Billing account and free tier.** Your answer arrived with its placeholders unfilled
-   (`<ID or name>`, `<not used by any other cluster / used>`). The project bills to
-   `01DC09-5AAF08-94EFA4`. Is that the account for the budget? And does any GKE cluster in
-   the other project on it use the free tier credit? If so, add USD 0.10 an hour (section 5).
-2. **The next step's code for GKE** (6.8, 6.9). It covers four pieces:
-   - the GKE registry and WorkerPool placement;
-   - the dispatcher alone in the access policy;
-   - `bucket-check`;
-   - the canary's GCS and Cloud Logging searches, with a `--zones` option.
-
-   Should all of it go on kind first?
-3. **The direct runner identity on kind.** The access policy keeps the laptop's
-   `meridian-runner` as editor, so the direct executor stays available for comparisons.
-   Should it be removed once GKE runs through the dispatcher?
+1. **Park or tear down** without the credit: parking saves about an hour of setup but
+   costs USD 2.43 a day; I would tear down whenever the next session is more than a day or
+   two away. Your call; the scripts support both.

@@ -133,8 +133,9 @@ the actor in the cluster. What changes:
   token with a nonce one way, an HMAC proof of nonce and body the other
   (meridian.sandbox.dispatch). The token sits in a 0600 file outside the repository and in
   a Secret. A request without it is refused with 401 before anything runs.
-- atenet-router admits the dispatcher's SPIFFE ID; on kind also `ate-system/atenet-client`,
-  for the direct executor.
+- atenet-router admits the dispatcher's SPIFFE ID only (phase 4b step 3; until then kind
+  also admitted `ate-system/atenet-client`, kubectl-ate's own identity, for the direct
+  executor).
 - The inputs pass through the dispatcher's memory only. Its root filesystem is read-only,
   its `/tmp` is in memory, and it logs no bodies. The canary searched its pod filesystem
   and logs as well as the bucket and the node, and found nothing; the planted positive
@@ -143,6 +144,29 @@ the actor in the cluster. What changes:
   every zone.
 
 Evidence and numbers: docs/gke-plan.md section 2a.
+
+**The dispatcher alone (phase 4b step 3, kind as GKE).** The laptop's runner identity of
+phase 4a (`meridian/meridian-runner`) is deleted, and the dispatcher is the only member of
+the atespace's access policy and of atenet-router's ingress allow-list. Even the bootstrap
+owner's `kubectl ate proxy` is now reset by the router, so the only path to an actor is
+through the dispatcher. Conformance runs through it too (POST /v1/conformance, which
+accepts only conformance templates and adds a check that actors cannot reach the GKE
+metadata server, 169.254.169.254). Deploy and its golden snapshots still use the
+bootstrap owner (ate-setup's client identity); it never runs an agent. On GKE the
+dispatcher's Workload Identity principal holds no IAM role, and deploy refuses if any
+grant names it. The phase 4a guard-check proved the removed identity; it is retired.
+
+**The leak check (phase 4b step 3).** `meridian leakcheck --env kind|gke` replaces the
+canary command. It runs the canary through the dispatcher, then searches:
+- the snapshot bucket (decoded);
+- Cloud Logging over the run window (GKE);
+- the dispatcher pod and its logs;
+- every node's filesystem, from a read-only scan pod on each node;
+- the laptop's var/.
+
+Every source needs a positive control found, or the check fails. On kind it passed for the
+three zones and then with safety included (docs/gke-plan.md section 2b); the safety zone
+moves to GKE only after it passes there.
 
 ## Other controls, briefly
 
