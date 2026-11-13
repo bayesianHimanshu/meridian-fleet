@@ -221,6 +221,10 @@ class SubstrateConformance:
     gateway_lines: tuple[str, ...]
     dispatcher: str | None = None  # the dispatcher's "ip:port" when it was probed too
     kube_api: tuple[str, int] = KUBE_API
+    # The network targets whose connect() reached the actor's tunnel (and so the gateway).
+    # A target refused inside the actor (no route) never reaches atenet-egress: there is no
+    # gateway line to find for it, and none is required. None: every network target.
+    via_gateway: tuple[str, ...] | None = None
 
     def specs(self) -> tuple[ProbeSpec, ...]:
         return specs(self.peer_ip, self.dispatcher, self.kube_api)
@@ -233,6 +237,8 @@ class SubstrateConformance:
     def log_lines_complete(self) -> bool:
         """atenet-egress logged a refusal for every network target."""
         wanted = {s.target for s in self.specs() if s.kind == NETWORK}
+        if self.via_gateway is not None:
+            wanted &= set(self.via_gateway)
         return all(any(f"authority={t} " in ln for ln in self.gateway_lines) for t in wanted)
 
     @property
@@ -385,14 +391,17 @@ def run_substrate_conformance(
     kube_api = (str(host), int(port))
     by_name = {str(a["name"]): a for a in answer.get("answers", [])}
     checks: list[ContainmentCheck] = []
+    via_gateway: list[str] = []
     for spec in specs(peer_ip, dispatcher, kube_api):
         got = by_name.get(spec.name)
+        if spec.kind == NETWORK and got and dict(got.get("answer") or {}).get("connected"):
+            via_gateway.append(spec.target)
         if got is None:
             checks.append(classify(spec, None, "the dispatcher sent no answer"))
         else:
             checks.append(classify(spec, got.get("answer"), got.get("error")))
     since = int(time.monotonic() - started) + 30
-    targets = [s.target for s in specs(peer_ip, dispatcher, kube_api) if s.kind == NETWORK]
+    targets = via_gateway
     lines = gateway_lines(kubectl, context, actor, targets, since)
     final = dict(answer.get("final") or {})
     base = placement(probe_template, actor)
@@ -414,6 +423,7 @@ def run_substrate_conformance(
         gateway_lines=lines,
         dispatcher=None if dispatcher is None else str(dispatcher),
         kube_api=kube_api,
+        via_gateway=tuple(via_gateway),
     )
 
 

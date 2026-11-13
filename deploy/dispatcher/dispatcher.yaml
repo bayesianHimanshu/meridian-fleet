@@ -124,7 +124,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: "localhost:5001/meridian-dispatcher@sha256:58d1ba25369c3c1c1c6d9e2c13f6fc4093fedcd3a18a30f245fb06c95a6ce669"
+          image: "localhost:5001/meridian-dispatcher@sha256:72e8b3e1d62dad2fe6b457ceb8ccbbeb37e7c7cc1dfdab849bc28bea6db69218"
           args:
             - serve
             - --port
@@ -151,6 +151,11 @@ spec:
             - "120.0"
             - --request-timeout
             - "180.0"
+          env:
+            - name: "POD_IP"
+              valueFrom:
+                fieldRef:
+                  fieldPath: "status.podIP"
           ports:
             - name: http
               containerPort: 8090

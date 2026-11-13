@@ -233,17 +233,17 @@ def run_in_actor(
     response: httpx.Response | None = None
     final: dict[str, Any] | None = None
     failure: Exception | None = None
-    sent = False  # the actor was placed and the request went out
+    created = False  # from here on, a crash of the actor is a lost worker
     placed = Resumed(0)
     try:
         client.create_actor(actor, template)
+        created = True
         lap("create")
         got = resume(actor)
         placed = got if isinstance(got, Resumed) else Resumed(got)
         lap("resume")
         if placed.waited_ms:
             phases.append(("placement_wait", placed.waited_ms))
-        sent = True
         response = send(
             actor,
             body,
@@ -261,7 +261,9 @@ def run_in_actor(
         delete(actor)
         lap("delete")
     gateway_error = response is not None and response.status_code in (502, 503, 504)
-    if sent and (failure is not None or gateway_error) and crashed(final):
+    # Lost while resuming (the restore was cancelled with its worker: phase 4b step 3 found
+    # this on kind) or while running: either way nothing was kept, and a retry is safe.
+    if created and (failure is not None or gateway_error) and crashed(final):
         raise WorkerLostError(
             f"actor {actor} lost its worker {placed.worker_pod} on {placed.node}: "
             f"{failure or response}",
