@@ -318,6 +318,136 @@ def search_node(needle: bytes, node: str = NODE, roots: Sequence[str] = ("/",)) 
     return report
 
 
+def _pod(kubectl: str, context: str, namespace: str, selector: str) -> str:
+    done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
+        [
+            kubectl,
+            "--context",
+            context,
+            "-n",
+            namespace,
+            "get",
+            "pods",
+            "-l",
+            selector,
+            "-o",
+            "jsonpath={.items[0].metadata.name}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if done.returncode != 0 or not done.stdout.strip():
+        raise RuntimeError(f"no pod {selector} in {namespace}: {done.stderr[-300:]}")
+    return done.stdout.strip()
+
+
+def search_pod(
+    kubectl: str, context: str, namespace: str, selector: str, needle: bytes
+) -> SearchReport:
+    """Stream a pod's whole filesystem out with tar (kubectl exec) and search every
+    regular file, as search_node does for the node (phase 4b: the dispatcher's pod)."""
+    pod = _pod(kubectl, context, namespace, selector)
+    report = SearchReport(f"pod {namespace}/{pod} filesystem")
+    argv = [
+        kubectl,
+        "--context",
+        context,
+        "-n",
+        namespace,
+        "exec",
+        pod,
+        "--",
+        "tar",
+        "-cf",
+        "-",
+        "--ignore-failed-read",
+        "--exclude=/proc",
+        "--exclude=/sys",
+        "--exclude=/dev",
+        "/",
+    ]
+    process = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)  # noqa: S603
+    assert process.stdout is not None
+    try:
+        with tarfile.open(fileobj=process.stdout, mode="r|") as tar:
+            for member in tar:
+                if member.isreg() and (handle := tar.extractfile(member)) is not None:
+                    report.scan(member.name, handle.read(), needle)
+    except tarfile.TarError as exc:
+        report.errors.append(f"tar stream: {exc}")
+    finally:
+        process.wait()
+    if report.items == 0:
+        report.errors.append("no files streamed")
+    return report
+
+
+def search_pod_logs(
+    kubectl: str, context: str, namespace: str, selector: str, needle: bytes
+) -> SearchReport:
+    """Every log line the pod's containers wrote (this run of the pod and, if it
+    restarted, the previous one)."""
+    pod = _pod(kubectl, context, namespace, selector)
+    report = SearchReport(f"pod {namespace}/{pod} logs")
+    for extra in ([], ["--previous"]):
+        done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
+            [
+                kubectl,
+                "--context",
+                context,
+                "-n",
+                namespace,
+                "logs",
+                pod,
+                "--all-containers",
+                *extra,
+            ],
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        if done.returncode == 0:
+            report.scan("logs" + (" (previous)" if extra else ""), done.stdout, needle)
+    return report
+
+
+def plant_in_pod(
+    kubectl: str, context: str, namespace: str, selector: str, canary: str, path: str
+) -> None:
+    """Positive control for search_pod: write the canary into a file in the pod."""
+    pod = _pod(kubectl, context, namespace, selector)
+    subprocess.run(  # noqa: S603 (argv built from fixed parts)
+        [
+            kubectl,
+            "--context",
+            context,
+            "-n",
+            namespace,
+            "exec",
+            "-i",
+            pod,
+            "--",
+            "sh",
+            "-c",
+            f"cat > {path}",
+        ],
+        input=canary.encode(),
+        check=True,
+        timeout=60,
+    )
+
+
+def remove_in_pod(kubectl: str, context: str, namespace: str, selector: str, path: str) -> None:
+    pod = _pod(kubectl, context, namespace, selector)
+    subprocess.run(  # noqa: S603 (argv built from fixed parts)
+        [kubectl, "--context", context, "-n", namespace, "exec", pod, "--", "rm", "-f", path],
+        check=True,
+        timeout=60,
+    )
+
+
 def search_dir(root: Path, needle: bytes, label: str) -> SearchReport:
     report = SearchReport(label)
     for dirpath, _dirs, files in os.walk(root):

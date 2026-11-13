@@ -50,6 +50,7 @@ from meridian.domain.events import (
     SubstrateRun,
 )
 from meridian.platform.clock import Clock
+from meridian.platform.config import SubstrateSettings
 from meridian.sandbox.policies import ALL_POLICIES
 from meridian.sandbox.substrate import SubstrateClient, SubstrateError
 from meridian.sandbox.substrate_executor import ZoneTemplate
@@ -72,7 +73,10 @@ class ProbeSpec:
     target: str = ""
 
 
-def specs(peer_ip: str) -> tuple[ProbeSpec, ...]:
+def specs(peer_ip: str, dispatcher: str | None = None) -> tuple[ProbeSpec, ...]:
+    """The probes; dispatcher ("ip:port"), when the dispatcher is deployed, adds one more:
+    an actor must not reach the dispatcher (phase 4b step 2)."""
+
     def tcp(name: str, host: str, port: int) -> ProbeSpec:
         return ProbeSpec(
             name,
@@ -82,7 +86,12 @@ def specs(peer_ip: str) -> tuple[ProbeSpec, ...]:
             f"{host}:{port}",
         )
 
+    extra: tuple[ProbeSpec, ...] = ()
+    if dispatcher is not None:
+        host, port = dispatcher.rsplit(":", 1)
+        extra = (tcp("egress_dispatcher", host, int(port)),)
     return (
+        *extra,
         tcp("egress_test_net", TEST_NET, 443),
         tcp("egress_host_ollama", *OLLAMA),
         tcp("egress_peer_actor", peer_ip, PORT),
@@ -198,6 +207,7 @@ class SubstrateConformance:
     zone_template: ZoneTemplate
     checks: tuple[ContainmentCheck, ...]
     gateway_lines: tuple[str, ...]
+    dispatcher: str | None = None  # the dispatcher's "ip:port" when it was probed too
 
     @property
     def all_refused(self) -> bool:
@@ -206,7 +216,7 @@ class SubstrateConformance:
     @property
     def log_lines_complete(self) -> bool:
         """atenet-egress logged a refusal for every network target."""
-        wanted = {s.target for s in specs(self.peer_ip) if s.kind == NETWORK}
+        wanted = {s.target for s in specs(self.peer_ip, self.dispatcher) if s.kind == NETWORK}
         return all(any(f"authority={t} " in ln for ln in self.gateway_lines) for t in wanted)
 
     @property
@@ -269,6 +279,31 @@ def gateway_lines(
         time.sleep(2.0)
 
 
+def dispatcher_address(s: SubstrateSettings) -> str | None:
+    """The dispatcher pod's "ip:port", or None when it is not deployed."""
+    done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
+        [
+            s.kubectl,
+            "--context",
+            s.context,
+            "-n",
+            s.dispatcher_namespace,
+            "get",
+            "pods",
+            "-l",
+            "workload=meridian-dispatcher",
+            "-o",
+            "jsonpath={.items[0].status.podIP}",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    ip = done.stdout.strip()
+    return f"{ip}:{s.dispatcher_port}" if done.returncode == 0 and ip else None
+
+
 def _post(address: str, payload: Mapping[str, object]) -> dict[str, Any]:
     response = httpx.post(f"http://{address}/check", json=dict(payload), timeout=30)
     response.raise_for_status()
@@ -288,6 +323,7 @@ def run_substrate_conformance(
     kubectl: str,
     context: str,
     name_factory: Callable[[str], str] = lambda z: f"mer-cf-{uuid.uuid4().hex[:8]}",
+    dispatcher: str | None = None,
 ) -> SubstrateConformance:
     actor, peer = name_factory(zone), name_factory(zone)
     started = time.monotonic()
@@ -304,7 +340,7 @@ def run_substrate_conformance(
         )
         peer_ip = str(ips[0]) if ips else "0.0.0.0"  # noqa: S104 (an address to try, not bind)
         with client.proxy(actor, PORT) as address:
-            for spec in specs(peer_ip):
+            for spec in specs(peer_ip, dispatcher):
                 if spec.kind == "peer":
                     try:
                         with client.proxy(peer, PORT) as peer_address:
@@ -327,7 +363,7 @@ def run_substrate_conformance(
             with contextlib.suppress(SubstrateError):
                 client.delete_actor(name)
     since = int(time.monotonic() - started) + 30
-    targets = [s.target for s in specs(peer_ip) if s.kind == NETWORK]
+    targets = [s.target for s in specs(peer_ip, dispatcher) if s.kind == NETWORK]
     lines = gateway_lines(kubectl, context, actor, targets, since)
     base = placement(probe_template, actor)
     status = dict(final.get("status", {}))
@@ -347,6 +383,7 @@ def run_substrate_conformance(
         zone_template=zone_template,
         checks=tuple(checks),
         gateway_lines=lines,
+        dispatcher=dispatcher,
     )
 
 
@@ -363,7 +400,7 @@ def ledger_drafts(result: SubstrateConformance, clock: Clock) -> list[EventDraft
             occurred_at=now, actor=ACTOR, visibility=Visibility.BLINDED, payload=payload
         )
 
-    by_name = {s.name: s for s in specs(result.peer_ip)}
+    by_name = {s.name: s for s in specs(result.peer_ip, result.dispatcher)}
     for check in result.checks:
         if check.expect != "refused" or check.outcome != "refused":
             continue

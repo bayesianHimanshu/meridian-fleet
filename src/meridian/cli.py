@@ -1501,3 +1501,6 @@ def audit_review(
 from meridian.cli_substrate import substrate_app  # noqa: E402 (registered last: it imports cli lazily)
 
 app.add_typer(substrate_app, name="substrate")
+from meridian.cli_dispatcher import dispatcher_app  # noqa: E402 (registered last, like substrate)
+
+app.add_typer(dispatcher_app, name="dispatcher")

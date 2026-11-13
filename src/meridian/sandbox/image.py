@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+from collections.abc import Sequence
 from dataclasses import dataclass
 from importlib.metadata import version
 from pathlib import Path
@@ -106,7 +107,12 @@ def inspect(ref: str) -> ImageInfo:
     )
 
 
-def build(ref: str, context: Path = Path(), dockerfile: Path = DOCKERFILE) -> ImageInfo:
+def build(
+    ref: str,
+    context: Path = Path(),
+    dockerfile: Path = DOCKERFILE,
+    extra_args: Sequence[str] = (),
+) -> ImageInfo:
     """docker build -f docker/agent.Dockerfile -t <ref> <context>, labelled with the commit
     it was built from and whether the image sources differed from it, then inspect."""
     state = source_state(context)
@@ -118,7 +124,17 @@ def build(ref: str, context: Path = Path(), dockerfile: Path = DOCKERFILE) -> Im
     ]
     try:
         subprocess.run(  # noqa: S603 (fixed argv)
-            ["docker", "build", "-f", str(dockerfile), *labels, "-t", ref, str(context)],  # noqa: S607
+            [  # noqa: S607 (docker from PATH, as everywhere here)
+                "docker",
+                "build",
+                "-f",
+                str(dockerfile),
+                *labels,
+                *extra_args,
+                "-t",
+                ref,
+                str(context),
+            ],
             check=True,
         )
     except (OSError, subprocess.CalledProcessError) as exc:

@@ -73,6 +73,9 @@ class SubstrateRun(BaseModel):
     # from a dirty tree, so the commit names the image's sources exactly. Null on older
     # events and for images without the label.
     image_source_commit: Annotated[str, Field(pattern=r"^[0-9a-f]{40}$")] | None = None
+    # Phase 4b step 2: the in-cluster dispatcher's image (registry ref by digest) when the
+    # run went through it; null for a run the laptop drove itself and on older events.
+    dispatcher_image: Annotated[str, Field(pattern=r"^[^@\s]+@sha256:[0-9a-f]{64}$")] | None = None
 
 
 class ActorWoke(BaseModel):

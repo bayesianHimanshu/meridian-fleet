@@ -10,6 +10,7 @@ from typing import Any
 
 import pytest
 
+from meridian.cli_substrate import access_principals
 from meridian.platform.clock import FixedClock
 from meridian.platform.config import Settings
 from meridian.sandbox import substrate_guard as sg
@@ -128,10 +129,13 @@ def test_the_committed_identity_files_render_from_the_code() -> None:
     sa = s.runner_service_account
     assert (DEPLOY / RUNNER_FILE).read_text() == render_runner(s.namespace, sa)
     assert (DEPLOY / ACCESS_POLICY_FILE).read_text() == render_access_policy(
-        s.atespace, s.namespace, sa
+        s.atespace, access_principals(Settings())
     )
     text = (DEPLOY / ACCESS_POLICY_FILE).read_text()
     assert "role: editor" in text
+    # The runner (direct runs on kind) and the dispatcher, each editor on the atespace only.
+    assert "serviceaccount:meridian:meridian-runner" in text
+    assert "serviceaccount:meridian-dispatch:dispatcher" in text
     assert "owner" not in text.split("bindings:")[1]
 
 

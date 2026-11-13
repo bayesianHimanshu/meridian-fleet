@@ -4650,6 +4650,18 @@
             "title": "Commit",
             "type": "string"
           },
+          "dispatcher_image": {
+            "anyOf": [
+              {
+                "pattern": "^[^@\\s]+@sha256:[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dispatcher Image"
+          },
           "golden_snapshot": {
             "minLength": 1,
             "title": "Golden Snapshot",

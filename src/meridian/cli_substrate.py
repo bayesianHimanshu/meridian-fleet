@@ -35,6 +35,16 @@ def _fail(exc: Exception, code: int = 1) -> typer.Exit:
     return typer.Exit(code=code)
 
 
+def access_principals(settings: Settings) -> list[str]:
+    """Who is editor on the atespace: the laptop runner (direct runs; kind only) and the
+    in-cluster dispatcher (phase 4b step 2)."""
+    from meridian.sandbox.dispatcher_deploy import principal
+    from meridian.sandbox.substrate_templates import runner_principal
+
+    s = settings.substrate
+    return [runner_principal(s.namespace, s.runner_service_account), principal(s)]
+
+
 def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
     from meridian.sandbox.substrate_templates import (
         ACCESS_POLICY_FILE,
@@ -74,7 +84,7 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
     sa = s.runner_service_account
     (root / RUNNER_FILE).write_text(render_runner(s.namespace, sa), encoding="utf-8")
     (root / ACCESS_POLICY_FILE).write_text(
-        render_access_policy(s.atespace, s.namespace, sa), encoding="utf-8"
+        render_access_policy(s.atespace, access_principals(settings)), encoding="utf-8"
     )
     written += [root / RUNNER_FILE, root / ACCESS_POLICY_FILE]
     return written
@@ -136,7 +146,7 @@ def substrate_deploy(
                 s.atespace,
                 s.deploy_dir / RUNNER_FILE,
                 s.deploy_dir / ACCESS_POLICY_FILE,
-                access_policy_spec(s.namespace, s.runner_service_account)["bindings"],
+                access_policy_spec(access_principals(settings))["bindings"],
             )
             typer.echo(f"runner identity and access policy: {outcome}")
             names = [
@@ -259,6 +269,9 @@ def substrate_conformance(
             executor = c.substrate_executor(log, client)
             probe = load_template(client, s.deploy_dir, CONFORMANCE, probe=True)
             digest = registry_config_digest(probe.image)
+            dispatcher = sc.dispatcher_address(s)
+            if dispatcher:
+                typer.echo(f"also probing the dispatcher at {dispatcher}")
             for zone in zones or c.substrate_policies():
                 template = executor.template_for_policy(zone)
                 result = sc.run_substrate_conformance(
@@ -270,6 +283,7 @@ def substrate_conformance(
                     image_digest=digest,
                     kubectl=s.kubectl,
                     context=s.context,
+                    dispatcher=dispatcher,
                 )
                 verdict = "pass" if result.passed else "FAIL"
                 typer.echo(f"{verdict}  {zone} (actor {result.actor}, peer {result.peer_ip})")
@@ -288,6 +302,7 @@ def substrate_conformance(
             raise typer.Exit(code=1)
 
 
+DISPATCHER_SELECTOR = "workload=meridian-dispatcher"
 CANARY_AGENTS = (
     "rbqm.kri_monitor",
     "rbqm.qtl_detector",
@@ -368,8 +383,11 @@ def substrate_canary(
         with Container.build(settings) as c:
             log = _log(c)
             client = c.substrate_client()
+            dispatched = s.via == "dispatcher"
             try:
-                executor = c.substrate_executor(log, client)
+                # Runs go the way [substrate] via says; the probe template and the
+                # positive control always use the laptop's (bootstrap) client.
+                executor = c.substrate_executor(log, None if dispatched else client)
                 probe = load_template(client, s.deploy_dir, CONFORMANCE, probe=True)
                 zone_templates = [executor.template_for_policy(p) for p in c.substrate_policies()]
             except (SubstrateError, ExecutionError) as exc:
@@ -394,6 +412,7 @@ def substrate_canary(
                 typer.echo(f"run {i + 1:>2} {agent:<30} {r.substrate.actor} {r.duration_ms} ms")
             executor.drain()
             report["runs"] = done
+            report["via"] = s.via
             report["live_actors_after"] = len(client.actors())
             typer.echo("searching snapshot storage, worker filesystems and var/ ...")
 
@@ -405,12 +424,23 @@ def substrate_canary(
                 if node_scan and label == "after_runs":
                     stores.append(sp.search_node(needle).as_dict())
                     stores.append(sp.search_dir(Path("var"), needle, "host var/").as_dict())
+                if dispatched and label == "after_runs":
+                    pod = (s.kubectl, s.context, s.dispatcher_namespace, DISPATCHER_SELECTOR)
+                    stores.append(sp.search_pod(*pod, needle).as_dict())
+                    stores.append(sp.search_pod_logs(*pod, needle).as_dict())
                 return {
                     "stores": stores,
                     "layout": sp.bucket_layout(keys, s.atespace, golden),
                 }
 
             report["after_runs"] = search_all("after_runs")
+            if positive_control and dispatched:
+                # The pod search would see the canary: plant it in /tmp, search, remove.
+                pod = (s.kubectl, s.context, s.dispatcher_namespace, DISPATCHER_SELECTOR)
+                sp.plant_in_pod(*pod, canary, "/tmp/positive-control")  # noqa: S108
+                found = sp.search_pod(*pod, needle).as_dict()
+                sp.remove_in_pod(*pod, "/tmp/positive-control")  # noqa: S108
+                report["positive_control_dispatcher_pod"] = found
             if positive_control:
                 template = executor.template_for_policy("rbqm")
                 actor = f"mer-pc-{uuid.uuid4().hex[:8]}"

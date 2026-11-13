@@ -12,7 +12,7 @@ carries the run's real start in started_at.
 
 from collections.abc import Callable, Collection, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Protocol
 
@@ -106,6 +106,12 @@ class SandboxRequiredError(RuntimeError):
     """An operational cut is pending and the executor is not the one config requires."""
 
 
+class RetryableRunError(Exception):
+    """A run failed in a way that leaves nothing behind and may be retried once on a new
+    sandbox: its worker was lost (a Spot preemption, a node gone). Executors raise a
+    subclass (meridian.sandbox.substrate_executor.WorkerLostError)."""
+
+
 @dataclass(slots=True)
 class RunReport:
     completed: list[tuple[str, int]] = field(default_factory=list)
@@ -114,6 +120,8 @@ class RunReport:
     findings_skipped: list[str] = field(default_factory=list)
     executors: dict[str, int] = field(default_factory=dict)  # runs sent to each executor
     capacity: dict[str, int] = field(default_factory=dict)  # runs at a time, per executor
+    # Attempts whose worker was lost and that were run again: (agent, trigger seq, error).
+    retried: list[tuple[str, int, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +130,13 @@ class _Planned:
     trigger: Event
     cut_id: str
     plan: RunPlan
+
+
+@dataclass(frozen=True, slots=True)
+class _Attempt:
+    planned: _Planned
+    started_at: datetime
+    outcome: RunOutcome | Exception
 
 
 class AgentRunner:
@@ -136,6 +151,7 @@ class AgentRunner:
         log: structlog.typing.FilteringBoundLogger,
         operational_cuts: Collection[str],
         operational_executors: Collection[str] = ("openshell", "substrate"),
+        lost_worker_retries: int = 1,
     ) -> None:
         """operational_cuts ([cuts] operational) may only be processed by one of
         operational_executors ([cuts] operational_executors), decided per run (a zoned
@@ -149,6 +165,7 @@ class AgentRunner:
         self._clock = clock
         self._study_id = study_id
         self._log = log
+        self._retries = lost_worker_retries
 
     def _completed(self) -> set[tuple[str, str | None, int]]:
         """(agent_id, agent_version, trigger_seq) of every finished run.
@@ -235,28 +252,48 @@ class AgentRunner:
         report.capacity.update(capacity)
         pools = {n: ThreadPoolExecutor(capacity[n], thread_name_prefix=f"run-{n}") for n in names}
         try:
-            futures: list[Future[tuple[datetime, RunOutcome | Exception]]] = []
+            futures: list[Future[list[_Attempt]]] = []
             for p in planned:
                 report.executors[p.plan.executor] = report.executors.get(p.plan.executor, 0) + 1
                 futures.append(pools[p.plan.executor].submit(self._timed_run, p))
-            for p, future in zip(planned, futures, strict=True):
-                started_at, outcome = future.result()
-                self._commit(p, outcome, report, started_at=started_at)
+            for future in futures:
+                self._commit_attempts(future.result(), report)
         finally:
             for pool in pools.values():
                 pool.shutdown(wait=True)
 
-    def _timed_run(self, p: _Planned) -> tuple[datetime, RunOutcome | Exception]:
-        """Run one planned run; return when it started (read as it leaves the queue) and its
-        outcome or the exception it raised. ActorWoke is appended later, at commit, and
-        carries this start time."""
-        started_at = self._clock.now()
-        try:
-            return started_at, self._executor.run(
-                p.registered.agent.agent_id, p.trigger, p.cut_id, p.plan
-            )
-        except Exception as exc:  # an agent failure must never stop the pass
-            return started_at, exc
+    def _timed_run(self, p: _Planned) -> list[_Attempt]:
+        """Run one planned run; return each attempt with when it started (read as it
+        leaves the queue) and its outcome or the exception it raised. ActorWoke is appended
+        later, at commit, and carries that start time. A run whose worker was lost
+        (RetryableRunError) is run again once, on a new plan (a new actor); both attempts
+        are returned, so the ledger records the lost one as a started run that never
+        completed."""
+        attempts: list[_Attempt] = []
+        current = p
+        while True:
+            started_at = self._clock.now()
+            try:
+                outcome: RunOutcome | Exception = self._executor.run(
+                    current.registered.agent.agent_id, current.trigger, current.cut_id, current.plan
+                )
+            except Exception as exc:  # an agent failure must never stop the pass
+                outcome = exc
+            attempts.append(_Attempt(current, started_at, outcome))
+            if not isinstance(outcome, RetryableRunError) or len(attempts) > self._retries:
+                return attempts
+            try:
+                plan = self._executor.plan(current.registered.agent.agent_id, current.trigger)
+            except Exception:  # no new plan: the lost attempt stands as the failure
+                return attempts
+            current = replace(current, plan=plan)
+
+    def _commit_attempts(self, attempts: Sequence[_Attempt], report: RunReport) -> None:
+        """Commit a run's attempts in order; a lost attempt that was retried is reported
+        as retried, not failed."""
+        for i, a in enumerate(attempts):
+            retried = i < len(attempts) - 1
+            self._commit(a.planned, a.outcome, report, started_at=a.started_at, retried=retried)
 
     def _allowed(self) -> str:
         return " or ".join(self._operational_executors)
@@ -338,8 +375,12 @@ class AgentRunner:
             return
         p = _Planned(registered, trigger, cut_id, plan)
         report.executors[plan.executor] = report.executors.get(plan.executor, 0) + 1
-        started_at, outcome = self._timed_run(p)
-        self._commit(p, outcome, report, review, started_at=started_at)
+        attempts = self._timed_run(p)
+        for i, a in enumerate(attempts):
+            retried = i < len(attempts) - 1
+            self._commit(
+                a.planned, a.outcome, report, review, started_at=a.started_at, retried=retried
+            )
 
     def _commit(
         self,
@@ -349,6 +390,7 @@ class AgentRunner:
         review: tuple[int, int] | None = None,
         *,
         started_at: datetime,
+        retried: bool = False,
     ) -> None:
         """Append one finished run: ActorWoke, then (if it succeeded) its findings and
         ActorSuspended. A failed run leaves only ActorWoke, as before."""
@@ -392,8 +434,13 @@ class AgentRunner:
                         f"{agent.agent_id}'s visible_to: {sorted(extra)}"
                     )
         except Exception as exc:  # an agent failure must never stop the pass
-            log.error("agent.run_failed", error=f"{type(exc).__name__}: {exc}")
-            report.failed.append((agent.agent_id, trigger.seq, f"{type(exc).__name__}: {exc}"))
+            error = f"{type(exc).__name__}: {exc}"
+            if retried:
+                log.warning("agent.run_retried", error=error)
+                report.retried.append((agent.agent_id, trigger.seq, error))
+            else:
+                log.error("agent.run_failed", error=error)
+                report.failed.append((agent.agent_id, trigger.seq, error))
             return
 
         for draft in drafts:
