@@ -25,6 +25,7 @@ import argparse
 import http.client
 import http.server
 import json
+import os
 import socket
 import ssl
 import sys
@@ -40,6 +41,7 @@ import httpx
 import structlog
 
 from meridian.sandbox import dispatch
+from meridian.sandbox import substrate_conformance as sc
 from meridian.sandbox.executor import ExecutionError
 from meridian.sandbox.substrate import (
     DISPATCHER_VERBS,
@@ -92,6 +94,18 @@ class RouterSend:
     def __call__(
         self, actor: str, body: bytes, headers: Mapping[str, str], lap: Callable[[str], None]
     ) -> httpx.Response:
+        """A run: POST /run with the inputs."""
+        return self.request(actor, "POST", "/run", body, headers, lap)
+
+    def request(
+        self,
+        actor: str,
+        method: str,
+        path: str,
+        body: bytes | None,
+        headers: Mapping[str, str] | None = None,
+        lap: Callable[[str], None] = lambda _: None,
+    ) -> httpx.Response:
         raw = socket.create_connection((self._host, self._port), timeout=self._timeout)
         tls = self._context().wrap_socket(raw, server_hostname=self._host)
         try:
@@ -111,7 +125,7 @@ class RouterSend:
                 "actor-upstream", self._actor_port, timeout=self._timeout
             )
             conn.sock = tls  # the tunnel: plain HTTP to the actor inside it
-            conn.request("POST", "/run", body=body, headers=dict(headers))
+            conn.request(method, path, body=body, headers=dict(headers or {}))
             answer = conn.getresponse()
             return httpx.Response(answer.status, content=answer.read())
         except (OSError, http.client.HTTPException) as exc:
@@ -142,6 +156,11 @@ class Dispatcher:
     placement_wait: float
     ready_workers: Callable[[], int]
     sleep: Callable[[float], None] = time.sleep
+    # Conformance (phase 4b step 3): a router request of any method and path, this pod's
+    # own "ip:port" (an actor must not reach it) and the API server service's address.
+    request: sc.Request | None = None
+    own_address: str | None = None
+    kube_api: tuple[str, int] = sc.KUBE_API
 
     def __post_init__(self) -> None:
         self._golden: dict[str, str] = {}
@@ -196,6 +215,8 @@ class Dispatcher:
                 actor=actor,
                 golden_snapshot=golden,
                 worker_lost=True,
+                worker_pod=exc.worker_pod,
+                node=exc.node,
                 error=str(exc),
                 deleted=all(deleted),
             )
@@ -214,6 +235,21 @@ class Dispatcher:
             foreign_snapshots=foreign,
             deleted=all(deleted),
             error=f"snapshots other than the golden one: {foreign}" if foreign else None,
+        )
+
+    def conformance(self, template: str) -> dict[str, Any]:
+        """Run the containment checks in two data-free actors of a conformance template
+        (meridian.sandbox.substrate_conformance.probe_session). Any other template is
+        refused: this endpoint never sends a zone actor anything."""
+        if not template.startswith(f"{sc.CONFORMANCE_PREFIX}-") or self.request is None:
+            raise ValueError(f"{template!r} is not a conformance template")
+        return sc.probe_session(
+            client=self.client,
+            request=self.request,
+            resume=lambda name: resume_waiting(self.client, name, self.placement_wait, self.sleep),
+            template=template,
+            dispatcher=self.own_address,
+            kube_api=self.kube_api,
         )
 
     def _delete_quietly(self, actor: str) -> bool:
@@ -311,6 +347,8 @@ def make_handler(
                     return 200, {"deleted": parts[2]}, parts[2]
                 if method == "POST" and parts == ["v1", "runs"]:
                     return self._run()
+                if method == "POST" and parts == ["v1", "conformance"]:
+                    return self._conformance()
             except NotFoundError as exc:
                 return 404, {"error": str(exc)[:500]}, None
             except SubstrateError as exc:
@@ -328,6 +366,17 @@ def make_handler(
             answer = dispatcher.run(actor, template, agent_id, body, body_sha)
             del body  # nothing of the run outlives the request
             return 200, answer.model_dump(mode="json"), actor
+
+        def _conformance(self) -> tuple[int, Any, str | None]:
+            length = int(self.headers.get("Content-Length") or -1)
+            if not 0 < length <= 4096:
+                return 400, {"error": "bad length"}, None
+            try:
+                template = str(json.loads(self.rfile.read(length))["template"])
+                answer = dispatcher.conformance(template)
+            except (ValueError, KeyError, TypeError) as exc:
+                return 400, {"error": str(exc)[:300]}, None
+            return 200, answer, str(answer["actor"])
 
         def do_GET(self) -> None:
             self._handle("GET")
@@ -381,18 +430,31 @@ def serve(argv: Sequence[str]) -> int:
         timeout_seconds=args.request_timeout,
     )
     namespace, pool = args.pool.split("/", 1)
+    router = RouterSend(
+        router=args.router,
+        cert_bundle=args.router_cert,
+        ca_file=args.router_ca,
+        atespace=args.atespace,
+        port=args.actor_port,
+        timeout=args.request_timeout,
+    )
+
+    def request(actor: str, method: str, path: str, body: bytes | None) -> tuple[int, bytes]:
+        response = router.request(actor, method, path, body, {"Content-Type": "application/json"})
+        return response.status_code, response.content
+
+    pod_ip = os.environ.get("POD_IP")
     dispatcher = Dispatcher(
         client=client,
-        send=RouterSend(
-            router=args.router,
-            cert_bundle=args.router_cert,
-            ca_file=args.router_ca,
-            atespace=args.atespace,
-            port=args.actor_port,
-            timeout=args.request_timeout,
-        ),
+        send=router,
         placement_wait=args.placement_wait,
         ready_workers=pool_ready(namespace, pool),
+        request=request,
+        own_address=f"{pod_ip}:{args.port}" if pod_ip else None,
+        kube_api=(
+            os.environ.get("KUBERNETES_SERVICE_HOST", sc.KUBE_API[0]),
+            int(os.environ.get("KUBERNETES_SERVICE_PORT", str(sc.KUBE_API[1]))),
+        ),
     )
     server = http.server.ThreadingHTTPServer(
         ("0.0.0.0", args.port),  # noqa: S104 (a pod listens on its own address)

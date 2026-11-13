@@ -20,12 +20,7 @@ from meridian.sandbox.substrate import (
     KubectlAteClient,
     ServiceAccountToken,
 )
-from meridian.sandbox.substrate_templates import (
-    ACCESS_POLICY_FILE,
-    RUNNER_FILE,
-    render_access_policy,
-    render_runner,
-)
+from meridian.sandbox.substrate_templates import ACCESS_POLICY_FILE, render_access_policy
 
 REPO = Path(__file__).resolve().parents[2]
 DEPLOY = REPO / "deploy" / "substrate"
@@ -124,19 +119,20 @@ def test_the_token_is_minted_once_into_a_private_file(recorder: _Recorder, tmp_p
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
-def test_the_committed_identity_files_render_from_the_code() -> None:
+def test_the_committed_access_policy_names_only_the_dispatcher() -> None:
     s = Settings().substrate
-    sa = s.runner_service_account
-    assert (DEPLOY / RUNNER_FILE).read_text() == render_runner(s.namespace, sa)
     assert (DEPLOY / ACCESS_POLICY_FILE).read_text() == render_access_policy(
         s.atespace, access_principals(Settings())
     )
     text = (DEPLOY / ACCESS_POLICY_FILE).read_text()
     assert "role: editor" in text
-    # The runner (direct runs on kind) and the dispatcher, each editor on the atespace only.
-    assert "serviceaccount:meridian:meridian-runner" in text
+    # Phase 4b step 3: the dispatcher alone, editor on the atespace only; the laptop's
+    # runner identity of phase 4a is gone.
+    assert "meridian-runner" not in text
     assert "serviceaccount:meridian-dispatch:dispatcher" in text
+    assert text.count('- "user:') == 1
     assert "owner" not in text.split("bindings:")[1]
+    assert not (DEPLOY / "runner.yaml").exists()
 
 
 def _check(*attempts: sg.Attempt, state: str = "ACTOR_STATE_RUNNING") -> sg.GuardCheck:

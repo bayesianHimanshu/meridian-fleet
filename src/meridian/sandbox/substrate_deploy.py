@@ -1,7 +1,8 @@
 """`meridian substrate deploy`: what this project sets up in its own atespace.
 
 Only these actions, all on objects this code names: push the agent image to the kind
-registry (127.0.0.1:5001), apply the meridian Namespace and WorkerPool, create the
+registry (127.0.0.1:5001; on GKE you push it to Artifact Registry and this code only
+reads its digest, resolve_pushed), apply the meridian Namespace and WorkerPool, create the
 meridian atespace, create the ActorTemplates rendered in deploy/substrate/ and wait for
 their golden snapshots. It never changes ate-system, other namespaces or global settings.
 Templates are immutable: a new image gives new template names (the digest is part of
@@ -127,6 +128,74 @@ def push_image(local_ref: str, registry: str) -> PushedImage:
     return PushedImage(ref=ref, config_digest=config)
 
 
+def _inspect(ref: str) -> dict[str, object]:
+    raw = json.loads(_run(["docker", "image", "inspect", ref, "--format", "{{json .}}"]))
+    assert isinstance(raw, dict)
+    return raw
+
+
+def local_digest_ref(local_ref: str, registry: str) -> str:
+    """<registry>/<name>@sha256:<manifest digest> as docker recorded it when the image was
+    pushed to registry (RepoDigests); refuse if it was never pushed there."""
+    name = local_ref.split("/")[-1].rsplit(":", 1)[0]
+    repo = f"{registry}/{name}"
+    digests = [str(d) for d in list(_inspect(local_ref).get("RepoDigests") or [])]  # type: ignore[call-overload]
+    pinned = [d for d in digests if d.startswith(f"{repo}@sha256:")]
+    if not pinned:
+        raise DeployError(f"{local_ref} was never pushed to {registry} (no RepoDigest for {repo})")
+    return pinned[0]
+
+
+def ar_digest(gcloud: str, tagged_ref: str) -> str:
+    """The manifest digest Artifact Registry holds for a tag (read-only gcloud)."""
+    out = _run(
+        [
+            gcloud,
+            "artifacts",
+            "docker",
+            "images",
+            "describe",
+            tagged_ref,
+            "--format=value(image_summary.digest)",
+        ],
+        timeout=120,
+    ).strip()
+    if not out.startswith("sha256:") or len(out) != 71:
+        raise DeployError(f"Artifact Registry reports no digest for {tagged_ref}: {out!r}")
+    return out
+
+
+def resolve_pushed(local_ref: str, registry: str, gcloud: str) -> PushedImage:
+    """GKE: the image you pushed to Artifact Registry (docs/gke-session.md), by digest. The
+    digest docker recorded at the push must be the one Artifact Registry holds for the
+    tag, and the local image (whose id is the config digest) must be the one pushed."""
+    ref = local_digest_ref(local_ref, registry)
+    tag = local_ref.rsplit(":", 1)[1] if ":" in local_ref.split("/")[-1] else "latest"
+    tagged = f"{ref.split('@', 1)[0]}:{tag}"
+    held = ar_digest(gcloud, tagged)
+    if held != ref.split("@", 1)[1]:
+        raise DeployError(
+            f"Artifact Registry holds {held} for {tagged}, but {local_ref} was pushed as {ref}; "
+            "push it again"
+        )
+    return PushedImage(ref=ref, config_digest=str(_inspect(local_ref)["Id"]))
+
+
+def image_config_digest(image_ref: str, target: str) -> str:
+    """The config digest (image id) of an image named by digest: from the kind registry,
+    or, for Artifact Registry, from the local copy that was pushed (resolve_pushed)."""
+    if target == "kind":
+        return registry_config_digest(image_ref)
+    return str(_inspect(image_ref)["Id"])
+
+
+def image_labels(image_ref: str, target: str) -> dict[str, str]:
+    if target == "kind":
+        return registry_image_labels(image_ref)
+    config = dict(_inspect(image_ref).get("Config") or {})  # type: ignore[call-overload]
+    return {str(k): str(v) for k, v in dict(config.get("Labels") or {}).items()}
+
+
 def apply_pool(kubectl: str, context: str, pool_file: Path) -> None:
     _run([kubectl, "--context", context, "apply", "-f", str(pool_file)])
 
@@ -148,17 +217,15 @@ def wait_pool(kubectl: str, context: str, namespace: str, name: str, timeout: fl
     )
 
 
-def ensure_runner_identity(
+def ensure_access_policy(
     kubectl: str,
     context: str,
     atespace: str,
-    runner_file: Path,
     policy_file: Path,
     expected_bindings: list[dict[str, object]],
 ) -> str:
-    """Apply the runner's ServiceAccount and make the atespace's access policy the
-    committed one (create it, or update it with the server's uid and version)."""
-    _run([kubectl, "--context", context, "apply", "-f", str(runner_file)])
+    """Make the atespace's access policy the committed one (create it, or update it with
+    the server's uid and version)."""
     ate = [kubectl, "ate", "--context", context]
     try:
         current = json.loads(_run([*ate, "get", "access-policy", "-a", atespace, "-o", "json"]))

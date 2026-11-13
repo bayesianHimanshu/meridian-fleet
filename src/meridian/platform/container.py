@@ -1,6 +1,6 @@
 """Explicit wiring. Everything is constructed here and passed by constructor."""
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import TracebackType
@@ -41,12 +41,8 @@ from meridian.sandbox.local_model import OpenShellLocalModelExecutor
 from meridian.sandbox.narration import OpenShellNarrationExecutor
 from meridian.sandbox.openshell import OpenShellClient, SubprocessOpenShellClient
 from meridian.sandbox.substrate import (
-    RUNNER_VERBS,
     KubectlAteClient,
-    ServiceAccountToken,
     SubstrateClient,
-    free_workers,
-    pool_ready_workers,
     read_install_record,
 )
 from meridian.sandbox.substrate_executor import (
@@ -65,7 +61,6 @@ class Container:
     clock: Clock
     ledger: SqliteLedger
     # One runner token per container (minted on first use, shared by its clients).
-    _tokens: dict[str, ServiceAccountToken] = field(default_factory=dict, repr=False)
     # Phase 4b step 2: the one port-forward to the dispatcher, opened on first use.
     _tunnels: dict[str, PortForward] = field(default_factory=dict, repr=False)
 
@@ -291,36 +286,16 @@ class Container:
     def sandbox_tracker(self) -> SandboxTracker:
         return SandboxTracker(self.settings.runtime.sandboxes_log, self.clock)
 
-    def runner_token(self) -> ServiceAccountToken:
-        """The runner's ServiceAccount token, minted on first use and shared by its clients."""
-        s = self.settings.substrate
-        if "runner" not in self._tokens:
-            self._tokens["runner"] = ServiceAccountToken(
-                path=s.runner_token_file,
-                namespace=s.namespace,
-                service_account=s.runner_service_account,
-                audience=s.api_audience,
-                kubectl=s.kubectl,
-                context=s.context,
-            )
-        return self._tokens["runner"]
-
-    def substrate_client(self, *, guarded: bool = True) -> KubectlAteClient:
-        """The runner's client: its own identity (atespace editor) and the verb allow-list,
-        so it refuses suspend, revert and tag before Substrate sees them. guarded=False is
-        the same identity without the allow-list (only the guard check uses it)."""
-        s = self.settings.substrate
-        return KubectlAteClient(
-            s.atespace,
-            kubectl=s.kubectl,
-            context=s.context,
-            timeout_seconds=s.request_timeout_seconds,
-            token_file=self.runner_token(),
-            allowed=RUNNER_VERBS if guarded else None,
-        )
+    def substrate_client(self) -> DispatcherClient:
+        """What the laptop uses to reach Substrate for runs and their checks: the in-cluster
+        dispatcher, through one port-forward. Since phase 4b step 3 the laptop holds no
+        Substrate identity of its own (the runner ServiceAccount is gone); its client
+        refuses suspend, revert, tag and proxy before anything is sent."""
+        return self.dispatcher_client()
 
     def substrate_admin_client(self) -> KubectlAteClient:
-        """The shared bootstrap identity, unguarded: deploy and the proofs' positive control."""
+        """The bootstrap owner (ate-setup's client identity), unguarded: deploy only (the
+        atespace, its access policy and templates), never a run."""
         s = self.settings.substrate
         return KubectlAteClient(
             s.atespace,
@@ -385,15 +360,10 @@ class Container:
     def substrate_executor(
         self,
         log: structlog.typing.FilteringBoundLogger,
-        client: SubstrateClient | None = None,
         policies: Sequence[str] | None = None,
     ) -> SubstrateExecutor:
-        """The Substrate executor [substrate] via names: the laptop drives each actor
-        (direct) or the in-cluster dispatcher does (dispatcher; no Substrate token here).
-        A client passed in (the proofs' bootstrap identity) always means direct."""
-        if client is None and self.settings.substrate.via == "dispatcher":
-            return self.dispatcher_executor(log, policies)
-        return self._direct_executor(log, client, policies)
+        """The Substrate executor: the in-cluster dispatcher drives each actor."""
+        return self.dispatcher_executor(log, policies)
 
     def dispatcher_executor(
         self, log: structlog.typing.FilteringBoundLogger, policies: Sequence[str] | None = None
@@ -401,10 +371,7 @@ class Container:
         from meridian.sandbox.dispatcher_deploy import MANIFEST, committed_image
         from meridian.sandbox.dispatcher_executor import DispatcherExecutor
         from meridian.sandbox.image import REVISION_LABEL
-        from meridian.sandbox.substrate_deploy import (
-            registry_config_digest,
-            registry_image_labels,
-        )
+        from meridian.sandbox.substrate_deploy import image_config_digest, image_labels
 
         self.check_substrate_release()
         s = self.settings.substrate
@@ -420,8 +387,8 @@ class Container:
             registry=self.agent_registry(),
             settings=s,
             templates=templates,
-            image_digest=registry_config_digest(image_ref),
-            image_source_commit=registry_image_labels(image_ref).get(REVISION_LABEL),
+            image_digest=image_config_digest(image_ref, s.target),
+            image_source_commit=image_labels(image_ref, s.target).get(REVISION_LABEL),
             study_root=self.settings.curated_root / self.settings.study_id,
             tracker=SandboxTracker(s.actors_log, self.clock),
             log=log,
@@ -431,53 +398,6 @@ class Container:
             delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
             placement_wait_seconds=s.placement_wait_seconds,
         )
-
-    def _direct_executor(
-        self,
-        log: structlog.typing.FilteringBoundLogger,
-        client: SubstrateClient | None = None,
-        policies: Sequence[str] | None = None,
-    ) -> SubstrateExecutor:
-        from meridian.sandbox.image import REVISION_LABEL
-        from meridian.sandbox.substrate_deploy import (
-            registry_config_digest,
-            registry_image_labels,
-        )
-
-        self.check_substrate_release()
-        resolved = client or self.substrate_client()
-        templates = self.substrate_templates(resolved, policies)
-        images = {t.image for t in templates.values()}
-        if len(images) != 1:
-            raise ExecutionError(f"the substrate templates name {len(images)} images: {images}")
-        image_ref = images.pop()
-        return SubstrateExecutor(
-            client=resolved,
-            registry=self.agent_registry(),
-            settings=self.settings.substrate,
-            templates=templates,
-            image_digest=registry_config_digest(image_ref),
-            image_source_commit=registry_image_labels(image_ref).get(REVISION_LABEL),
-            study_root=self.settings.curated_root / self.settings.study_id,
-            tracker=SandboxTracker(self.settings.substrate.actors_log, self.clock),
-            log=log,
-            safety_root=self.settings.safety_root / self.settings.study_id,
-            etmf_root=self.settings.etmf_root / self.settings.study_id,
-            audit_root=self.settings.audit_root,
-            delete_confirm_seconds=self.settings.runtime.delete_confirm_seconds,
-            free_workers=None if client is not None else self._free_workers(resolved),
-            placement_wait_seconds=self.settings.substrate.placement_wait_seconds,
-        )
-
-    def _free_workers(self, client: SubstrateClient) -> Callable[[], int] | None:
-        if not isinstance(client, KubectlAteClient):
-            return None
-        s = self.settings.substrate
-
-        def ready() -> int:
-            return pool_ready_workers(s.kubectl, s.context, s.namespace, s.worker_pool)
-
-        return lambda: free_workers(client, ready)
 
     def zoned_executor(self, log: structlog.typing.FilteringBoundLogger) -> ZonedExecutor:
         """openshell for every policy, except those [runtime] executors sends to substrate."""

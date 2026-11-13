@@ -36,13 +36,11 @@ def _fail(exc: Exception, code: int = 1) -> typer.Exit:
 
 
 def access_principals(settings: Settings) -> list[str]:
-    """Who is editor on the atespace: the laptop runner (direct runs; kind only) and the
-    in-cluster dispatcher (phase 4b step 2)."""
+    """Who is editor on the atespace: only the in-cluster dispatcher (phase 4b step 3; the
+    laptop's runner identity of phase 4a is gone, on kind as on GKE)."""
     from meridian.sandbox.dispatcher_deploy import principal
-    from meridian.sandbox.substrate_templates import runner_principal
 
-    s = settings.substrate
-    return [runner_principal(s.namespace, s.runner_service_account), principal(s)]
+    return [principal(settings.substrate)]
 
 
 def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
@@ -50,13 +48,11 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
         ACCESS_POLICY_FILE,
         CONFORMANCE,
         POOL_FILE,
-        RUNNER_FILE,
         SUBSTRATE_POLICIES,
         PoolSpec,
         check_sizes,
         render_access_policy,
         render_pool,
-        render_runner,
         render_template,
         template_path,
     )
@@ -78,15 +74,15 @@ def write_rendered(settings: Settings, image_ref: str) -> list[Path]:
         worker_image=s.worker_image,
         sandbox_class=s.sandbox_class,
         worker_memory_mib=s.worker_memory_mib,
+        node_selector=s.node_selector,
+        toleration=s.toleration,
     )
     (root / POOL_FILE).write_text(render_pool(pool), encoding="utf-8")
     written.append(root / POOL_FILE)
-    sa = s.runner_service_account
-    (root / RUNNER_FILE).write_text(render_runner(s.namespace, sa), encoding="utf-8")
     (root / ACCESS_POLICY_FILE).write_text(
         render_access_policy(s.atespace, access_principals(settings)), encoding="utf-8"
     )
-    written += [root / RUNNER_FILE, root / ACCESS_POLICY_FILE]
+    written.append(root / ACCESS_POLICY_FILE)
     return written
 
 
@@ -111,8 +107,10 @@ def substrate_deploy(
         bool, typer.Option("--prune", help="Delete templates the committed files no longer name.")
     ] = False,
 ) -> None:
-    """Push the agent image to the kind registry, render deploy/substrate for its digest,
-    apply the WorkerPool, create the atespace and templates, and wait for golden snapshots."""
+    """kind: push the agent image to the kind registry. GKE: take the image you pushed to
+    Artifact Registry, by digest. Then render [substrate] deploy_dir for that digest, apply
+    the WorkerPool, create the atespace, its access policy and templates, and wait for
+    golden snapshots."""
     from meridian.sandbox import image
     from meridian.sandbox import substrate_deploy as d
     from meridian.sandbox.image import ImageError
@@ -120,7 +118,6 @@ def substrate_deploy(
         ACCESS_POLICY_FILE,
         CONFORMANCE,
         POOL_FILE,
-        RUNNER_FILE,
         SUBSTRATE_POLICIES,
         access_policy_spec,
         template_path,
@@ -133,22 +130,25 @@ def substrate_deploy(
             c.check_substrate_release()
             commit = d.require_clean_source(image.inspect(c.image_ref()))
             typer.echo(f"{c.image_ref()} was built from {commit} (clean)")
-            pushed = d.push_image(c.image_ref(), s.registry)
-            typer.echo(f"pushed {pushed.ref} (image id {pushed.config_digest})")
+            if s.target == "kind":
+                pushed = d.push_image(c.image_ref(), s.registry)
+                typer.echo(f"pushed {pushed.ref} (image id {pushed.config_digest})")
+            else:
+                pushed = d.resolve_pushed(c.image_ref(), s.registry, s.gke.gcloud)
+                typer.echo(f"Artifact Registry holds {pushed.ref} (id {pushed.config_digest})")
             write_rendered(settings, pushed.ref)
             d.apply_pool(s.kubectl, s.context, s.deploy_dir / POOL_FILE)
             d.wait_pool(s.kubectl, s.context, s.namespace, s.worker_pool, timeout=300)
             client = c.substrate_admin_client()
             d.ensure_atespace(client, s.kubectl, s.context)
-            outcome = d.ensure_runner_identity(
+            outcome = d.ensure_access_policy(
                 s.kubectl,
                 s.context,
                 s.atespace,
-                s.deploy_dir / RUNNER_FILE,
                 s.deploy_dir / ACCESS_POLICY_FILE,
                 access_policy_spec(access_principals(settings))["bindings"],
             )
-            typer.echo(f"runner identity and access policy: {outcome}")
+            typer.echo(f"access policy (the dispatcher only): {outcome}")
             names = [
                 d.create_template(client, s.kubectl, s.context, template_path(s.deploy_dir, p))
                 for p in (*SUBSTRATE_POLICIES, CONFORMANCE)
@@ -253,29 +253,27 @@ def substrate_conformance(
         bool, typer.Option("--record/--no-record", help="Append the events to the ledger.")
     ] = True,
 ) -> None:
-    """Containment checks in real actors for each substrate policy; ledger events as for
-    OpenShell (PolicyDenied, ContainmentCheckCompleted with executor substrate)."""
+    """Containment checks in real actors for each substrate policy, run by the dispatcher
+    (POST /v1/conformance); ledger events as for OpenShell (PolicyDenied,
+    ContainmentCheckCompleted with executor substrate)."""
     from meridian.sandbox import substrate_conformance as sc
-    from meridian.sandbox.substrate_deploy import registry_config_digest
+    from meridian.sandbox.substrate_deploy import image_config_digest
     from meridian.sandbox.substrate_executor import load_template
     from meridian.sandbox.substrate_templates import CONFORMANCE
 
     with Container.build(Settings()) as c:
         log = _log(c)
         s = c.settings.substrate
-        client = c.substrate_client()
         failed = False
         try:
-            executor = c.substrate_executor(log, client)
+            executor = c.substrate_executor(log)
+            client = c.dispatcher_client()
             probe = load_template(client, s.deploy_dir, CONFORMANCE, probe=True)
-            digest = registry_config_digest(probe.image)
-            dispatcher = sc.dispatcher_address(s)
-            if dispatcher:
-                typer.echo(f"also probing the dispatcher at {dispatcher}")
+            digest = image_config_digest(probe.image, s.target)
             for zone in zones or c.substrate_policies():
                 template = executor.template_for_policy(zone)
                 result = sc.run_substrate_conformance(
-                    client=client,
+                    session=client.conformance,
                     zone=zone,
                     zone_template=template,
                     probe_template=probe,
@@ -283,10 +281,12 @@ def substrate_conformance(
                     image_digest=digest,
                     kubectl=s.kubectl,
                     context=s.context,
-                    dispatcher=dispatcher,
                 )
                 verdict = "pass" if result.passed else "FAIL"
-                typer.echo(f"{verdict}  {zone} (actor {result.actor}, peer {result.peer_ip})")
+                typer.echo(
+                    f"{verdict}  {zone} (actor {result.actor}, peer {result.peer_ip}, "
+                    f"dispatcher {result.dispatcher}, API {result.kube_api[0]})"
+                )
                 for check in result.checks:
                     typer.echo(f"  {check.name:<20} {check.outcome:<12} {check.message[:110]}")
                 typer.echo(f"  atenet-egress lines naming a target: {len(result.gateway_lines)}")
@@ -300,194 +300,6 @@ def substrate_conformance(
             raise _fail(exc) from exc
         if failed:
             raise typer.Exit(code=1)
-
-
-DISPATCHER_SELECTOR = "workload=meridian-dispatcher"
-CANARY_AGENTS = (
-    "rbqm.kri_monitor",
-    "rbqm.qtl_detector",
-    "rbqm.csm",
-    "safety.sae_reconciler",
-    "quality.tmf_completeness",
-    "quality.audit_trail_reviewer",
-)
-
-
-@substrate_app.command("canary")
-def substrate_canary(
-    runs: Annotated[int, typer.Option("--runs", min=1)] = 20,
-    cut_id: Annotated[str, typer.Option("--cut")] = "DC-BASE",
-    positive_control: Annotated[
-        bool,
-        typer.Option(
-            "--positive-control/--no-positive-control",
-            help="Afterwards suspend one canary actor and show the search finds it.",
-        ),
-    ] = True,
-    node_scan: Annotated[bool, typer.Option("--node-scan/--no-node-scan")] = True,
-    out: Annotated[Path, typer.Option("--out")] = Path("var/substrate/canary.json"),
-) -> None:
-    """Proof C1: a canary in the staged inputs of N runs is found in no snapshot, worker
-    filesystem or host folder afterwards (meridian.sandbox.substrate_proofs)."""
-    import contextlib
-    import hashlib
-    import json
-    import tempfile
-    import time
-    import uuid
-
-    import httpx
-
-    from meridian.domain.enums import EventType
-    from meridian.domain.events import AuditReviewRequested, Event
-    from meridian.sandbox import substrate_proofs as sp
-    from meridian.sandbox.executor import stage_run
-    from meridian.sandbox.substrate_executor import archive, load_template
-    from meridian.sandbox.substrate_templates import CONFORMANCE
-    from meridian.sandbox.verify import trigger_for
-    from meridian.worker_serve import AGENT_HEADER, SHA_HEADER
-
-    base = Settings()
-    s = base.substrate
-    canary = sp.new_canary()
-    needle = canary.encode()
-    report: dict[str, object] = {"canary_sha256": hashlib.sha256(needle).hexdigest()}
-    with tempfile.TemporaryDirectory(prefix="meridian-canary-") as tmp:
-        with Container.build(base) as c0:
-            audit = [
-                e
-                for e in c0.ledger.read(event_types=[EventType.AUDIT_REVIEW_REQUESTED])
-                if isinstance(e, Event) and isinstance(e.payload, AuditReviewRequested)
-            ]
-        audit_trigger = audit[-1] if audit else None
-        roots = sp.make_copies(
-            canary=canary,
-            dest=Path(tmp),
-            study_id=base.study_id,
-            cut_id=cut_id,
-            curated_root=base.curated_root,
-            safety_root=base.safety_root,
-            etmf_root=base.etmf_root,
-            audit_root=base.audit_root,
-            audit_seq=None if audit_trigger is None else audit_trigger.seq,
-        )
-        report["planted"] = list(roots.planted)
-        settings = base.model_copy(
-            update={
-                "curated_root": roots.curated_root,
-                "safety_root": roots.safety_root,
-                "etmf_root": roots.etmf_root,
-                "audit_root": roots.audit_root,
-            }
-        )
-        with Container.build(settings) as c:
-            log = _log(c)
-            client = c.substrate_client()
-            dispatched = s.via == "dispatcher"
-            try:
-                # Runs go the way [substrate] via says; the probe template and the
-                # positive control always use the laptop's (bootstrap) client.
-                executor = c.substrate_executor(log, None if dispatched else client)
-                probe = load_template(client, s.deploy_dir, CONFORMANCE, probe=True)
-                zone_templates = [executor.template_for_policy(p) for p in c.substrate_policies()]
-            except (SubstrateError, ExecutionError) as exc:
-                raise _fail(exc) from exc
-            golden = {t.golden_snapshot for t in zone_templates} | {probe.golden_snapshot}
-            trigger = trigger_for(c.ledger, c.settings.study_id, cut_id)
-            done = []
-            for i in range(runs):
-                agent = CANARY_AGENTS[i % len(CANARY_AGENTS)]
-                t = trigger
-                cut = cut_id
-                if agent == "quality.audit_trail_reviewer":
-                    if audit_trigger is None:
-                        continue
-                    t, cut = audit_trigger, "LEDGER"
-                try:
-                    r = executor.run(agent, t, cut)
-                except ExecutionError as exc:
-                    raise _fail(exc) from exc
-                assert r.substrate is not None
-                done.append({"agent": agent, "actor": r.substrate.actor, "ms": r.duration_ms})
-                typer.echo(f"run {i + 1:>2} {agent:<30} {r.substrate.actor} {r.duration_ms} ms")
-            executor.drain()
-            report["runs"] = done
-            report["via"] = s.via
-            report["live_actors_after"] = len(client.actors())
-            typer.echo("searching snapshot storage, worker filesystems and var/ ...")
-
-            def search_all(label: str) -> dict[str, object]:
-                with sp.port_forward(s.kubectl, s.context, "ate-system", "rustfs", 9000) as port:
-                    s3 = sp.LocalS3(f"http://127.0.0.1:{port}")
-                    bucket, keys = sp.search_bucket(s3, needle)
-                stores = [bucket.as_dict()]
-                if node_scan and label == "after_runs":
-                    stores.append(sp.search_node(needle).as_dict())
-                    stores.append(sp.search_dir(Path("var"), needle, "host var/").as_dict())
-                if dispatched and label == "after_runs":
-                    pod = (s.kubectl, s.context, s.dispatcher_namespace, DISPATCHER_SELECTOR)
-                    stores.append(sp.search_pod(*pod, needle).as_dict())
-                    stores.append(sp.search_pod_logs(*pod, needle).as_dict())
-                return {
-                    "stores": stores,
-                    "layout": sp.bucket_layout(keys, s.atespace, golden),
-                }
-
-            report["after_runs"] = search_all("after_runs")
-            if positive_control and dispatched:
-                # The pod search would see the canary: plant it in /tmp, search, remove.
-                pod = (s.kubectl, s.context, s.dispatcher_namespace, DISPATCHER_SELECTOR)
-                sp.plant_in_pod(*pod, canary, "/tmp/positive-control")  # noqa: S108
-                found = sp.search_pod(*pod, needle).as_dict()
-                sp.remove_in_pod(*pod, "/tmp/positive-control")  # noqa: S108
-                report["positive_control_dispatcher_pod"] = found
-            if positive_control:
-                template = executor.template_for_policy("rbqm")
-                actor = f"mer-pc-{uuid.uuid4().hex[:8]}"
-                with tempfile.TemporaryDirectory(prefix="meridian-stage-") as stage_tmp:
-                    staged = stage_run(
-                        agent_id="rbqm.kri_monitor",
-                        trigger=trigger,
-                        cut_id=cut_id,
-                        policy_name="rbqm",
-                        dest=Path(stage_tmp),
-                        study_root=roots.curated_root / base.study_id,
-                        safety_root=None,
-                        etmf_root=None,
-                        audit_root=None,
-                    )
-                    body = archive(staged.stage)
-                try:
-                    client.create_actor(actor, template.name)
-                    client.resume_actor(actor)
-                    with client.proxy(actor, 8080) as address:
-                        httpx.post(
-                            f"http://{address}/run",
-                            content=body,
-                            headers={
-                                AGENT_HEADER: "rbqm.kri_monitor",
-                                SHA_HEADER: hashlib.sha256(body).hexdigest(),
-                            },
-                            timeout=120,
-                        ).raise_for_status()
-                    # The runner's client refuses suspend; the bootstrap identity may.
-                    c.substrate_admin_client().suspend_actor(actor)
-                    report["positive_control_suspended"] = search_all("suspended")
-                finally:
-                    with contextlib.suppress(SubstrateError):
-                        client.delete_actor(actor)
-                time.sleep(30)
-                report["positive_control_after_delete"] = search_all("deleted")
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-    after = report["after_runs"]
-    assert isinstance(after, dict)
-    hits = [h for st in after["stores"] for h in st["hits"]]
-    typer.echo(json.dumps({k: v for k, v in report.items() if k != "runs"}, indent=1)[:6000])
-    if hits or after["layout"]["outside_tags"] or after["layout"]["non_golden_tags"]:
-        typer.echo("FAIL: the canary or a non-golden snapshot was found", err=True)
-        raise typer.Exit(code=1)
-    typer.echo(f"pass: canary in none of the stores after {len(done)} runs; wrote {out}")
 
 
 @substrate_app.command("bench")
@@ -573,53 +385,47 @@ def substrate_bench(
         raise typer.Exit(code=1)
 
 
-@substrate_app.command("guard-check")
-def substrate_guard_check(
-    show_gap: Annotated[
+@substrate_app.command("placement-check")
+def substrate_placement_check(
+    taint_node: Annotated[
         bool,
         typer.Option(
-            "--show-gap/--no-show-gap",
-            help="Also suspend a data-free conformance actor as the runner's identity without "
-            "the client guard, to show Substrate itself allows it.",
+            "--taint-node/--no-taint-node",
+            help="kind: taint the labelled node for the check, restart the workers, then "
+            "remove the taint (GKE's worker pool is tainted for good).",
         ),
     ] = False,
-    record: Annotated[bool, typer.Option("--record/--no-record")] = True,
+    label_kind_node: Annotated[
+        bool, typer.Option("--label-kind-node", help="kind: first put the worker label on it.")
+    ] = False,
 ) -> None:
-    """The runner may not suspend, revert or tag an actor: its client refuses, Substrate
-    refuses its identity outside the atespace, and the actor keeps only its golden
-    snapshot (meridian.sandbox.substrate_guard). Refusals go to the ledger."""
-    from meridian.sandbox import substrate_guard as sg
-    from meridian.sandbox.substrate_executor import load_template
-    from meridian.sandbox.substrate_templates import CONFORMANCE
+    """Workers only on nodes with the worker label, tolerating the worker taint; a pod
+    without the toleration refused there (meridian.sandbox.placement)."""
+    from meridian.sandbox import placement as pl
 
-    with Container.build(Settings()) as c:
-        s = c.settings.substrate
-        runner = c.substrate_client()
-        unguarded = c.substrate_client(guarded=False)
-        try:
-            c.check_substrate_release()
-            template = load_template(runner, s.deploy_dir, "rbqm")
-            probe = load_template(runner, s.deploy_dir, CONFORMANCE, probe=True)
-            result = sg.run_guard_check(
-                runner=runner,
-                runner_unguarded=unguarded,
-                template=template,
-                probe_template=probe,
-                show_gap=show_gap,
-            )
-        except (SubstrateError, ExecutionError) as exc:
-            raise _fail(exc) from exc
-        typer.echo(f"actor {result.actor} ({result.template})")
-        for a in result.attempts:
-            typer.echo(f"  {a.layer:<16} {a.check:<15} {a.outcome:<8} {a.message[:150]}")
-        typer.echo(
-            f"  after the attempts: state {result.state_after}, "
-            f"snapshots other than golden: {result.foreign_after or 'none'}"
-        )
-        if record:
-            for draft in sg.ledger_drafts(result, c.clock):
-                event = c.ledger.append(draft)
-                typer.echo(f"  recorded PolicyDenied seq {event.seq}")
-    typer.echo("pass" if result.passed else "FAIL")
+    s = Settings().substrate
+    try:
+        if label_kind_node:
+            if s.target != "kind":
+                raise pl.PlacementError("--label-kind-node is for kind")
+            typer.echo(pl.label_node(s, "kind-control-plane"))
+        result = pl.check(s, taint_node, "workload=meridian-dispatcher")
+    except pl.PlacementError as exc:
+        raise _fail(exc) from exc
+    for line in pl.summary(result.checks):
+        typer.echo(line)
     if not result.passed:
         raise typer.Exit(code=1)
+
+
+@substrate_app.command("guard-check")
+def substrate_guard_check() -> None:
+    """Phase 4a's proof for the laptop's runner identity, which phase 4b step 3 removed.
+    The dispatcher's refusals are tests/unit/test_dispatcher.py and its client's allow-list
+    (DISPATCHER_VERBS); docs/substrate-eval.md keeps the phase 4a results."""
+    typer.echo(
+        "guard-check proved the laptop's runner identity (phase 4a), which no longer exists: "
+        "only the dispatcher may act in the atespace now. See docs/substrate-eval.md.",
+        err=True,
+    )
+    raise typer.Exit(code=2)

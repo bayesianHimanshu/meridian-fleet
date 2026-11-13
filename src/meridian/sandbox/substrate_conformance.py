@@ -8,7 +8,10 @@ and the first is asked over HTTP to try:
 * egress_test_net      TCP to 192.0.2.1:443 (RFC 5737)
 * egress_host_ollama   TCP to 172.17.0.1:11434 (the host, where Ollama listens)
 * egress_peer_actor    TCP to the second actor's worker pod IP, port 8080, where it listens
-* egress_kube_api      TCP to 10.96.0.1:443 (the cluster's API server service)
+* egress_kube_api      TCP to the cluster's API server service (10.96.0.1:443 on kind;
+                       the dispatcher reports its KUBERNETES_SERVICE_HOST)
+* egress_metadata      TCP to 169.254.169.254:80 (GKE's metadata server: Workload Identity
+                       tokens; phase 4b step 3)
 * egress_by_name       resolving api.anthropic.com (no egress policy: NXDOMAIN)
 * write_opt_meridian   writing /opt/meridian/conformance (root's, read-only to uid 1000)
 * control_tmp          writing /tmp/conformance (must succeed)
@@ -24,6 +27,11 @@ the gateway's own refusal (HTTP 400 with no Server header from an origin) or whe
 connection closed with no data; any other reply is a real origin answering, which fails
 the check. The gateway's log lines for the refused destinations are collected as
 evidence (source substrate_log) when it writes them.
+
+Since phase 4b step 3 the dispatcher runs the session (POST /v1/conformance: it creates
+both actors from the conformance template, the only template it accepts there, sends the
+checks through atenet-router, which admits only the dispatcher, and deletes both); the
+laptop classifies the answers and reads atenet-egress's log.
 
 Each zone's run records PolicyDenied events and a ContainmentCheckCompleted (executor
 substrate) as `meridian sandbox conformance` does for OpenShell. The zone-specific part,
@@ -50,16 +58,17 @@ from meridian.domain.events import (
     SubstrateRun,
 )
 from meridian.platform.clock import Clock
-from meridian.platform.config import SubstrateSettings
 from meridian.sandbox.policies import ALL_POLICIES
 from meridian.sandbox.substrate import SubstrateClient, SubstrateError
 from meridian.sandbox.substrate_executor import ZoneTemplate
 from meridian.sandbox.substrate_templates import PORT
 
 ACTOR = "system.conformance"
+CONFORMANCE_PREFIX = "conformance"  # substrate_templates.CONFORMANCE: template names start so
 TEST_NET = "192.0.2.1"
 OLLAMA = ("172.17.0.1", 11434)
 KUBE_API = ("10.96.0.1", 443)
+METADATA = ("169.254.169.254", 80)
 NETWORK: Literal["network"] = "network"
 Outcome = Literal["refused", "allowed", "inconclusive"]
 
@@ -73,7 +82,9 @@ class ProbeSpec:
     target: str = ""
 
 
-def specs(peer_ip: str, dispatcher: str | None = None) -> tuple[ProbeSpec, ...]:
+def specs(
+    peer_ip: str, dispatcher: str | None = None, kube_api: tuple[str, int] = KUBE_API
+) -> tuple[ProbeSpec, ...]:
     """The probes; dispatcher ("ip:port"), when the dispatcher is deployed, adds one more:
     an actor must not reach the dispatcher (phase 4b step 2)."""
 
@@ -95,7 +106,8 @@ def specs(peer_ip: str, dispatcher: str | None = None) -> tuple[ProbeSpec, ...]:
         tcp("egress_test_net", TEST_NET, 443),
         tcp("egress_host_ollama", *OLLAMA),
         tcp("egress_peer_actor", peer_ip, PORT),
-        tcp("egress_kube_api", *KUBE_API),
+        tcp("egress_kube_api", *kube_api),
+        tcp("egress_metadata", *METADATA),
         ProbeSpec(
             "egress_by_name",
             "refused",
@@ -208,6 +220,10 @@ class SubstrateConformance:
     checks: tuple[ContainmentCheck, ...]
     gateway_lines: tuple[str, ...]
     dispatcher: str | None = None  # the dispatcher's "ip:port" when it was probed too
+    kube_api: tuple[str, int] = KUBE_API
+
+    def specs(self) -> tuple[ProbeSpec, ...]:
+        return specs(self.peer_ip, self.dispatcher, self.kube_api)
 
     @property
     def all_refused(self) -> bool:
@@ -216,7 +232,7 @@ class SubstrateConformance:
     @property
     def log_lines_complete(self) -> bool:
         """atenet-egress logged a refusal for every network target."""
-        wanted = {s.target for s in specs(self.peer_ip, self.dispatcher) if s.kind == NETWORK}
+        wanted = {s.target for s in self.specs() if s.kind == NETWORK}
         return all(any(f"authority={t} " in ln for ln in self.gateway_lines) for t in wanted)
 
     @property
@@ -279,42 +295,78 @@ def gateway_lines(
         time.sleep(2.0)
 
 
-def dispatcher_address(s: SubstrateSettings) -> str | None:
-    """The dispatcher pod's "ip:port", or None when it is not deployed."""
-    done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
-        [
-            s.kubectl,
-            "--context",
-            s.context,
-            "-n",
-            s.dispatcher_namespace,
-            "get",
-            "pods",
-            "-l",
-            "workload=meridian-dispatcher",
-            "-o",
-            "jsonpath={.items[0].status.podIP}",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-        check=False,
-    )
-    ip = done.stdout.strip()
-    return f"{ip}:{s.dispatcher_port}" if done.returncode == 0 and ip else None
+Request = Callable[[str, str, str, bytes | None], tuple[int, bytes]]
 
 
-def _post(address: str, payload: Mapping[str, object]) -> dict[str, Any]:
-    response = httpx.post(f"http://{address}/check", json=dict(payload), timeout=30)
-    response.raise_for_status()
-    value = response.json()
-    assert isinstance(value, dict)
-    return value
+def probe_session(
+    *,
+    client: SubstrateClient,
+    request: Request,
+    resume: Callable[[str], object],
+    template: str,
+    dispatcher: str | None,
+    kube_api: tuple[str, int],
+    names: tuple[str, str] | None = None,
+) -> dict[str, Any]:
+    """The in-cluster half (the dispatcher's POST /v1/conformance): create the probe actor
+    and its peer from the conformance template, send every check through the router
+    (request(actor, method, path, body) -> (status, body)), read the actor back, delete
+    both. Only data-free conformance actors are ever made here."""
+    actor, peer = names or (f"mer-cf-{uuid.uuid4().hex[:8]}", f"mer-cf-{uuid.uuid4().hex[:8]}")
+    created: list[str] = []
+    answers: list[dict[str, Any]] = []
+    peer_ip = "0.0.0.0"  # noqa: S104 (an address to try, not bind)
+    final: dict[str, Any] = {}
+    try:
+        for name in (actor, peer):
+            client.create_actor(name, template)
+            created.append(name)
+            resume(name)
+        peer_state = client.get_actor(peer) or {}
+        ips = dict(dict(peer_state.get("status", {})).get("workerAssignment", {})).get(
+            "workerPodIps", []
+        )
+        peer_ip = str(ips[0]) if ips else peer_ip
+        for spec in specs(peer_ip, dispatcher, kube_api):
+            entry: dict[str, Any] = {"name": spec.name, "answer": None, "error": None}
+            try:
+                if spec.kind == "peer":
+                    status, _ = request(peer, "GET", "/readyz", None)
+                    entry["answer"] = {
+                        "outcome": "ok" if status == 200 else "error",
+                        "message": f"GET /readyz answered {status}",
+                    }
+                else:
+                    body = json.dumps(dict(spec.request)).encode()
+                    status, raw = request(actor, "POST", "/check", body)
+                    if status != 200:
+                        raise ValueError(f"/check answered {status}")
+                    value = json.loads(raw)
+                    if not isinstance(value, dict):
+                        raise ValueError("/check answered no object")
+                    entry["answer"] = value
+            except (OSError, ValueError, httpx.HTTPError, SubstrateError) as exc:
+                entry["error"] = f"{type(exc).__name__}: {exc}"[:500]
+            answers.append(entry)
+        final = client.get_actor(actor) or {}
+    finally:
+        for name in created:
+            with contextlib.suppress(SubstrateError):
+                client.delete_actor(name)
+    return {
+        "actor": actor,
+        "peer": peer,
+        "peer_ip": peer_ip,
+        "dispatcher": dispatcher,
+        "kube_api": list(kube_api),
+        "answers": answers,
+        "final": final,
+    }
 
 
 def run_substrate_conformance(
     *,
-    client: SubstrateClient,
+    session: Callable[[str], Mapping[str, Any]],
     zone: str,
     zone_template: ZoneTemplate,
     probe_template: ZoneTemplate,
@@ -322,52 +374,29 @@ def run_substrate_conformance(
     image_digest: str,
     kubectl: str,
     context: str,
-    name_factory: Callable[[str], str] = lambda z: f"mer-cf-{uuid.uuid4().hex[:8]}",
-    dispatcher: str | None = None,
 ) -> SubstrateConformance:
-    actor, peer = name_factory(zone), name_factory(zone)
+    """The laptop's half: session(template) runs probe_session in the cluster (the
+    dispatcher); its answers are classified here and atenet-egress's log is read."""
     started = time.monotonic()
+    answer = session(probe_template.name)
+    actor, peer, peer_ip = str(answer["actor"]), str(answer["peer"]), str(answer["peer_ip"])
+    dispatcher = answer.get("dispatcher")
+    host, port = list(answer.get("kube_api") or KUBE_API)
+    kube_api = (str(host), int(port))
+    by_name = {str(a["name"]): a for a in answer.get("answers", [])}
     checks: list[ContainmentCheck] = []
-    created: list[str] = []
-    try:
-        for name in (actor, peer):
-            client.create_actor(name, probe_template.name)
-            created.append(name)
-            client.resume_actor(name)
-        peer_state = client.get_actor(peer) or {}
-        ips = dict(dict(peer_state.get("status", {})).get("workerAssignment", {})).get(
-            "workerPodIps", []
-        )
-        peer_ip = str(ips[0]) if ips else "0.0.0.0"  # noqa: S104 (an address to try, not bind)
-        with client.proxy(actor, PORT) as address:
-            for spec in specs(peer_ip, dispatcher):
-                if spec.kind == "peer":
-                    try:
-                        with client.proxy(peer, PORT) as peer_address:
-                            r = httpx.get(f"http://{peer_address}/readyz", timeout=30)
-                        answer: dict[str, Any] | None = {
-                            "outcome": "ok" if r.status_code == 200 else "error",
-                            "message": f"GET /readyz answered {r.status_code}",
-                        }
-                        checks.append(classify(spec, answer, None))
-                    except (SubstrateError, httpx.HTTPError) as exc:
-                        checks.append(classify(spec, None, f"{type(exc).__name__}: {exc}"))
-                    continue
-                try:
-                    checks.append(classify(spec, _post(address, spec.request), None))
-                except (httpx.HTTPError, AssertionError) as exc:
-                    checks.append(classify(spec, None, f"{type(exc).__name__}: {exc}"))
-        final = client.get_actor(actor) or {}
-    finally:
-        for name in created:
-            with contextlib.suppress(SubstrateError):
-                client.delete_actor(name)
+    for spec in specs(peer_ip, dispatcher, kube_api):
+        got = by_name.get(spec.name)
+        if got is None:
+            checks.append(classify(spec, None, "the dispatcher sent no answer"))
+        else:
+            checks.append(classify(spec, got.get("answer"), got.get("error")))
     since = int(time.monotonic() - started) + 30
-    targets = [s.target for s in specs(peer_ip, dispatcher) if s.kind == NETWORK]
+    targets = [s.target for s in specs(peer_ip, dispatcher, kube_api) if s.kind == NETWORK]
     lines = gateway_lines(kubectl, context, actor, targets, since)
+    final = dict(answer.get("final") or {})
     base = placement(probe_template, actor)
-    status = dict(final.get("status", {}))
-    assignment = dict(status.get("workerAssignment", {}))
+    assignment = dict(dict(final.get("status", {})).get("workerAssignment", {}))
     return SubstrateConformance(
         zone=zone,
         actor=actor,
@@ -383,7 +412,8 @@ def run_substrate_conformance(
         zone_template=zone_template,
         checks=tuple(checks),
         gateway_lines=lines,
-        dispatcher=dispatcher,
+        dispatcher=None if dispatcher is None else str(dispatcher),
+        kube_api=kube_api,
     )
 
 
@@ -400,7 +430,7 @@ def ledger_drafts(result: SubstrateConformance, clock: Clock) -> list[EventDraft
             occurred_at=now, actor=ACTOR, visibility=Visibility.BLINDED, payload=payload
         )
 
-    by_name = {s.name: s for s in specs(result.peer_ip, result.dispatcher)}
+    by_name = {s.name: s for s in result.specs()}
     for check in result.checks:
         if check.expect != "refused" or check.outcome != "refused":
             continue

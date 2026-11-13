@@ -19,6 +19,13 @@ spec:
   sandboxClasses:
     - name: gvisor
   template:
+    nodeSelector:
+      meridian.dev/pool: substrate
+    tolerations:
+      - key: "meridian.dev/worker"
+        operator: Equal
+        value: "true"
+        effect: NoSchedule
     resources:
       limits:
         cpu: "1"

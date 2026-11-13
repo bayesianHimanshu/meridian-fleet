@@ -8,13 +8,18 @@
 # Order: the WorkerPool to 0 workers (so nothing asks the autoscaler for a worker node),
 # wait until no worker pod is left, the worker pool to 0 nodes, then the system pool to 0
 # nodes, and the IAP bastion stopped if it exists. Kept: the cluster and its control plane
-# (GKE runs it; one zonal cluster's fee is covered by the free tier credit), the Postgres
+# (GKE runs it for the management fee, USD 0.10 an hour, about 2.40 a day: this billing
+# account has no free tier credit, so a parked day costs about what 8 hours of a session's
+# system node do; teardown.sh bills nothing), the Postgres
 # PersistentVolume (a zonal disk, detached; Substrate's actors, templates and tags), the
 # snapshot bucket (golden snapshots), the repository (images). Before parking it records
 # the Postgres claim's uid and the golden tags in var/gke/parked.json so resume.sh can show
 # they came back unchanged.
 #
-# Park while phase 4b is active; teardown.sh at its end or before an idle week.
+# Decided: park while phase 4b is active; teardown.sh at its end or before an idle week.
+# Without the free tier, one parked day (about USD 2.43) costs more in money than tearing
+# down and recreating (about USD 0.40 of cluster time); what parking saves is about an hour
+# of your setup (docs/gke-session.md, "Park or tear down").
 set -o errexit -o nounset -o pipefail
 
 check_only=0

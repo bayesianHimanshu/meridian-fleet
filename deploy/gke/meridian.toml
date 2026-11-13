@@ -1,0 +1,30 @@
+# Meridian's settings for the GKE cluster of phase 4b (docs/gke-session.md), merged over
+# config/default.toml when MERIDIAN_CONFIG_OVERLAY=deploy/gke/meridian.toml (deploy/gke/run.sh
+# sets it). Names only: every credential comes from gcloud's own login, and the dispatcher's
+# token stays in ~/.config/meridian/dispatcher.token.
+[substrate]
+target = "gke"
+# gcloud container clusters get-credentials names the context gke_<project>_<zone>_<cluster>.
+context = "gke_meridian-fleet-agents_us-central1-a_meridian-substrate"
+install_record = "~/.cache/ate-setup/installs/gke_meridian-fleet-agents_us-central1-a_meridian-substrate.yaml"
+# Artifact Registry in us-central1; you push the images there (gke-session.md), and deploy
+# reads their digests from it (meridian.sandbox.substrate_deploy.resolve_pushed).
+registry = "us-central1-docker.pkg.dev/meridian-fleet-agents/meridian"
+deploy_dir = "deploy/gke/substrate"
+dispatcher_deploy_dir = "deploy/gke/dispatcher"
+# The release's ateworker-gvisor, pinned by the digest of its image index (read with
+# `docker buildx imagetools inspect ghcr.io/agent-substrate/substrate/ateworker-gvisor:v1.0.0`
+# on 14 Nov 2026; linux/amd64 manifest sha256:a1c532ca0970...).
+worker_image = "ghcr.io/agent-substrate/substrate/ateworker-gvisor@sha256:f8987236c6256f58c4b2625e543b43f4ae4bdded6ee6821c03d966effb7c0f17"
+# Two workers while templates take their golden snapshots (one Spot node comes up);
+# resume.sh scales the WorkerPool for a pass, park.sh to 0.
+workers = 2
+
+[substrate.gke]
+project_id = "meridian-fleet-agents"
+project_number = "932415716644"
+region = "us-central1"
+zone = "us-central1-a"
+cluster = "meridian-substrate"
+bucket = "meridian-fleet-agents-ate-snapshots"
+ar_repo = "meridian"

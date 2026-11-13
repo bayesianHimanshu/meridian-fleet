@@ -86,10 +86,11 @@ Cloud SQL instances|"\${gc[@]}" sql instances list --format='value(name)' 2>/dev
 Filestore instances|"\${gc[@]}" filestore instances list --format='value(name)' 2>/dev/null || true
 EOF
   if [ "${mode}" = "parked" ]; then
-    echo "   parked costs (docs/gke-plan.md section 5): cluster fee USD 0.10/h, covered by the"
-    echo "   free tier credit for one zonal cluster; the 10 GiB Postgres disk about USD 1 a month;"
+    echo "   parked costs (docs/gke-plan.md section 5): the cluster management fee USD 0.10/h"
+    echo "   (about USD 2.40 a day: this billing account has no free tier credit), billed while"
+    echo "   the cluster exists even with no node; the 10 GiB Postgres disk about USD 1 a month;"
     echo "   a stopped bastion's 10 GB disk about USD 0.40 a month; the bucket and the repository"
-    echo "   within their free tiers. No node runs."
+    echo "   within their free tiers. No node runs. Teardown (teardown.sh) bills nothing."
   fi
   echo "   (not billable) service accounts: $("${gc[@]}" iam service-accounts list --format='value(email)' | tr '\n' ' ')"
   echo "   Billing reports lag by up to a day: check Billing > Reports by SKU the next day."
