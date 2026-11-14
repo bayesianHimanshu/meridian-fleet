@@ -76,6 +76,9 @@ class SubstrateRun(BaseModel):
     # Phase 4b step 2: the in-cluster dispatcher's image (registry ref by digest) when the
     # run went through it; null for a run the laptop drove itself and on older events.
     dispatcher_image: Annotated[str, Field(pattern=r"^[^@\s]+@sha256:[0-9a-f]{64}$")] | None = None
+    # Phase 4b step 3: the node the actor ran on (on GKE, a Spot node may be preempted).
+    # On a lost attempt's ActorWoke, worker_pod and worker_node say where it was lost.
+    worker_node: str | None = None
 
 
 class ActorWoke(BaseModel):
@@ -99,6 +102,12 @@ class ActorWoke(BaseModel):
     # the run, so the event's own times are the commit, not the start. Null on events
     # written before step 3, whose ActorWoke was appended as the run started.
     started_at: UtcDatetime | None = None
+    # Phase 4b step 3: which attempt this is (2 for the one retry after a lost worker;
+    # null for a first attempt and on older events), and, on an attempt whose worker was
+    # lost (a Spot preemption), why. Such an ActorWoke is followed by no ActorSuspended:
+    # its retry is the next ActorWoke of the same agent and trigger.
+    attempt: Annotated[int, Field(ge=2, le=2)] | None = None
+    worker_lost: str | None = None
 
     @model_validator(mode="after")
     def _range(self) -> Self:
@@ -137,6 +146,9 @@ class ActorSuspended(BaseModel):
     policy_file_sha256: Sha256Hex | None = None
     # executor "substrate" (phase 4a step 2): where the run happened. Null otherwise.
     substrate: SubstrateRun | None = None
+    # Phase 4b step 3: sha256 of the run's drafts (meridian.agents.runner.drafts_sha256),
+    # so a rerun can tell whether it produced anything new. Null on older events.
+    drafts_sha256: Sha256Hex | None = None
 
 
 class FindingRaised(BaseModel):

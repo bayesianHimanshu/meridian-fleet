@@ -56,6 +56,9 @@ class RunAnswer(BaseModel):
     foreign_snapshots: list[str] = []
     deleted: bool = False
     worker_lost: bool = False
+    # Where a lost attempt ran (phase 4b step 3), from its resume.
+    worker_pod: str | None = None
+    node: str | None = None
     error: str | None = None
 
 

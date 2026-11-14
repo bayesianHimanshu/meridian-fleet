@@ -15,6 +15,7 @@ and never logged.
 """
 
 import contextlib
+import json
 import os
 import re
 import stat
@@ -253,6 +254,28 @@ class DispatcherClient:
             raise DispatcherError(f"run {actor}: {response.status_code} {response.text[:500]}")
         return dispatch.RunAnswer.model_validate_json(response.content)
 
+    def conformance(self, template: str) -> dict[str, Any]:
+        """The containment checks in two data-free actors of the conformance template, run
+        by the dispatcher (substrate_conformance.probe_session)."""
+        response = self._call(
+            "POST",
+            "/v1/conformance",
+            body=json.dumps({"template": template}).encode(),
+            headers={"Content-Type": "application/json"},
+        )
+        if response.status_code != 200:
+            raise DispatcherError(f"conformance: {response.status_code} {response.text[:500]}")
+        value = response.json()
+        if not isinstance(value, dict):
+            raise DispatcherError("conformance: the dispatcher answered no object")
+        return value
+
+    def lookup(self, name: str) -> int:
+        """GET /v1/templates/<name> and return the status only: a marker in a request
+        path is the positive control of the leak check's log searches (the dispatcher logs
+        each request's path)."""
+        return self._call("GET", f"/v1/templates/{name}").status_code
+
     def _refuse(self, verb: str, kind: str, name: str | None) -> GuardRefusedError:
         return GuardRefusedError(verb, kind, name)
 
@@ -316,7 +339,11 @@ class DispatcherExecutor(SubstrateExecutor):
         total = round((time.perf_counter() - start) * 1000)
         self._tracker.record(actor, "deleted" if answer.deleted else "delete_failed", answer.error)
         if answer.worker_lost:
-            raise WorkerLostError(answer.error or f"actor {actor} lost its worker")
+            raise WorkerLostError(
+                answer.error or f"actor {actor} lost its worker",
+                worker_pod=answer.worker_pod,
+                node=answer.node,
+            )
         if (
             answer.golden_snapshot is not None
             and answer.golden_snapshot != template.golden_snapshot

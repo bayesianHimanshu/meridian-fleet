@@ -152,7 +152,33 @@ def load_template(
 
 class WorkerLostError(ExecutionError, RetryableRunError):
     """The actor's worker went away mid-run (a Spot preemption, a node lost): the run
-    failed, nothing of it was kept, and the runner may retry it once on a new actor."""
+    failed, nothing of it was kept, and the runner may retry it once on a new actor.
+    worker_pod and node say where the lost attempt ran (from its resume), so the ledger
+    can show that the retry ran elsewhere."""
+
+    def __init__(
+        self, message: str, worker_pod: str | None = None, node: str | None = None
+    ) -> None:
+        super().__init__(message)
+        self.worker_pod = worker_pod
+        self.node = node
+
+
+@dataclass(frozen=True, slots=True)
+class Resumed:
+    """A resumed actor: how long it waited for a free worker, and where it was placed."""
+
+    waited_ms: int
+    worker_pod: str | None = None
+    node: str | None = None
+
+    @classmethod
+    def of(cls, waited_ms: int, actor: Mapping[str, Any] | None) -> Resumed:
+        assignment = dict(dict((actor or {}).get("status", {})).get("workerAssignment", {}))
+        pod, node = assignment.get("workerPod"), assignment.get("nodeName")
+        return cls(
+            waited_ms, None if pod is None else str(pod), None if node is None else str(node)
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,7 +213,7 @@ def run_in_actor(
     body: bytes,
     body_sha: str,
     send: Send,
-    resume: Callable[[str], int],
+    resume: Callable[[str], Resumed | int],
     delete: Callable[[str], None],
 ) -> ActorReply:
     """Create the actor from the template (golden snapshot), resume it, send the archive
@@ -207,15 +233,17 @@ def run_in_actor(
     response: httpx.Response | None = None
     final: dict[str, Any] | None = None
     failure: Exception | None = None
-    sent = False  # the actor was placed and the request went out
+    created = False  # from here on, a crash of the actor is a lost worker
+    placed = Resumed(0)
     try:
         client.create_actor(actor, template)
+        created = True
         lap("create")
-        waited = resume(actor)
+        got = resume(actor)
+        placed = got if isinstance(got, Resumed) else Resumed(got)
         lap("resume")
-        if waited:
-            phases.append(("placement_wait", waited))
-        sent = True
+        if placed.waited_ms:
+            phases.append(("placement_wait", placed.waited_ms))
         response = send(
             actor,
             body,
@@ -233,8 +261,15 @@ def run_in_actor(
         delete(actor)
         lap("delete")
     gateway_error = response is not None and response.status_code in (502, 503, 504)
-    if sent and (failure is not None or gateway_error) and crashed(final):
-        raise WorkerLostError(f"actor {actor} lost its worker: {failure or response}")
+    # Lost while resuming (the restore was cancelled with its worker: phase 4b step 3 found
+    # this on kind) or while running: either way nothing was kept, and a retry is safe.
+    if created and (failure is not None or gateway_error) and crashed(final):
+        raise WorkerLostError(
+            f"actor {actor} lost its worker {placed.worker_pod} on {placed.node}: "
+            f"{failure or response}",
+            worker_pod=placed.worker_pod,
+            node=placed.node,
+        )
     if response is None:
         raise ExecutionError(f"substrate failed for {actor}: {failure}") from failure
     return ActorReply(response.status_code, response.text, final, tuple(phases))
@@ -245,15 +280,17 @@ def resume_waiting(
     actor: str,
     wait_seconds: float,
     sleep: Callable[[float], None] = time.sleep,
-) -> int:
+) -> Resumed:
     """Resume, waiting for a free worker if none has room (ResourceExhausted, retried
-    with backoff for up to wait_seconds); returns the ms spent waiting."""
+    with backoff for up to wait_seconds); returns the ms spent waiting and where the
+    actor was placed (resume answers with the actor's worker assignment)."""
     start = time.monotonic()
     delay = 0.25
     while True:
         try:
-            client.resume_actor(actor)
-            return round((time.monotonic() - start) * 1000) if delay > 0.25 else 0
+            resumed = client.resume_actor(actor)
+            waited = round((time.monotonic() - start) * 1000) if delay > 0.25 else 0
+            return Resumed.of(waited, resumed)
         except ResourceExhaustedError:
             if time.monotonic() - start + delay > wait_seconds:
                 raise
@@ -363,8 +400,8 @@ class SubstrateExecutor:
             return 1
         return max(1, self._free_workers())
 
-    def _resume(self, actor: str) -> int:
-        """Resume, waiting for a free worker if none has room; returns ms spent waiting."""
+    def _resume(self, actor: str) -> Resumed:
+        """Resume, waiting for a free worker if none has room."""
         return resume_waiting(self._client, actor, self._placement_wait, self._sleep)
 
     def plan(self, agent_id: str, trigger: Event) -> RunPlan:
@@ -429,6 +466,7 @@ class SubstrateExecutor:
             update={
                 "actor_uid": dict(final.get("metadata", {})).get("uid"),
                 "worker_pod": assignment.get("workerPod"),
+                "worker_node": assignment.get("nodeName"),
             }
         )
         out = ExecutionResult(

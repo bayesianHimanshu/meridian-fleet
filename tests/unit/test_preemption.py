@@ -1,6 +1,10 @@
 """A run whose worker is lost (a Spot preemption) fails and is retried once on a new
-actor (phase 4b step 2). Simulated: the executor raises WorkerLostError on chosen runs."""
+actor (phase 4b step 2). Simulated: the executor raises WorkerLostError on chosen runs,
+naming the worker pod and node the attempt was placed on, as a real one does from its
+resume; workers are handed out in turn, so the retry lands on another worker. Phase 4b
+step 3: the ledger records both attempts, the lost one with where it ran and why."""
 
+import dataclasses
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +56,7 @@ class _Preempting:
         self._lose = dict(lose)
         self.actors: list[str] = []
         self.plans = 0
+        self.placed = 0  # worker pods meridian-w0, meridian-w1, ... in turn
 
     def executor_name(self, agent_id: str) -> str:
         return self.name
@@ -67,11 +72,19 @@ class _Preempting:
         assert plan is not None
         assert plan.substrate is not None
         self.actors.append(plan.substrate.actor)
+        pod, node = f"meridian-w{self.placed}", f"gke-substrate-{self.placed % 2}"
+        self.placed += 1
         left = self._lose.get((agent_id, cut_id), 0)
         if left:
             self._lose[(agent_id, cut_id)] = left - 1
-            raise WorkerLostError(f"actor {plan.substrate.actor} lost its worker (preempted)")
-        return self._inner.run(agent_id, trigger, cut_id)
+            raise WorkerLostError(
+                f"actor {plan.substrate.actor} lost its worker {pod} on {node} (preempted)",
+                worker_pod=pod,
+                node=node,
+            )
+        result = self._inner.run(agent_id, trigger, cut_id)
+        where = plan.substrate.model_copy(update={"worker_pod": pod, "worker_node": node})
+        return dataclasses.replace(result, executor=self.name, substrate=where)
 
     def drain(self) -> None:
         return None
@@ -206,3 +219,40 @@ def test_an_ordinary_failure_is_not_retried(tmp_path: Path) -> None:
         assert report.retried == []
         assert [(a, s) for a, s, _ in report.failed] == [("rbqm.alpha", 1)]
         assert executor.actors.count("boom") == 1
+
+
+def test_the_ledger_records_both_attempts_and_the_retry_ran_on_another_worker(
+    tmp_path: Path,
+) -> None:
+    ledger, report, _ = _pass(tmp_path / "l.sqlite3", {("rbqm.bravo", "DC-A"): 1})
+    with ledger:
+        runs = [
+            e.payload
+            for e in ledger.read()
+            if isinstance(e, Event)
+            and isinstance(e.payload, ActorWoke | ActorSuspended)
+            and (e.payload.agent_id, e.payload.trigger_seq) == ("rbqm.bravo", 1)
+        ]
+        lost, retry, done = runs
+        assert isinstance(lost, ActorWoke)
+        assert isinstance(retry, ActorWoke)
+        assert isinstance(done, ActorSuspended)
+        # The lost attempt: first attempt, why it failed, and where it ran.
+        assert lost.attempt is None
+        assert lost.worker_lost is not None
+        assert lost.worker_lost.startswith("WorkerLostError: ")
+        assert "preempted" in lost.worker_lost
+        assert lost.substrate is not None
+        assert lost.substrate.worker_pod is not None
+        assert lost.substrate.worker_node is not None
+        assert lost.substrate.worker_pod in lost.worker_lost
+        # The retry: attempt 2, a new actor, run to completion on another worker and node.
+        assert retry.attempt == 2
+        assert retry.worker_lost is None
+        assert retry.substrate is not None
+        assert done.substrate is not None
+        assert retry.substrate.actor == done.substrate.actor != lost.substrate.actor
+        assert done.substrate.worker_pod not in (None, lost.substrate.worker_pod)
+        assert done.substrate.worker_node is not None
+        assert done.drafts_sha256 is not None
+    assert report.failed == []

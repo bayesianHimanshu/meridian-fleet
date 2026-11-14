@@ -99,7 +99,14 @@ def test_the_committed_templates_render_from_the_code(policy: str) -> None:
 def test_the_committed_pool_renders_from_the_code() -> None:
     s = Settings().substrate
     pool = PoolSpec(
-        s.namespace, s.worker_pool, s.workers, s.worker_image, s.sandbox_class, s.worker_memory_mib
+        s.namespace,
+        s.worker_pool,
+        s.workers,
+        s.worker_image,
+        s.sandbox_class,
+        s.worker_memory_mib,
+        node_selector=s.node_selector,
+        toleration=s.toleration,
     )
     assert (DEPLOY / POOL_FILE).read_text(encoding="utf-8") == render_pool(pool)
 

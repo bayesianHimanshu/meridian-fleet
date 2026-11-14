@@ -21,6 +21,18 @@
             ],
             "title": "Agent Version"
           },
+          "drafts_sha256": {
+            "anyOf": [
+              {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Drafts Sha256"
+          },
           "executor": {
             "anyOf": [
               {
@@ -140,6 +152,19 @@
             ],
             "title": "Agent Version"
           },
+          "attempt": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": 2.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt"
+          },
           "executor": {
             "anyOf": [
               {
@@ -207,6 +232,17 @@
             "default": "actor_woke",
             "title": "Type",
             "type": "string"
+          },
+          "worker_lost": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Lost"
           }
         },
         "required": [
@@ -4718,6 +4754,17 @@
             "minLength": 1,
             "title": "Version",
             "type": "string"
+          },
+          "worker_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Node"
           },
           "worker_pod": {
             "anyOf": [

@@ -7,6 +7,7 @@ the cluster missing.
 """
 
 import contextlib
+import dataclasses
 import http.server
 import threading
 from collections.abc import Callable, Iterator, Mapping
@@ -63,7 +64,13 @@ class FakeSubstrate(FakeActorClient):
         actor = super().get_actor(name)
         if actor is not None and self.lose_worker:
             actor["status"] = {"state": "ACTOR_STATE_CRASHED", "snapshots": self.snapshots}
+        elif actor is not None:
+            actor["status"]["workerAssignment"]["workerPodIps"] = ["10.0.0.7"]
         return actor
+
+    def resume_actor(self, name: str) -> dict[str, Any]:
+        super().resume_actor(name)
+        return {"status": {"workerAssignment": {"workerPod": "meridian-abc", "nodeName": "n1"}}}
 
 
 def _send(fake: FakeSubstrate) -> Callable[..., httpx.Response]:
@@ -207,8 +214,9 @@ def test_a_lost_worker_is_reported_and_raises_worker_lost(roots: Path) -> None:
     fake.lose_worker = True
     with _server(fake) as (address, _):
         executor = _executor(roots, fake, address)
-        with pytest.raises(WorkerLostError):
+        with pytest.raises(WorkerLostError) as lost:
             executor.run("rbqm.kri_monitor", cut_trigger(), "DC-TINY")
+    assert (lost.value.worker_pod, lost.value.node) == ("meridian-abc", "n1")
     assert fake.live == {}  # deleted all the same
 
 
@@ -273,3 +281,106 @@ def test_the_proof_binds_the_nonce_and_the_body() -> None:
     assert not dispatch.proof_ok(TOKEN, "nonce", b"bodx", p)
     assert not dispatch.proof_ok("u" * 48, "nonce", b"body", p)
     assert not dispatch.proof_ok(TOKEN, "nonce", b"body", None)
+
+
+def _probe_answers(actor: str, method: str, path: str, body: bytes | None) -> tuple[int, bytes]:
+    """A conformance actor as meridian.worker_probe answers, with egress default deny."""
+    import json
+
+    if method == "GET":
+        return 200, b"ok"
+    check = json.loads(body or b"{}")
+    if check["check"] == "tcp_connect" and check["host"] == "127.0.0.1":
+        answer = {"outcome": "ok", "connected": True, "reply": "HTTP/1.0 200 OK"}
+    elif check["check"] == "tcp_connect" and check["host"] == "169.254.169.254":
+        answer = {"outcome": "unreachable", "connected": False, "errno": 113}  # no route
+    elif check["check"] == "tcp_connect":
+        answer = {"outcome": "ok", "connected": True, "reply": "HTTP/1.1 400 Bad Request"}
+    elif check["check"] == "resolve":
+        answer = {"outcome": "unreachable"}
+    elif check["check"] == "write" and check["path"].startswith("/opt"):
+        answer = {"outcome": "refused", "errno": 13}
+    else:
+        answer = {"outcome": "ok"}
+    return 200, json.dumps(answer).encode()
+
+
+def test_conformance_runs_through_the_dispatcher_on_the_conformance_template_only(
+    roots: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meridian.sandbox import substrate_conformance as sc
+
+    asked: list[list[str]] = []
+
+    def lines(
+        kubectl: str, context: str, actor: str, targets: list[str], since: int
+    ) -> tuple[str, ...]:
+        asked.append(list(targets))
+        return tuple(f"[egress] authority={t} peer_san=x/{actor} code=403" for t in targets)
+
+    monkeypatch.setattr(sc, "gateway_lines", lines)
+    fake = FakeSubstrate(templates={})
+    with _server(fake) as (address, dispatcher):
+        dispatcher.request = _probe_answers
+        dispatcher.own_address = "10.0.0.9:8090"
+        dispatcher.kube_api = ("34.118.224.1", 443)
+        executor = _executor(roots, fake, address)
+        client = DispatcherClient(address=lambda: address, token=TOKEN, timeout=10)
+        probe = dataclasses.replace(_template("rbqm"), name="conformance-cccc-m384")
+        result = sc.run_substrate_conformance(
+            session=client.conformance,
+            zone="rbqm",
+            zone_template=executor.template_for_policy("rbqm"),
+            probe_template=probe,
+            placement=executor.placement,
+            image_digest="sha256:" + "d" * 64,
+            kubectl="kubectl",
+            context="kind-kind",
+        )
+        with pytest.raises(DispatcherError, match="400"):
+            client.conformance(executor.template_for_policy("rbqm").name)
+    assert [c.name for c in result.checks if not c.passed] == []
+    # A gateway line is required for each target that reached the gateway, and only those:
+    # the metadata server was refused inside the actor (no route), so it has none.
+    assert "169.254.169.254:80" not in asked[0]
+    assert "10.0.0.9:8090" in asked[0]
+    assert result.log_lines_complete
+    assert result.passed
+    names = {c.name for c in result.checks}
+    assert {"egress_dispatcher", "egress_metadata", "egress_kube_api"} <= names
+    kube = next(c for c in result.checks if c.name == "egress_kube_api")
+    assert "34.118.224.1" in kube.command
+    assert result.dispatcher == "10.0.0.9:8090"
+    assert result.peer_ip == "10.0.0.7"
+    assert len(fake.created) == 2  # the probe and its peer, nothing for the zone template
+    assert fake.live == {}  # both deleted
+
+
+def test_a_worker_lost_while_the_actor_resumes_is_retryable_but_a_failed_create_is_not(
+    roots: Path,
+) -> None:
+    """Found on kind (phase 4b step 3): a worker pod deleted while an actor restores on it
+    fails the resume ("actor ... crashed ... wakeup probe cancelled"); that is a lost
+    worker, retried by the runner, while a create that fails is an ordinary failure."""
+    from meridian.sandbox.substrate import SubstrateError
+
+    class _CrashOnResume(FakeSubstrate):
+        def resume_actor(self, name: str) -> dict[str, Any]:
+            self.lose_worker = True  # get_actor now reports the actor CRASHED
+            raise SubstrateError(f"failed to resume actor: actor meridian/{name} crashed")
+
+    fake = _CrashOnResume(templates={})
+    with _server(fake) as (address, _):
+        executor = _executor(roots, fake, address)
+        with pytest.raises(WorkerLostError, match="crashed"):
+            executor.run("rbqm.kri_monitor", cut_trigger(), "DC-TINY")
+    assert fake.live == {}
+    assert fake.received == []  # nothing was sent to the actor
+
+    broken = FakeSubstrate(templates={})
+    broken.create_error = SubstrateError("template not found")
+    with _server(broken) as (address, _):
+        executor = _executor(roots, broken, address)
+        with pytest.raises(ExecutionError) as failed:
+            executor.run("rbqm.kri_monitor", cut_trigger(), "DC-TINY")
+    assert not isinstance(failed.value, WorkerLostError)

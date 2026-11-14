@@ -455,7 +455,9 @@ def agents_run(
         typer.Option(
             "--rerun",
             help="With --cut or --all-cuts: also run pairs already completed (findings "
-            "dedup as skipped).",
+            "dedup as skipped). A rerun is recorded only if it produced something new "
+            "(a failure, a lost worker, or another image, policy, inputs, drafts or "
+            "template than every recorded run of the pair).",
         ),
     ] = False,
     all_cuts: Annotated[
@@ -506,6 +508,11 @@ def agents_run(
             f"findings appended {len(report.findings_appended)}, "
             f"skipped as duplicates {len(report.findings_skipped)}"
         )
+        if report.unchanged or report.retried:
+            typer.echo(
+                f"  reruns identical to a recorded run, not recorded again: "
+                f"{len(report.unchanged)}; lost workers retried: {len(report.retried)}"
+            )
         per = ", ".join(
             f"{n} {k} ({report.capacity.get(n, 1)} at a time)"
             for n, k in sorted(report.executors.items())
@@ -513,6 +520,8 @@ def agents_run(
         typer.echo(f"  {time.perf_counter() - started:.1f} s; runs per executor: {per or 'none'}")
         for agent_id, seq in report.completed:
             typer.echo(f"  done   {agent_id} on DataCut seq {seq}")
+        for agent_id, seq, error in report.retried:
+            typer.echo(f"  RETRIED {agent_id} on DataCut seq {seq}: {error[:200]}")
         for agent_id, seq, error in report.failed:
             typer.echo(f"  FAILED {agent_id} on DataCut seq {seq}: {error}")
         if report.failed:
@@ -1504,3 +1513,6 @@ app.add_typer(substrate_app, name="substrate")
 from meridian.cli_dispatcher import dispatcher_app  # noqa: E402 (registered last, like substrate)
 
 app.add_typer(dispatcher_app, name="dispatcher")
+from meridian.cli_leakcheck import leakcheck  # noqa: E402 (registered last, like substrate)
+
+app.command("leakcheck")(leakcheck)

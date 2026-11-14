@@ -3,9 +3,10 @@
 `meridian dispatcher deploy` builds the image (docker/dispatcher.Dockerfile, with the
 kubectl-ate binary from go.ate.dev/substrate v1.0.0), pushes it, renders
 deploy/dispatcher/dispatcher.yaml pinned by digest, applies it, puts the dispatcher's
-ServiceAccount into the atespace's access policy (editor, the atespace only) and, on kind,
-adds the dispatcher's SPIFFE ID to atenet-router's ingress allow-list. On GKE that list is
-set when Substrate is installed (docs/gke-plan.md 6.7).
+ServiceAccount into the atespace's access policy as its only member (editor, the atespace
+only) and makes atenet-router's ingress allow-list exactly the dispatcher's SPIFFE ID: on
+kind by patching the router, on GKE by checking what the install set (docs/gke-session.md).
+On GKE it also checks that no IAM grant names the dispatcher (meridian.sandbox.gke).
 
 What the manifests give the dispatcher, and nothing more:
 - namespace `meridian-dispatch`, labelled `ate.dev/api-access=true` (ate-api-server's
@@ -84,6 +85,8 @@ def manifests(s: SubstrateSettings, image: str, kubectl_ate_sha256: str) -> list
             "--request-timeout",
             str(s.request_timeout_seconds),
         ],
+        # Its own address: an actor must not reach it (the conformance check egress_dispatcher).
+        "env": [{"name": "POD_IP", "valueFrom": {"fieldRef": {"fieldPath": "status.podIP"}}}],
         "ports": [{"name": "http", "containerPort": s.dispatcher_port}],
         "readinessProbe": {"httpGet": {"path": "/healthz", "port": "http"}, "periodSeconds": 5},
         "resources": {
@@ -290,6 +293,17 @@ def _run(argv: Sequence[str], *, input_text: str | None = None, timeout: float =
     return done.stdout
 
 
+def namespace_exists(kubectl: str, context: str, namespace: str) -> bool:
+    done = subprocess.run(  # noqa: S603 (argv built from fixed parts)
+        [kubectl, "--context", context, "get", "namespace", namespace, "-o", "name"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    return done.returncode == 0
+
+
 def apply_token_secret(kubectl: str, context: str, s: SubstrateSettings, token_file: Path) -> None:
     """Create or update the Secret from the laptop's token file. The token goes through
     kubectl's stdin as a manifest, never on a command line or to the terminal."""
@@ -310,29 +324,53 @@ def apply_token_secret(kubectl: str, context: str, s: SubstrateSettings, token_f
     _run([kubectl, "--context", context, "apply", "-f", "-"], input_text=json.dumps(manifest))
 
 
-def allow_router_ingress(kubectl: str, context: str, s: SubstrateSettings) -> str:
-    """kind only: add the dispatcher's SPIFFE ID to atenet-router's ingress allow-list,
-    keeping the IDs already there. (On GKE ate-setup sets the list at install.) A later
-    `ate-setup deploy ate-system` resets it to whatever that command is given."""
+ROUTER_FLAG = "--ingress-allowed-spiffe-ids="
+
+
+def _router(kubectl: str, context: str) -> tuple[list[str], int, list[str], int | None]:
+    """(router container args, container index, allowed SPIFFE IDs, the flag's index)."""
     base = [kubectl, "--context", context, "-n", "ate-system"]
     deployment = json.loads(_run([*base, "get", "deployment", "atenet-router", "-o", "json"]))
     containers = deployment["spec"]["template"]["spec"]["containers"]
     index = next(i for i, c in enumerate(containers) if c["name"] == "atenet-router")
-    args = list(containers[index].get("args", []))
-    flag = "--ingress-allowed-spiffe-ids="
-    position = next((i for i, a in enumerate(args) if a.startswith(flag)), None)
-    current = [] if position is None else args[position].removeprefix(flag).split(",")
+    args = [str(a) for a in containers[index].get("args", [])]
+    position = next((i for i, a in enumerate(args) if a.startswith(ROUTER_FLAG)), None)
+    allowed = [] if position is None else args[position].removeprefix(ROUTER_FLAG).split(",")
+    return args, index, [a for a in allowed if a], position
+
+
+def router_allow_list(kubectl: str, context: str) -> list[str]:
+    return _router(kubectl, context)[2]
+
+
+def set_router_ingress(kubectl: str, context: str, s: SubstrateSettings) -> str:
+    """kind: make atenet-router's ingress allow-list exactly the dispatcher's SPIFFE ID
+    (phase 4b step 3 removes atenet-client, kubectl-ate's own router identity, which the
+    laptop's direct runs used). A later `ate-setup deploy ate-system` resets the list to
+    what that command is given; on GKE the install gives exactly this (gke-session.md)."""
+    _, index, current, position = _router(kubectl, context)
     wanted = spiffe_id(s)
-    if wanted in current:
+    if current == [wanted]:
         return "unchanged"
-    value = flag + ",".join([*current, wanted])
-    if position is None:
-        patch = [
-            {"op": "add", "path": f"/spec/template/spec/containers/{index}/args/-", "value": value}
-        ]
-    else:
-        path = f"/spec/template/spec/containers/{index}/args/{position}"
-        patch = [{"op": "replace", "path": path, "value": value}]
+    value = ROUTER_FLAG + wanted
+    path = f"/spec/template/spec/containers/{index}/args"
+    patch = (
+        [{"op": "add", "path": f"{path}/-", "value": value}]
+        if position is None
+        else [{"op": "replace", "path": f"{path}/{position}", "value": value}]
+    )
+    base = [kubectl, "--context", context, "-n", "ate-system"]
     _run([*base, "patch", "deployment", "atenet-router", "--type", "json", "-p", json.dumps(patch)])
     _run([*base, "rollout", "status", "deployment/atenet-router", "--timeout=180s"], timeout=210)
-    return "added"
+    return f"set to the dispatcher only (was {', '.join(current) or 'empty'})"
+
+
+def require_router_only_dispatcher(kubectl: str, context: str, s: SubstrateSettings) -> str:
+    """GKE: refuse unless the install's allow-list is exactly the dispatcher."""
+    current = router_allow_list(kubectl, context)
+    if current != [spiffe_id(s)]:
+        raise DispatcherDeployError(
+            f"atenet-router admits {current or 'nobody'}, not only {spiffe_id(s)}; reinstall "
+            "with --ingress-allowed-spiffe-ids set to the dispatcher (docs/gke-session.md)"
+        )
+    return "the dispatcher only (set at install)"

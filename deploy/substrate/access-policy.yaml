@@ -5,5 +5,4 @@ metadata:
 bindings:
   - role: editor
     members:
-      - "user:system:serviceaccount:meridian:meridian-runner"
       - "user:system:serviceaccount:meridian-dispatch:dispatcher"

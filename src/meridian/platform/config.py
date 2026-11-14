@@ -4,6 +4,9 @@ Precedence, highest first: constructor arguments, environment variables, the TOM
 field defaults. The TOML file path defaults to config/default.toml relative to the
 working directory and can be changed with MERIDIAN_CONFIG_FILE. Nested values use a
 double underscore in environment variables, for example MERIDIAN_OPS_SYNTH__ENTRY_LAG_SIGMA.
+
+MERIDIAN_CONFIG_OVERLAY names a second TOML file whose tables are merged over the first
+(phase 4b step 3: deploy/gke/meridian.toml points [substrate] at the GKE cluster).
 """
 
 import os
@@ -30,6 +33,7 @@ from meridian.platform.agent_settings import (
 )
 
 CONFIG_FILE_ENV = "MERIDIAN_CONFIG_FILE"
+CONFIG_OVERLAY_ENV = "MERIDIAN_CONFIG_OVERLAY"
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 DEFAULT_CONFIG_FILE = Path("config/default.toml")
 
@@ -51,6 +55,11 @@ PILOT_BASE_URL = (
 
 def config_file_path() -> Path:
     return Path(os.environ.get(CONFIG_FILE_ENV, str(DEFAULT_CONFIG_FILE)))
+
+
+def config_overlay_path() -> Path | None:
+    value = os.environ.get(CONFIG_OVERLAY_ENV)
+    return Path(value) if value else None
 
 
 class PilotSource(BaseModel):
@@ -189,8 +198,37 @@ class CutsSettings(BaseModel):
     )
 
 
+class GkeSettings(BaseModel):
+    """The GKE cluster of phase 4b ([substrate.gke]; deploy/gke/meridian.toml). Names only:
+    every credential comes from gcloud's own login."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    project_id: str = "meridian-fleet-agents"
+    project_number: str = "932415716644"
+    region: str = "us-central1"
+    zone: str = "us-central1-a"
+    cluster: str = "meridian-substrate"
+    bucket: str = "meridian-fleet-agents-ate-snapshots"
+    ar_repo: str = "meridian"
+    gcloud: str = "gcloud"
+
+    @property
+    def registry(self) -> str:
+        return f"{self.region}-docker.pkg.dev/{self.project_id}/{self.ar_repo}"
+
+    def workload_principal(self, namespace: str, service_account: str) -> str:
+        """A Kubernetes ServiceAccount's IAM principal under Workload Identity Federation."""
+        return (
+            f"principal://iam.googleapis.com/projects/{self.project_number}/locations/global/"
+            f"workloadIdentityPools/{self.project_id}.svc.id.goog/subject/ns/{namespace}/"
+            f"sa/{service_account}"
+        )
+
+
 class SubstrateSettings(BaseModel):
-    """Agent Substrate on the local kind cluster ([substrate] in TOML).
+    """Agent Substrate on the local kind cluster ([substrate] in TOML), or on GKE with
+    target = "gke" (deploy/gke/meridian.toml, through MERIDIAN_CONFIG_OVERLAY).
 
     version and commit pin the release the control plane was deployed from (the runner
     refuses to start if ate-setup's install record names another version); the worker
@@ -199,6 +237,8 @@ class SubstrateSettings(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    target: Literal["kind", "gke"] = "kind"
+    gke: GkeSettings = Field(default_factory=GkeSettings)
     version: str = "v1.0.0"
     commit: str = Field("b34fbee742906494b5eb4f1f36987176bf8770a4", pattern=r"^[0-9a-f]{40}$")
     install_record: Path = Path("~/.cache/ate-setup/installs/kind-kind.yaml")
@@ -219,26 +259,30 @@ class SubstrateSettings(BaseModel):
         pattern=r"^[^@\s]+@sha256:[0-9a-f]{64}$",
     )
     sandbox_class: Literal["gvisor"] = "gvisor"
+    # Phase 4b step 3: the WorkerPool's pods go only to nodes with this label and
+    # tolerate this taint (key=value:effect). On GKE both are on the Spot node pool
+    # (docs/gke-plan.md 6.5); on kind the node carries the label, and the taint only for
+    # `meridian substrate placement-check` (one node: a lasting taint would keep every
+    # other pod from being scheduled again).
+    worker_node_label: str = Field("meridian.dev/pool=substrate", pattern=r"^[\w./-]+=[\w.-]+$")
+    worker_taint: str = Field(
+        "meridian.dev/worker=true:NoSchedule", pattern=r"^[\w./-]+=[\w.-]+:NoSchedule$"
+    )
     registry: str = "localhost:5001"
     deploy_dir: Path = Path("deploy/substrate")
     port: int = Field(8080, ge=1024, le=65535)  # what meridian-worker serve listens on
     request_timeout_seconds: float = Field(180.0, gt=0)
     actors_log: Path = Path("var/actors.jsonl")
-    # The runner's own identity: a ServiceAccount in `namespace` with `editor` on the
-    # atespace only (deploy/substrate/access-policy.yaml), and a short-lived token for it.
-    runner_service_account: str = "meridian-runner"
-    runner_token_file: Path = Path("var/substrate/runner.token")
     api_audience: str = "api.ate-system.svc"  # the audience ate-api-server accepts
     # A run that finds no free worker (ResourceExhausted) waits and retries this long.
     placement_wait_seconds: float = Field(120.0, ge=0)
-    # Phase 4b step 2. via: who drives a run. "direct": the laptop calls kubectl ate per
-    # verb and opens one kubectl ate proxy per run (phase 4a). "dispatcher": the laptop
-    # sends each run to the in-cluster dispatcher through one long-lived port-forward and
-    # holds no Substrate token. The dispatcher runs in its own namespace as its own
-    # ServiceAccount (editor on the atespace only); its image is pinned by digest in
-    # deploy/dispatcher/dispatcher.yaml. The laptop's half of the shared token lives
-    # outside the repository (dispatcher_token_file, 0600).
-    via: Literal["direct", "dispatcher"] = "direct"
+    # Phase 4b. The laptop sends each run to the in-cluster dispatcher through one
+    # long-lived port-forward and holds no Substrate identity (since step 3 the runner
+    # ServiceAccount of phase 4a is gone; its measurements stay in docs/gke-plan.md 2a).
+    # The dispatcher runs in its own namespace as its own ServiceAccount, the only member
+    # of the atespace's access policy and of atenet-router's ingress allow-list; its image
+    # is pinned by digest in dispatcher_deploy_dir. The laptop's half of the shared token
+    # lives outside the repository (dispatcher_token_file, 0600).
     dispatcher_namespace: str = "meridian-dispatch"
     dispatcher_service_account: str = "dispatcher"
     dispatcher_deployment: str = "meridian-dispatcher"
@@ -250,6 +294,17 @@ class SubstrateSettings(BaseModel):
     api_endpoint: str = "api.ate-system.svc:443"
     # A run is retried once on a new actor when its worker was lost (Spot preemption).
     worker_lost_retries: int = Field(1, ge=0, le=1)
+
+    @property
+    def node_selector(self) -> dict[str, str]:
+        key, value = self.worker_node_label.split("=", 1)
+        return {key: value}
+
+    @property
+    def toleration(self) -> dict[str, str]:
+        pair, effect = self.worker_taint.rsplit(":", 1)
+        key, value = pair.split("=", 1)
+        return {"key": key, "operator": "Equal", "value": value, "effect": effect}
 
 
 class ApiSettings(BaseModel):
@@ -305,8 +360,10 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (
-            init_settings,
-            env_settings,
-            TomlConfigSettingsSource(settings_cls, toml_file=config_file_path()),
-        )
+        overlay = config_overlay_path()
+        if overlay is not None and not overlay.is_file():
+            raise FileNotFoundError(f"{CONFIG_OVERLAY_ENV} names {overlay}, which does not exist")
+        files = [TomlConfigSettingsSource(settings_cls, toml_file=config_file_path())]
+        if overlay is not None:  # earlier sources win; tables are merged key by key
+            files.insert(0, TomlConfigSettingsSource(settings_cls, toml_file=overlay))
+        return (init_settings, env_settings, *files)
