@@ -137,7 +137,15 @@ def leakcheck(
                     {"agent": agent, "actor": r.substrate.actor, "ms": r.duration_ms}
                 )
                 typer.echo(f"run {i + 1:>2} {agent:<30} {r.substrate.actor} {r.duration_ms} ms")
-            executor.drain()
+            # Phase 4b step 4: the inputs went to the dispatcher's store once per file;
+            # held during the pass (the control), empty after the pass's drop.
+            held = client.stats()
+            executor.drain()  # tears the actors down, then drops the store
+            planted = {
+                hashlib.sha256((Path(tmp) / rel).read_bytes()).hexdigest(): rel
+                for rel in roots.planted
+            }
+            result.sources.append(lc.input_store_source(held, client.stats(), planted))
             # The marker into the dispatcher's log (a request path) and its /tmp.
             client.lookup(marker)
             kubectl, context, ns = s.kubectl, s.context, s.dispatcher_namespace

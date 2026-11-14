@@ -378,7 +378,12 @@ class DispatcherExecutor(SubstrateExecutor):
         if after.blobs or after.bytes:
             raise ExecutionError(f"the input store still holds {after.blobs} blob(s) after drop")
         self.last_drop = (held, after)
-        self._log.info("dispatcher.inputs_dropped", blobs=held)
+        self._log.info(
+            "dispatcher.inputs_dropped",
+            blobs=held,
+            sent_bytes=self._dispatcher.sent_bytes,
+            blob_bytes=self._dispatcher.blob_bytes,
+        )
         return held, after
 
     def _send_ref(
