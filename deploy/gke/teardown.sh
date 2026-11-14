@@ -38,6 +38,10 @@ delete_volumes() {
   fi
   credentials
   kubectl delete namespace meridian meridian-dispatch --ignore-not-found --wait=true --timeout=300s
+  # Postgres first: a claim its running pod mounts stays (pvc-protection) until the pod goes.
+  kubectl delete statefulset --all -n ate-system --ignore-not-found --wait=true --timeout=300s
+  kubectl wait pod --all -n ate-system -l statefulset.kubernetes.io/pod-name \
+    --for=delete --timeout=300s 2>/dev/null || true
   kubectl delete pvc --all -n ate-system --ignore-not-found --wait=true --timeout=300s
   for _ in $(seq 1 30); do
     [ -z "$(kubectl get pv -o name 2>/dev/null)" ] && return 0

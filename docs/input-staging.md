@@ -176,6 +176,29 @@ slower (the dispatcher rebuilds each archive); the bytes are what matters on GKE
   control found. Unit tests: the store refuses a blob not named by its sha256, zeroes its
   buffers on drop, drops itself when idle, and a dropped store is refilled once mid-pass.
 
-**On GKE (expected, not measured):** 15.9 MB at the 140 KB/s seen in the first session is
-about 2 minutes of upload, spread over the pass; the runs themselves about 1.8 s each at 12
-at a time. About 4 to 5 minutes for the 910 runs, against about 1.7 hours before.
+## On GKE (measured, 14 Nov 2026, the second session)
+
+| | Wall clock | Runs/s | Run p50 | Run p95 | Failed |
+|---|---:|---:|---:|---:|---:|
+| Bench, 200 runs, 1 worker node, 12 workers, 12 at a time | 74.3 s | 2.69 | 3.1 s | 22.0 s | 0 |
+| Bench, 200 runs, 2 worker nodes, 24 workers, 12 at a time | 62.9 s | 3.18 | 2.6 s | 20.8 s | 0 |
+| Bench, 200 runs, 2 worker nodes, 24 workers, 24 at a time | 50.9 s | 3.93 | 3.4 s | 28.4 s | 0 |
+| **Full pass, 910 runs**, 24 at a time, 2 worker nodes | **270 s** | 3.37 | 6.5 s | 11.8 s | 0 |
+| Rerun, 910 runs, 12 at a time: **0 events appended** | 453 s | 2.01 | 5.6 s | 9.4 s | 0 |
+
+- Bytes sent per pass: 15,865,788, of which 12,294,802 are the 731 distinct files, each
+  once (the same as kind). The first session's rate projected about 1.7 hours for this pass.
+- A second worker node shortens the in-cluster phases (at 12 at a time, request p50 467 to
+  271 ms, resume 920 to 730 ms) but does not lift the limit: every run's `tunnel` phase is
+  about 1 s at p50 and about 19 s at p95 on one node or two. The single port-forward is the
+  ceiling now, 2 to 4 runs/s against kind's 10 to 11.
+- After each pass the dispatcher was restarted (the old pod confirmed deleted, so freed
+  copies of inputs went with its process) and the leak check rerun on the new pod: pass.
+  One attempt failed its own control: the dispatcher pod's tar stream was cut (5,312 of
+  11,267 files) when the cluster autoscaler removed an underused Spot node at the same
+  moment (a konnectivity agent most likely went with it); the canary was found nowhere, and
+  the rerun passed. Scale the WorkerPool back before a leak check, and expect a node scan
+  pod not to fit on a node at 98% of its CPU requests.
+- Core dumps: GKE's containerd leaves RLIMIT_CORE unlimited and the node's core_pattern is
+  a file path, so the dispatcher now starts under `ulimit -c 0` (soft and hard 0, checked
+  after every restart). No node has swap (kubelet reports 0 bytes, /proc/swaps empty).
