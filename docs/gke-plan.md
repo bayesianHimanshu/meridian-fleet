@@ -931,3 +931,20 @@ not run (the auto-mode classifier refused it), and whether park.sh should do it 
 06:20 to the node's removal about 09:32 UTC: the fee 0.32, the system node (0.215/h)
 0.69, the Spot node about 1.4 h 0.11, egress about 1.4 GB (the bucket read twice by the
 leak checks) about 0.05: **about USD 1.17**. Then USD 0.10 an hour while parked.
+
+## 10. Step 4: teardown, park, and inputs by content (14 Nov 2026)
+
+- **Teardown** after the first session: `teardown.sh` deleted the cluster, the Postgres
+  claim and its disk, both buckets, the repository, the node binding and both service
+  accounts; the budget (INR 2,500) was kept (KEEP_BUDGET=1). `teardown.sh --check` exits 0.
+  Its first run exited 1 only because gcloud's "Listing items" line was counted as a
+  repository; fixed.
+- **Park** now stops the workloads first (deploy/gke/workloads.sh: WorkerPool, dispatcher,
+  ate-system, Postgres, each to 0 with its count in an annotation), so a drain has nothing
+  to wait for; resume.sh starts them back. A resize still running when gcloud stops waiting
+  is `IN PROGRESS` (exit 3). On kind: stop leaves only DaemonSet pods, start brings every
+  claim and tag back unchanged, and a run goes through (tests/substrate/test_park.py).
+- **deploy/gke/env.example.sh** lists every variable with a comment; teardown, park and
+  resume refuse while any is unset.
+- **Inputs by content:** docs/input-staging.md. A full pass sends 15.9 MB instead of
+  814 MB; the inputs rest only in the dispatcher's memory for one pass.

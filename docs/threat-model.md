@@ -168,6 +168,18 @@ Every source needs a positive control found, or the check fails. On kind it pass
 three zones and then with safety included (docs/gke-plan.md section 2b); the safety zone
 moves to GKE only after it passes there.
 
+**Inputs held for a pass (phase 4b step 4).** A run's inputs no longer travel whole per
+run: each distinct staged file goes once per pass into the dispatcher's in-memory input
+store, by sha256, and a run sends references (docs/input-staging.md). So subject-level
+inputs now rest in the dispatcher's process memory for the length of a pass, not of a
+request. The store is dropped (buffers zeroed) at the end of every pass and after 15
+minutes idle, is never written to disk or logged, and accepts only blobs whose sha256 is
+their name. The dispatcher rebuilds each archive and checks its sha256, and the actor
+still checks the archive and the inputs manifest, so a wrong or swapped blob fails the run.
+Freed copies in the process heap last until the process exits (park and teardown stop it).
+The leak check has a source for the store: a planted file held during the pass, nothing
+after the drop.
+
 ## Other controls, briefly
 
 * Agents get no ledger access and no credentials: the host runner is the only ledger
