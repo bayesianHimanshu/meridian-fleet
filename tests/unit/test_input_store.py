@@ -192,3 +192,34 @@ def test_a_run_ref_is_refused_when_its_header_names_another_archive(roots: Path)
         )
         assert response.status_code == 400
     assert fake.created == []
+
+
+def test_concurrent_runs_send_a_shared_blob_once() -> None:
+    import threading
+    import time
+
+    from meridian.sandbox.input_store import Uploader
+
+    class Slow(MemoryInputStore):
+        puts: list[str]
+
+        def put(self, digest: str, data: bytes) -> None:
+            time.sleep(0.05)  # a slow tunnel: the other runs arrive meanwhile
+            self.puts.append(digest)
+            MemoryInputStore.put(self, digest, data)
+
+    store = Slow()
+    store.puts = []
+    blobs = {sha256(bytes([i]) * 1000): bytes([i]) * 1000 for i in range(5)}
+    uploader = Uploader(store)
+    sent: list[int] = []
+    threads = [
+        threading.Thread(target=lambda: sent.append(uploader.ensure(blobs))) for _ in range(12)
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(store.puts) == sorted(blobs)  # each once, whoever sent it
+    assert sum(sent) == 5000
+    assert store.missing(blobs) == set()  # every run returned with all of them held

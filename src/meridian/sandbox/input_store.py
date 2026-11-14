@@ -241,19 +241,44 @@ def assemble(ref: RunRef, get: Callable[[str], bytes]) -> bytes:
     return body
 
 
-def upload_missing(
-    store: InputStore, blobs: Mapping[str, bytes], known: set[str], lock: threading.Lock
-) -> int:
-    """Put the blobs the store lacks; known caches digests already held this pass.
-    Returns the bytes sent."""
-    with lock:
-        unknown = [d for d in blobs if d not in known]
-    if not unknown:
-        return 0
-    sent = 0
-    for digest in sorted(store.missing(unknown)):
-        store.put(digest, blobs[digest])
-        sent += len(blobs[digest])
-    with lock:
-        known.update(unknown)
-    return sent
+class Uploader:
+    """The laptop's side of one pass: sends each blob the store lacks, once. Runs that
+    need a blob another run is already sending wait for it instead of sending it again;
+    digests known to be held are not asked about again until forget()."""
+
+    def __init__(self, store: InputStore, wait_seconds: float = 600.0) -> None:
+        self._store = store
+        self._wait = wait_seconds
+        self._known: set[str] = set()
+        self._inflight: dict[str, threading.Event] = {}
+        self._lock = threading.Lock()
+
+    def ensure(self, blobs: Mapping[str, bytes]) -> int:
+        """Make the store hold every blob; returns the bytes this call sent."""
+        with self._lock:
+            mine = [d for d in blobs if d not in self._known and d not in self._inflight]
+            theirs = [self._inflight[d] for d in blobs if d in self._inflight]
+            for d in mine:
+                self._inflight[d] = threading.Event()
+        sent = 0
+        try:
+            if mine:
+                for digest in sorted(self._store.missing(mine)):
+                    self._store.put(digest, blobs[digest])
+                    sent += len(blobs[digest])
+                with self._lock:
+                    self._known.update(mine)
+        finally:
+            with self._lock:
+                for d in mine:
+                    self._inflight.pop(d).set()
+        for event in theirs:
+            event.wait(self._wait)  # if that upload failed, the run's 409 sends it again
+        return sent
+
+    def forget(self, digests: Collection[str] | None = None) -> None:
+        with self._lock:
+            if digests is None:
+                self._known.clear()
+            else:
+                self._known.difference_update(digests)

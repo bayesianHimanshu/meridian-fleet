@@ -124,7 +124,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: dispatcher
-          image: "localhost:5001/meridian-dispatcher@sha256:090a369a90e520a3e5ac869e9dc8299dc18d143b3b880acbb8d402de70505f13"
+          image: "localhost:5001/meridian-dispatcher@sha256:69fc77fa7a60cc394f811646ef5fd3461620c8128699340b194660ea9751aad2"
           args:
             - serve
             - --port

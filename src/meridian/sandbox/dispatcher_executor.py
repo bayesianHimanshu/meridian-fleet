@@ -42,8 +42,8 @@ from meridian.sandbox.input_store import (
     MissingInputsError,
     RunRef,
     StoreStats,
+    Uploader,
     split,
-    upload_missing,
 )
 from meridian.sandbox.substrate import GuardRefusedError, NotFoundError, SubstrateError
 from meridian.sandbox.substrate_executor import (
@@ -361,8 +361,7 @@ class DispatcherExecutor(SubstrateExecutor):
         super().__init__(client=dispatcher, free_workers=dispatcher.free_workers, **kwargs)
         self._dispatcher = dispatcher
         self._dispatcher_image = dispatcher_image
-        self._held: set[str] = set()  # digests the store holds this pass (a cache)
-        self._held_lock = threading.Lock()
+        self._uploader = Uploader(dispatcher)
         self.last_drop: tuple[int, StoreStats] | None = None
 
     def drain(self) -> None:
@@ -373,8 +372,7 @@ class DispatcherExecutor(SubstrateExecutor):
     def drop_inputs(self) -> tuple[int, StoreStats]:
         held = self._dispatcher.drop()
         after = self._dispatcher.stats()
-        with self._held_lock:
-            self._held.clear()
+        self._uploader.forget()
         if after.blobs or after.bytes:
             raise ExecutionError(f"the input store still holds {after.blobs} blob(s) after drop")
         self.last_drop = (held, after)
@@ -394,15 +392,14 @@ class DispatcherExecutor(SubstrateExecutor):
         ref: RunRef,
         blobs: dict[str, bytes],
     ) -> dispatch.RunAnswer:
-        upload_missing(self._dispatcher, blobs, self._held, self._held_lock)
+        self._uploader.ensure(blobs)
         try:
             return self._dispatcher.run(
                 actor=actor, template=template.name, agent_id=agent_id, ref=ref
             )
         except MissingInputsError as exc:  # dropped since (idle backstop, a restart)
-            with self._held_lock:
-                self._held.difference_update(exc.digests)
-            upload_missing(self._dispatcher, blobs, self._held, self._held_lock)
+            self._uploader.forget(exc.digests)
+            self._uploader.ensure(blobs)
             return self._dispatcher.run(
                 actor=actor, template=template.name, agent_id=agent_id, ref=ref
             )
