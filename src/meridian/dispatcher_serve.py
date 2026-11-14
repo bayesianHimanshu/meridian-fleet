@@ -10,10 +10,13 @@ answers with the actor's reply and the traceability fields (meridian.sandbox.dis
 What it never does:
 - suspend, revert or tag: its client's allow-list (DISPATCHER_VERBS) refuses them before
   anything is sent (GuardRefusedError); it has no endpoint that could ask for them;
-- keep a run: the inputs and the actor's reply live only in this process's memory for the
-  length of the request. Nothing is written to disk (the root filesystem is read-only and
-  the only writable path is an in-memory /tmp for kubectl-ate), and the log has one line
-  per request with its method, path, status, actor and duration, never a body.
+- keep a run: the actor's reply lives only in this process's memory for the length of
+  the request, and the inputs only in its MemoryInputStore for the length of a pass
+  (phase 4b step 4: each distinct file once, by sha256; dropped by the laptop at the end
+  of the pass or after idle_seconds without use; meridian.sandbox.input_store). Nothing
+  is written to disk (the root filesystem is read-only and the only writable path is an
+  in-memory /tmp for kubectl-ate), and the log has one line per request with its method,
+  path, status, actor and duration, never a body.
 
 Substrate is reached with the kubectl-ate binary (`--endpoint` ate-api-server, the pod's
 projected ServiceAccount token with the API audience). Actors are reached with an mTLS
@@ -22,10 +25,12 @@ the router's ingress allow-list names.
 """
 
 import argparse
+import dataclasses
 import http.client
 import http.server
 import json
 import os
+import re
 import socket
 import ssl
 import sys
@@ -43,6 +48,13 @@ import structlog
 from meridian.sandbox import dispatch
 from meridian.sandbox import substrate_conformance as sc
 from meridian.sandbox.executor import ExecutionError
+from meridian.sandbox.input_store import (
+    InputStoreError,
+    MemoryInputStore,
+    MissingInputsError,
+    RunRef,
+    assemble,
+)
 from meridian.sandbox.substrate import (
     DISPATCHER_VERBS,
     KubectlAteClient,
@@ -60,6 +72,9 @@ from meridian.sandbox.substrate_executor import (
 from meridian.sandbox.substrate_templates import golden_tag_of
 
 MAX_BODY = 64 * 1024 * 1024
+MAX_REF = 4 * 1024 * 1024  # a RunRef: member list and meta/ inline
+MAX_DIGESTS = 20_000
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 KUBE_API = "https://kubernetes.default.svc"
 SA_DIR = Path("/var/run/secrets/kubernetes.io/serviceaccount")
 
@@ -161,6 +176,8 @@ class Dispatcher:
     request: sc.Request | None = None
     own_address: str | None = None
     kube_api: tuple[str, int] = sc.KUBE_API
+    # Phase 4b step 4: the pass's inputs, by sha256, in this process only.
+    inputs: MemoryInputStore = dataclasses.field(default_factory=MemoryInputStore)
 
     def __post_init__(self) -> None:
         self._golden: dict[str, str] = {}
@@ -347,6 +364,8 @@ def make_handler(
                     return 200, {"deleted": parts[2]}, parts[2]
                 if method == "POST" and parts == ["v1", "runs"]:
                     return self._run()
+                if parts[:2] == ["v1", "inputs"]:
+                    return self._inputs(method, parts[2:])
                 if method == "POST" and parts == ["v1", "conformance"]:
                     return self._conformance()
             except NotFoundError as exc:
@@ -355,17 +374,64 @@ def make_handler(
                 return 502, {"error": str(exc)[:500]}, None
             return 404, {"error": "no such endpoint"}, None
 
+        def _body(self, limit: int) -> bytes | None:
+            length = int(self.headers.get("Content-Length") or -1)
+            if not 0 < length <= limit:
+                return None
+            return self.rfile.read(length)
+
         def _run(self) -> tuple[int, Any, str | None]:
+            """One run by reference: the archive is rebuilt from the input store (409 with
+            the digests it lacks), checked against the laptop's sha256, then run."""
             h = self.headers
             actor, template = h.get(dispatch.ACTOR_HEADER), h.get(dispatch.TEMPLATE_HEADER)
             agent_id, body_sha = h.get("X-Meridian-Agent"), h.get("X-Meridian-Archive-Sha256")
-            length = int(h.get("Content-Length") or -1)
-            if not (actor and template and agent_id and body_sha) or not 0 < length <= MAX_BODY:
+            raw = self._body(MAX_REF)
+            if not (actor and template and agent_id and body_sha) or raw is None:
                 return 400, {"error": "missing run headers or bad length"}, actor
-            body = self.rfile.read(length)
+            try:
+                ref = RunRef.model_validate_json(raw)
+                if ref.archive_sha256 != body_sha:
+                    raise InputStoreError("the RunRef names another archive than its header")
+                body = assemble(ref, dispatcher.inputs.get)
+            except MissingInputsError as exc:
+                return 409, {"missing": exc.digests}, actor
+            except (InputStoreError, ValueError) as exc:
+                return 400, {"error": str(exc)[:300]}, actor
             answer = dispatcher.run(actor, template, agent_id, body, body_sha)
-            del body  # nothing of the run outlives the request
+            del body  # the archive outlives the request only as its blobs in the store
             return 200, answer.model_dump(mode="json"), actor
+
+        def _inputs(self, method: str, rest: list[str]) -> tuple[int, Any, str | None]:
+            store = dispatcher.inputs
+            if method == "GET" and not rest:
+                return 200, dataclasses.asdict(store.stats()), None
+            if method == "DELETE" and not rest:
+                held = store.drop()
+                return 200, {"released": held, **dataclasses.asdict(store.stats())}, None
+            if method == "POST" and rest == ["missing"]:
+                raw = self._body(MAX_DIGESTS * 70)
+                try:
+                    digests = list(json.loads(raw or b"")["digests"])
+                except (ValueError, KeyError, TypeError) as exc:
+                    return 400, {"error": str(exc)[:300]}, None
+                if len(digests) > MAX_DIGESTS or not all(
+                    isinstance(d, str) and SHA256_RE.fullmatch(d) for d in digests
+                ):
+                    return 400, {"error": "bad digests"}, None
+                return 200, {"missing": sorted(store.missing(digests))}, None
+            if method == "PUT" and len(rest) == 1 and SHA256_RE.fullmatch(rest[0]):
+                data = self._body(MAX_BODY)
+                if data is None:
+                    return 400, {"error": "bad length"}, None
+                try:
+                    store.put(rest[0], data)
+                except InputStoreError as exc:
+                    return 400, {"error": str(exc)[:300]}, None
+                finally:
+                    del data
+                return 200, {"held": rest[0]}, None
+            return 404, {"error": "no such endpoint"}, None
 
         def _conformance(self) -> tuple[int, Any, str | None]:
             length = int(self.headers.get("Content-Length") or -1)
@@ -386,6 +452,9 @@ def make_handler(
 
         def do_DELETE(self) -> None:
             self._handle("DELETE")
+
+        def do_PUT(self) -> None:
+            self._handle("PUT")
 
     return Handler
 
@@ -461,6 +530,13 @@ def serve(argv: Sequence[str]) -> int:
         make_handler(dispatcher, token, log),
     )
     server.daemon_threads = True
+
+    def idle_backstop() -> None:
+        while True:
+            time.sleep(30)
+            dispatcher.inputs.check_idle()
+
+    threading.Thread(target=idle_backstop, daemon=True).start()
     log.info("dispatcher.listening", port=args.port, atespace=args.atespace)
     server.serve_forever()
     return 0

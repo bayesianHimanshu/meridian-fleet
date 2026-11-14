@@ -40,6 +40,7 @@ from meridian.sandbox.executor import (
     sandbox_name,
     stage_run,
 )
+from meridian.sandbox.input_store import archive_from
 from meridian.sandbox.policies import policy_for_agent, sha256_bytes
 from meridian.sandbox.substrate import (
     NotFoundError,
@@ -84,21 +85,14 @@ class ZoneTemplate:
 def archive(stage: Path) -> bytes:
     """An uncompressed tar of <area>/<file> for every staged file, byte for byte the same
     for the same files: sorted, mode 0644, owner 0, mtime 0, no folder entries."""
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w", format=tarfile.PAX_FORMAT) as tar:
-        for path in sorted(p for p in stage.rglob("*") if p.is_file()):
-            rel = path.relative_to(stage)
-            if len(rel.parts) != 2:
-                raise ExecutionError(f"unexpected staged path {rel}")
-            info = tarfile.TarInfo(rel.as_posix())
-            info.size = path.stat().st_size
-            info.mode = 0o644
-            info.mtime = 0
-            info.uid = info.gid = 0
-            info.uname = info.gname = ""
-            with path.open("rb") as handle:
-                tar.addfile(info, handle)
-    return buffer.getvalue()
+    entries = []
+    for path in sorted(p for p in stage.rglob("*") if p.is_file()):
+        rel = path.relative_to(stage)
+        if len(rel.parts) != 2:
+            raise ExecutionError(f"unexpected staged path {rel}")
+        entries.append((rel.as_posix(), path.read_bytes()))
+    # The dispatcher rebuilds the same bytes from a RunRef (meridian.sandbox.input_store).
+    return archive_from(entries)
 
 
 def archive_members(body: bytes) -> list[str]:
