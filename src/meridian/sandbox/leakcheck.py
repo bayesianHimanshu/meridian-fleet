@@ -34,13 +34,14 @@ import subprocess
 import tarfile
 import time
 import uuid
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from meridian.sandbox import gke
 from meridian.sandbox import substrate_proofs as sp
+from meridian.sandbox.input_store import StoreStats
 from meridian.sandbox.leakscan import Report, scan_tree
 from meridian.sandbox.substrate_templates import WORKER_BIN
 
@@ -495,3 +496,27 @@ class LeakCheck:
             "layout": self.layout,
             "sources": [s.as_dict() for s in self.sources],
         }
+
+
+# ----------------------------------------------------------- the dispatcher's input store
+
+
+def input_store_source(before: StoreStats, after: StoreStats, planted: Mapping[str, str]) -> Source:
+    """Phase 4b step 4: the pass's inputs in the dispatcher's memory, by sha256.
+
+    planted maps the sha256 of each file the canary was planted in to its name. The
+    positive control: before the drop, the store held at least one of them (the canary did
+    reach the store). The canary is found if, after the drop, any blob is left at all (a
+    planted one is named): the store must be empty, not merely without the canary."""
+    report = Report("dispatcher input store", items=before.blobs, bytes_scanned=before.bytes)
+    held = [name for digest, name in sorted(planted.items()) if digest in before.digests]
+    left = [planted.get(d, f"blob {d[:12]}") for d in after.digests]
+    if left or after.bytes:
+        report.hits[CANARY] = [f"after the drop: {', '.join(left) or f'{after.bytes} bytes'}"]
+    return Source(
+        "dispatcher input store",
+        report,
+        f"{len(held)} of the {len(planted)} planted files held during the pass, by sha256",
+        bool(held),
+        held,
+    )

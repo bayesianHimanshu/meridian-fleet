@@ -232,3 +232,12 @@ def test_a_new_atespace_gets_the_committed_access_policy(
     monkeypatch.setattr(subprocess, "run", run)
     assert d.ensure_access_policy("kubectl", "gke", "meridian", policy, []) == "created"
     assert run.calls[-1][4:6] == ["create", "access-policy"]
+
+
+def test_the_dispatcher_starts_with_core_dumps_off() -> None:
+    manifests = dd.manifests(SubstrateSettings(), "r@" + DIGEST, "0" * 64)
+    deployment = next(m for m in manifests if m["kind"] == "Deployment")
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+    assert container["command"] == ["/usr/bin/sh", "-c", dd.NO_CORE, dd.ENTRYPOINT]
+    assert dd.NO_CORE.startswith("ulimit -c 0 && exec ")
+    assert container["args"][0] == "serve"

@@ -291,3 +291,22 @@ def test_the_gke_overlay_points_substrate_at_the_cluster_by_digest() -> None:
     assert s.deploy_dir == Path("deploy/gke/substrate")
     assert s.node_selector == {"meridian.dev/pool": "substrate"}
     assert s.toleration["effect"] == "NoSchedule"
+
+
+def test_the_input_store_must_have_held_a_planted_file_and_hold_nothing_after() -> None:
+    from meridian.sandbox.input_store import StoreStats
+    from meridian.sandbox.leakcheck import input_store_source
+
+    planted = {"a" * 64: "curated/x/blinded/ae.parquet", "b" * 64: "audit/1/audit/x.parquet"}
+    during = StoreStats(blobs=3, bytes=900, digests=("a" * 64, "c" * 64, "d" * 64))
+    empty = StoreStats(blobs=0, bytes=0, digests=())
+    ok = input_store_source(during, empty, planted)
+    assert ok.control_found
+    assert ok.control_where == ["curated/x/blinded/ae.parquet"]
+    assert ok.canary_hits == []
+    never = input_store_source(StoreStats(blobs=1, bytes=9, digests=("c" * 64,)), empty, planted)
+    assert not never.control_found  # the canary never reached the store: no proof
+    left = input_store_source(during, StoreStats(blobs=1, bytes=7, digests=("a" * 64,)), planted)
+    assert left.canary_hits == ["after the drop: curated/x/blinded/ae.parquet"]
+    stray = input_store_source(during, StoreStats(blobs=1, bytes=7, digests=("e" * 64,)), planted)
+    assert stray.canary_hits  # anything left at all fails, planted or not

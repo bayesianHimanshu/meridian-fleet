@@ -8,6 +8,11 @@ committed template against the deployed one, checking the actor's answer (archiv
 inputs manifest sha256, only the golden snapshot, the sandbox class) and the ledger, which
 the runner still appends in its fixed order.
 
+Since phase 4b step 4 a run's inputs do not go up whole: each distinct file goes once per
+pass into the dispatcher's input store (RemoteInputStore, by sha256), and the run sends a
+RunRef (meridian.sandbox.input_store). drain() drops the store at the end of the pass and
+checks it is empty.
+
 The laptop holds no Substrate token. It reaches the dispatcher through one long-lived
 `kubectl port-forward` (PortForward) and authenticates both ways with the shared token
 (meridian.sandbox.dispatch). The token is read from a 0600 file outside the repository
@@ -22,7 +27,7 @@ import stat
 import subprocess
 import threading
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Collection, Mapping
 from pathlib import Path
 from typing import Any, Self
 
@@ -32,6 +37,14 @@ import structlog
 from meridian.domain.events import SubstrateRun
 from meridian.sandbox import dispatch
 from meridian.sandbox.executor import ExecutionError
+from meridian.sandbox.input_store import (
+    InputStoreError,
+    MissingInputsError,
+    RunRef,
+    StoreStats,
+    Uploader,
+    split,
+)
 from meridian.sandbox.substrate import GuardRefusedError, NotFoundError, SubstrateError
 from meridian.sandbox.substrate_executor import (
     ActorReply,
@@ -165,6 +178,9 @@ class DispatcherClient:
         self._reconnect = on_transport_error
         self._http = http or httpx.Client()
         self.atespace = atespace
+        # Bytes sent to the dispatcher (bodies only): all of them, and input blobs alone.
+        self.sent_bytes = 0
+        self.blob_bytes = 0
 
     def _call(
         self,
@@ -235,9 +251,10 @@ class DispatcherClient:
     def delete_actor(self, name: str) -> None:
         self._json("DELETE", f"/v1/actors/{name}")
 
-    def run(
-        self, *, actor: str, template: str, agent_id: str, body: bytes, body_sha: str
-    ) -> dispatch.RunAnswer:
+    def run(self, *, actor: str, template: str, agent_id: str, ref: RunRef) -> dispatch.RunAnswer:
+        """One run by reference. MissingInputsError (409) if the store lacks a blob."""
+        body = ref.model_dump_json().encode()
+        self.sent_bytes += len(body)
         response = self._call(
             "POST",
             "/v1/runs",
@@ -246,13 +263,46 @@ class DispatcherClient:
                 dispatch.ACTOR_HEADER: actor,
                 dispatch.TEMPLATE_HEADER: template,
                 "X-Meridian-Agent": agent_id,
-                "X-Meridian-Archive-Sha256": body_sha,
-                "Content-Type": "application/x-tar",
+                "X-Meridian-Archive-Sha256": ref.archive_sha256,
+                "Content-Type": "application/json",
             },
         )
+        if response.status_code == 409:
+            raise MissingInputsError(list(response.json().get("missing", [])))
         if response.status_code != 200:
             raise DispatcherError(f"run {actor}: {response.status_code} {response.text[:500]}")
         return dispatch.RunAnswer.model_validate_json(response.content)
+
+    # ---- the input store (phase 4b step 4), as the InputStore protocol
+
+    def missing(self, digests: Collection[str]) -> set[str]:
+        body = json.dumps({"digests": sorted(digests)}).encode()
+        self.sent_bytes += len(body)
+        response = self._call(
+            "POST", "/v1/inputs/missing", body=body, headers={"Content-Type": "application/json"}
+        )
+        if response.status_code != 200:
+            raise DispatcherError(f"inputs: {response.status_code} {response.text[:300]}")
+        return set(response.json().get("missing", []))
+
+    def put(self, digest: str, data: bytes) -> None:
+        self.sent_bytes += len(data)
+        self.blob_bytes += len(data)
+        response = self._call(
+            "PUT",
+            f"/v1/inputs/{digest}",
+            body=data,
+            headers={"Content-Type": "application/octet-stream"},
+        )
+        if response.status_code != 200:
+            raise DispatcherError(f"inputs: {response.status_code} {response.text[:300]}")
+
+    def stats(self) -> StoreStats:
+        value = self._json("GET", "/v1/inputs")
+        return StoreStats(**{**value, "digests": tuple(value.get("digests", ()))})
+
+    def drop(self) -> int:
+        return int(self._json("DELETE", "/v1/inputs").get("released", 0))
 
     def conformance(self, template: str) -> dict[str, Any]:
         """The containment checks in two data-free actors of the conformance template, run
@@ -311,6 +361,48 @@ class DispatcherExecutor(SubstrateExecutor):
         super().__init__(client=dispatcher, free_workers=dispatcher.free_workers, **kwargs)
         self._dispatcher = dispatcher
         self._dispatcher_image = dispatcher_image
+        self._uploader = Uploader(dispatcher)
+        self.last_drop: tuple[int, StoreStats] | None = None
+
+    def drain(self) -> None:
+        """The pass ends: actors torn down, then the input store dropped and checked empty."""
+        super().drain()
+        self.drop_inputs()
+
+    def drop_inputs(self) -> tuple[int, StoreStats]:
+        held = self._dispatcher.drop()
+        after = self._dispatcher.stats()
+        self._uploader.forget()
+        if after.blobs or after.bytes:
+            raise ExecutionError(f"the input store still holds {after.blobs} blob(s) after drop")
+        self.last_drop = (held, after)
+        self._log.info(
+            "dispatcher.inputs_dropped",
+            blobs=held,
+            sent_bytes=self._dispatcher.sent_bytes,
+            blob_bytes=self._dispatcher.blob_bytes,
+        )
+        return held, after
+
+    def _send_ref(
+        self,
+        actor: str,
+        template: ZoneTemplate,
+        agent_id: str,
+        ref: RunRef,
+        blobs: dict[str, bytes],
+    ) -> dispatch.RunAnswer:
+        self._uploader.ensure(blobs)
+        try:
+            return self._dispatcher.run(
+                actor=actor, template=template.name, agent_id=agent_id, ref=ref
+            )
+        except MissingInputsError as exc:  # dropped since (idle backstop, a restart)
+            self._uploader.forget(exc.digests)
+            self._uploader.ensure(blobs)
+            return self._dispatcher.run(
+                actor=actor, template=template.name, agent_id=agent_id, ref=ref
+            )
 
     def placement(self, template: ZoneTemplate, actor: str) -> SubstrateRun:
         return (
@@ -330,10 +422,11 @@ class DispatcherExecutor(SubstrateExecutor):
     ) -> ActorReply:
         start = time.perf_counter()
         try:
-            answer = self._dispatcher.run(
-                actor=actor, template=template.name, agent_id=agent_id, body=body, body_sha=body_sha
-            )
-        except SubstrateError as exc:
+            ref, blobs = split(body)
+            if ref.archive_sha256 != body_sha:
+                raise ExecutionError("the run's reference names another archive")
+            answer = self._send_ref(actor, template, agent_id, ref, blobs)
+        except (SubstrateError, InputStoreError) as exc:
             self._tracker.record(actor, "delete_failed", f"answer lost: {exc}"[:500])
             raise ExecutionError(f"dispatcher failed for {actor}: {exc}") from exc
         total = round((time.perf_counter() - start) * 1000)

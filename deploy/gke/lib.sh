@@ -1,14 +1,18 @@
 # Shared by deploy/gke/teardown.sh, park.sh and resume.sh (sourced, not run).
-# Requires the variables of deploy/gke/env.sh.example; changes nothing by itself.
+# Requires every variable deploy/gke/env.example.sh exports, set and not empty (copy it to
+# deploy/gke/env.sh, fill it in, source it); changes nothing by itself.
 
-for var in PROJECT_ID PROJECT_NUMBER REGION ZONE CLUSTER_NAME SYSTEM_POOL WORKER_POOL \
-  BUCKET_NAME AR_REPO NODE_GSA_NAME SNAPSHOT_TRANSFER_GSA_NAME BILLING_ACCOUNT BUDGET_NAME \
-  BASTION_NAME; do
-  if [ -z "${!var:-}" ]; then
-    echo "${var} is not set: source deploy/gke/env.sh first" >&2
-    exit 2
-  fi
-done
+_example="$(dirname "${BASH_SOURCE[0]}")/env.example.sh"
+_missing=()
+while IFS= read -r var; do
+  [ -n "${!var:-}" ] || _missing+=("${var}")
+done < <(sed -n 's/^export \([A-Z_][A-Z0-9_]*\)=.*/\1/p' "${_example}")
+if [ "${#_missing[@]}" -gt 0 ]; then
+  echo "not set: ${_missing[*]}" >&2
+  echo "every variable of deploy/gke/env.example.sh must be set: update deploy/gke/env.sh and source it" >&2
+  exit 2
+fi
+unset _example _missing
 gc=(gcloud --project="${PROJECT_ID}" --quiet)
 failed=()
 
@@ -32,12 +36,12 @@ step() {
 }
 
 cluster_exists() {
-  "${gc[@]}" container clusters describe "${CLUSTER_NAME}" --location="${ZONE}" \
+  "${gc[@]}" container clusters describe "${CLUSTER_NAME}" --location="${CLUSTER_LOCATION}" \
     --format='value(name)' >/dev/null 2>&1
 }
 
 credentials() {
-  "${gc[@]}" container clusters get-credentials "${CLUSTER_NAME}" --location="${ZONE}" \
+  "${gc[@]}" container clusters get-credentials "${CLUSTER_NAME}" --location="${CLUSTER_LOCATION}" \
     --dns-endpoint >/dev/null
 }
 
@@ -81,7 +85,7 @@ Static IP addresses|"\${gc[@]}" compute addresses list --format='value(name,regi
 Forwarding rules (load balancers)|"\${gc[@]}" compute forwarding-rules list --format='value(name,region)'
 Cloud Routers (NAT)|"\${gc[@]}" compute routers list --format='value(name,region)'
 Cloud Storage buckets|"\${gc[@]}" storage buckets list --format='value(name)'
-Artifact Registry repositories|"\${gc[@]}" artifacts repositories list --location="\${REGION}" --format='value(name)'
+Artifact Registry repositories|"\${gc[@]}" artifacts repositories list --location="\${REGION}" --format='value(name)' 2>&1 | sed -e '/^Listing items under/d' -e '/^[[:space:]]*$/d'
 Cloud SQL instances|"\${gc[@]}" sql instances list --format='value(name)' 2>/dev/null || true
 Filestore instances|"\${gc[@]}" filestore instances list --format='value(name)' 2>/dev/null || true
 EOF
@@ -97,11 +101,44 @@ EOF
   return "${left}"
 }
 
+# resize_pool POOL N: resize a node pool. If gcloud stops waiting while GKE's operation
+# still runs (a drain can take long), that is "in progress", not a failure: the operation
+# is recorded and finish() exits 3 with how to check it later.
+in_progress=()
+resize_pool() {
+  local pool="$1" nodes="$2" op
+  echo "== pool ${pool} to ${nodes} node(s)"
+  if "${gc[@]}" container clusters resize "${CLUSTER_NAME}" --location="${CLUSTER_LOCATION}" \
+    --node-pool="${pool}" --num-nodes="${nodes}" >/dev/null 2>"${TMPDIR:-/tmp}/resize.$$"; then
+    echo "   done"
+  else
+    op="$("${gc[@]}" container operations list --location="${CLUSTER_LOCATION}" \
+      --filter="status=RUNNING AND operationType=SET_NODE_POOL_SIZE AND targetLink~nodePools/${pool}\$" \
+      --format='value(name)' | head -1)"
+    if [ -n "${op}" ]; then
+      echo "   in progress: operation ${op} still running"
+      in_progress+=("pool ${pool} to ${nodes}: operation ${op}")
+    else
+      cat "${TMPDIR:-/tmp}/resize.$$" >&2
+      failed+=("pool ${pool} to ${nodes} node(s)")
+    fi
+  fi
+  rm -f "${TMPDIR:-/tmp}/resize.$$"
+}
+
 finish() {
   local status="$1" f
   for f in "${failed[@]}"; do
     echo "FAILED: ${f}" >&2
     status=1
   done
+  if [ "${status}" -eq 0 ] || [ "${#failed[@]}" -eq 0 ]; then
+    for f in "${in_progress[@]}"; do
+      echo "IN PROGRESS: ${f}"
+      echo "   gcloud container operations describe ${f##* } --location=${CLUSTER_LOCATION}"
+      status=3
+    done
+    [ "${#in_progress[@]}" -eq 0 ] || echo "   then rerun the check: $0 --check"
+  fi
   exit "${status}"
 }

@@ -1,6 +1,6 @@
-# The first GKE session: one runbook
+# The GKE session: one runbook
 
-Phase 4b step 3. The exact commands, in order, for the first session on GKE: **part 1 is
+Phase 4b steps 3 and 4. The exact commands, in order, for a session on GKE: **part 1 is
 yours** (everything that creates or changes a Google Cloud resource, API, IAM binding or
 budget), **part 2 is mine** once the cluster exists (only Kubernetes objects, read-only
 gcloud, and the leak check's reads). Each step has its success check, an estimate of its
@@ -26,7 +26,7 @@ GKE management fee of USD 0.10 an hour bills whenever the cluster exists, parked
 Internet egress to the laptop is the first GiB a month free, then 0.12 per GiB. The leak
 check downloads the snapshot bucket (kind: 0.66 GB) and streams the dispatcher pod's
 filesystem (kind: 0.64 GB) each time; it scans the nodes in place, so their disks never
-leave Google. Budget alerts at USD 15, 27 and 30 a month (step 2).
+leave Google. Budget alerts at 50, 90 and 100 percent of INR 2,500 a month (step 2).
 
 **Park or tear down.** Without the credit, one parked day (USD 2.43) costs more money than
 tearing down and recreating (about USD 0.40 of cluster time), and a month parked (about USD
@@ -38,8 +38,10 @@ tear down whenever the next session is more than a day or two away.
 
 ```bash
 cd ~/meridian-fleet
-cp deploy/gke/env.sh.example deploy/gke/env.sh   # once; set PROJECT_NUMBER=932415716644
-                                                 # and BILLING_ACCOUNT=01DC09-5AAF08-94EFA4
+cp deploy/gke/env.example.sh deploy/gke/env.sh   # once; set PROJECT_NUMBER=932415716644
+                                                 # and BILLING_ACCOUNT=01DC09-5AAF08-94EFA4;
+                                                 # the scripts refuse while any variable of
+                                                 # env.example.sh is unset
 source deploy/gke/env.sh
 gcloud auth login && gcloud auth application-default login   # setup-gcp uses the client libraries
 gcloud config set project "$PROJECT_ID"
@@ -62,7 +64,7 @@ patch (then update env.sh). **Stop if Regular has no 1.37.**
 gcloud services enable billingbudgets.googleapis.com --project="$PROJECT_ID"
 gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
   --display-name="$BUDGET_NAME" --filter-projects="projects/$PROJECT_ID" \
-  --budget-amount=30USD --calendar-period=month \
+  --budget-amount="$BUDGET_AMOUNT" --calendar-period=month \
   --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0
 gcloud billing budgets list --billing-account="$BILLING_ACCOUNT" \
   --filter="displayName=$BUDGET_NAME" --format='yaml(displayName,amount,thresholdRules)'
@@ -122,7 +124,7 @@ The fee and the system node start billing here.
 
 ```bash
 gcloud container clusters create "$CLUSTER_NAME" --project="$PROJECT_ID" \
-  --location="$ZONE" --release-channel="$RELEASE_CHANNEL" --cluster-version="$CLUSTER_VERSION" \
+  --location="$CLUSTER_LOCATION" --release-channel="$RELEASE_CHANNEL" --cluster-version="$CLUSTER_VERSION" \
   --workload-pool="$PROJECT_ID.svc.id.goog" --enable-dataplane-v2 \
   --enable-kubernetes-unstable-apis=certificates.k8s.io/v1beta1/podcertificaterequests,certificates.k8s.io/v1beta1/clustertrustbundles \
   --enable-dns-access --no-enable-ip-access \
@@ -132,7 +134,7 @@ gcloud container clusters create "$CLUSTER_NAME" --project="$PROJECT_ID" \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring \
   --logging=SYSTEM,WORKLOAD --monitoring=SYSTEM
-gcloud container clusters describe "$CLUSTER_NAME" --location="$ZONE" \
+gcloud container clusters describe "$CLUSTER_NAME" --location="$CLUSTER_LOCATION" \
   --format='yaml(currentMasterVersion,workloadIdentityConfig,releaseChannel,networkConfig.datapathProvider)'
 ```
 Success: version 1.37.1-gke.1552000, workload pool `meridian-fleet-agents.svc.id.goog`,
@@ -142,14 +144,14 @@ datapath `ADVANCED_DATAPATH`.
 
 ```bash
 gcloud container node-pools create "$WORKER_POOL" --cluster="$CLUSTER_NAME" \
-  --location="$ZONE" --project="$PROJECT_ID" \
+  --location="$CLUSTER_LOCATION" --project="$PROJECT_ID" \
   --machine-type="$WORKER_MACHINE_TYPE" --spot \
   --enable-autoscaling --min-nodes=0 --max-nodes="$WORKER_MAX_NODES" --num-nodes=0 \
   --node-taints=ate.dev/sandboxClass=gvisor:NoSchedule --node-labels=meridian.dev/pool=substrate \
   --disk-type=pd-balanced --disk-size=30 \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring --no-enable-autoupgrade
-gcloud container node-pools describe "$WORKER_POOL" --cluster="$CLUSTER_NAME" --location="$ZONE" \
+gcloud container node-pools describe "$WORKER_POOL" --cluster="$CLUSTER_NAME" --location="$CLUSTER_LOCATION" \
   --format='yaml(autoscaling,config.spot,config.taints,config.labels,management.autoUpgrade)'
 ```
 Success: autoscaling 0 to 2, `spot: true`, the taint and the label (the WorkerPool's
@@ -181,7 +183,7 @@ any IAM policy names it (step 13).
 ### 9. Credentials over the DNS endpoint (1 min; USD 0.09)
 
 ```bash
-gcloud container clusters get-credentials "$CLUSTER_NAME" --location="$ZONE" --dns-endpoint
+gcloud container clusters get-credentials "$CLUSTER_NAME" --location="$CLUSTER_LOCATION" --dns-endpoint
 kubectl config current-context
 kubectl get nodes -o wide
 ```
@@ -193,7 +195,7 @@ one deploy/gke/meridian.toml names) and one node is Ready.
 ```bash
 cd ~/src/substrate-gke
 go -C tools/setup-gcp run . create cluster --project-id="$PROJECT_ID" --region="$REGION" \
-  --name="$CLUSTER_NAME" --location="$ZONE" --enable-nested-virtualization=false \
+  --name="$CLUSTER_NAME" --location="$CLUSTER_LOCATION" --enable-nested-virtualization=false \
   --separate-system-nodes=false
 cd ~/meridian-fleet
 ```
@@ -241,11 +243,17 @@ deploy/gke/teardown.sh --check   # read only: what exists now
 Tell me the cluster is up. **Cost so far: about USD 0.21** (about 40 minutes of the fee and
 the system node). Everything after this is part 2.
 
-## Part 2: me, once the cluster exists (about 2 hours; about USD 1.16 by its end)
+## Part 2: me, once the cluster exists (about 1 hour; about USD 0.80 by its end)
 
 Every command goes through `deploy/gke/run.sh`, which sets
 `MERIDIAN_CONFIG_OVERLAY=deploy/gke/meridian.toml` (`[substrate] target = "gke"`). Nothing
-here creates a Google Cloud resource; the gcloud calls are reads.
+here creates a Google Cloud resource; the gcloud calls are reads. Since step 4 a pass sends
+each distinct input file once into the dispatcher's memory (docs/input-staging.md): 15.9 MB
+for the 910-run pass instead of 814 MB, so a run is no longer bound by the upload.
+
+What the first session found and fixed is in docs/gke-plan.md section 9: the Spot pool's
+taint is Substrate's `ate.dev/sandboxClass=gvisor:NoSchedule` (step 7 above), a new
+atespace's access policy is created, and park stops the workloads before resizing.
 
 ### 13. Deploy Meridian's side (15 min; USD 0.31)
 
@@ -259,9 +267,8 @@ snapshots: the first Spot node comes up here, about 3 minutes); `dispatcher depl
 image by digest, the router checked to admit only the dispatcher, every IAM policy read to
 show no grant names it); `substrate placement-check`; `dispatcher status`.
 Success: the five templates have golden snapshots; placement-check passes (workers only on
-labelled, tainted nodes, the dispatcher off them, a pod without the toleration refused);
-`status` answers through one port-forward over the DNS endpoint. If the port-forward fails,
-the fallback is the IAP bastion of docs/gke-plan.md 6.11 (yours to create).
+labelled, tainted nodes with a Ready atelet, the dispatcher off them, a pod without the
+toleration refused); `status` answers through one port-forward over the DNS endpoint.
 
 ### 14. Conformance, four zones (5 min; USD 0.34)
 
@@ -269,59 +276,51 @@ the fallback is the IAP bastion of docs/gke-plan.md 6.11 (yours to create).
 deploy/gke/run.sh substrate conformance
 ```
 Success: `pass` for rbqm, safety.sae_reconciler, quality and quality.audit_trail; every
-egress check refused, including the dispatcher, the API server and the metadata server
-(169.254.169.254, Workload Identity's token endpoint); the controls allowed.
+egress check refused, including the dispatcher, the API server and the metadata server;
+the controls allowed.
 
-### 15. The leak check: rbqm, quality and the audit trail first (35 min; USD 0.61)
+### 15. The leak check: rbqm, quality and the audit trail first (12 min; USD 0.44)
 
 ```bash
 deploy/gke/run.sh leakcheck --env gke --zone rbqm --zone quality --zone quality.audit_trail --runs 20
 ```
-Success: `pass`, and every row of its table shows the canary `none` and the positive control
-`found`: the snapshot bucket (every golden snapshot decoded), Cloud Logging over the run
-window, the dispatcher pod and its logs, every node's filesystem (scanned in place by a scan
-pod), the laptop's `var/`. **The safety zone moves only after this passes.**
+Success: `pass`, and every row shows the canary `none` and the positive control `found`:
+**the dispatcher's input store** (a planted file held during the pass, nothing after the
+drop), the dispatcher pod and its logs, the snapshot bucket (every golden snapshot
+decoded), every node's filesystem, the laptop's `var/`, Cloud Logging over the run window.
+**The safety zone moves only after this passes.**
 
-### 16. The leak check with the safety zone (35 min; USD 1.00)
+### 16. The leak check with the safety zone (12 min; USD 0.56)
 
 ```bash
 deploy/gke/run.sh leakcheck --env gke --runs 24
 ```
 Success: as step 15, with safety.sae_reconciler's runs included.
 
-### 17. A full pass with measurements (15 min; USD 1.12)
-
-**First session (docs/gke-plan.md section 9):** every run uploads its inputs from the laptop
-through the port-forward at about 140 KB/s in total, so this step ran as a 48-run bench at
-12 workers instead; the 910-run pass waits until the inputs live in the cluster.
+### 17. A full pass with measurements (15 min; USD 0.65)
 
 ```bash
 deploy/gke/run.sh substrate bench --workers 12 --runs 200 --concurrency 12 --label gke-c12
-deploy/gke/run.sh agents run --executor zoned --rerun --all-cuts    # the 910-run pass, 12 workers
-deploy/gke/run.sh substrate bench --workers 2 --runs 1 --label gke-scale-back
+deploy/gke/run.sh agents run --executor zoned --rerun --all-cuts    # 910 runs; records them once
+deploy/gke/run.sh agents run --executor zoned --rerun --all-cuts    # again: must append 0 events
 ```
 Success: no failed run; a lost Spot worker shows as `RETRIED` and completes on another
-worker. I record wall clock, p50 and p95 against kind (docs/gke-plan.md 2a). The pass's
-reruns are recorded once (the GKE image digests are new provenance); a second identical
-pass would record nothing.
+worker; the `dispatcher.inputs_dropped` line reports 731 blobs and about 12.3 MB of files.
+I record wall clock (expected 4 to 5 minutes), p50, p95 and bytes against kind
+(docs/input-staging.md, section D).
 
-### 18. Park, then the billable check (5 min; USD 1.16)
+### 18. Tear down (or park), then the billable check (10 min; about USD 0.80)
 
-**First session:** the system pool's resize waits on the PodDisruptionBudgets of
-ate-api-server and ate-idp-server (up to an hour; gcloud stops waiting and park.sh reports
-FAILED while the operation still runs). Rerun `deploy/gke/park.sh --check` once
-`gcloud container operations list` shows it DONE.
-
+Your call at the time. Teardown if the next session is more than a day or two away:
 ```bash
-deploy/gke/park.sh
+deploy/gke/teardown.sh && deploy/gke/teardown.sh --check
 ```
-Success: the check exits 0 and lists the cluster with 0 nodes, no running instance, the
-10 GiB Postgres disk unattached, the bucket and the repository, with the parked costs
-(USD 0.10 an hour, the fee). The worker node's 10-minute scale-down delay may leave it
-billing a little after step 17 (included above).
+Or park: `deploy/gke/park.sh` stops the WorkerPool, the dispatcher, ate-system and Postgres
+first (deploy/gke/workloads.sh), so the pools drain at once; a resize still running when
+gcloud stops waiting shows as `IN PROGRESS` with the operation to check, not FAILED.
 
-**The session: about 3 hours, about USD 1.16 including egress** (the cluster about 2.5
-hours at 0.315: 0.79; one Spot worker about 2 hours at 0.078: 0.16, a second during the
-pass: 0.02; egress about 2.7 GB, 1.7 GB of it past the free GiB: 0.20). A **guess** until
-the billing report by SKU shows it the next day. Then USD 2.43 a day while parked, or
-nothing after `deploy/gke/teardown.sh`.
+**The session: about 2 hours, about USD 0.80 including egress** (part 1 about USD 0.21;
+part 2 about an hour at 0.393: 0.39; egress about 2.6 GB from the two leak checks' bucket
+and pod reads, 1.6 GB past the free GiB: 0.19; the inputs going up are ingress, free). A
+**guess** until the billing report by SKU shows it the next day. Then nothing after
+teardown, or USD 2.43 a day parked.

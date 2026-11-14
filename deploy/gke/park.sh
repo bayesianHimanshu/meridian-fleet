@@ -5,9 +5,12 @@
 #   deploy/gke/park.sh            # park, then check what still bills
 #   deploy/gke/park.sh --check    # only the check
 #
-# Order: the WorkerPool to 0 workers (so nothing asks the autoscaler for a worker node),
-# wait until no worker pod is left, the worker pool to 0 nodes, then the system pool to 0
-# nodes, and the IAP bastion stopped if it exists. Kept: the cluster and its control plane
+# Order: record the Postgres claim and the golden tags; stop every workload with
+# deploy/gke/workloads.sh (the WorkerPool, the dispatcher, ate-system's Deployments, then
+# Postgres, each scaled to 0 with its count in an annotation; no budget bypassed, nothing
+# left for a drain to wait on); then both node pools to 0 nodes and the IAP bastion
+# stopped if it exists. A resize gcloud stops waiting for while GKE's operation still runs
+# is reported IN PROGRESS (exit 3) with the operation to check, not FAILED. Kept: the cluster and its control plane
 # (GKE runs it for the management fee, USD 0.10 an hour, about 2.40 a day: this billing
 # account has no free tier credit, so a parked day costs about what 8 hours of a session's
 # system node do; teardown.sh bills nothing), the Postgres
@@ -36,7 +39,7 @@ if [ "${check_only}" -eq 1 ]; then
   list_billable parked
   exit $?
 fi
-cluster_exists || { echo "no cluster ${CLUSTER_NAME} in ${ZONE}: nothing to park" >&2; exit 1; }
+cluster_exists || { echo "no cluster ${CLUSTER_NAME} in ${CLUSTER_LOCATION}: nothing to park" >&2; exit 1; }
 credentials
 
 record_state() {
@@ -48,22 +51,15 @@ record_state() {
   echo "   recorded ${STATE}: claim ${pvc}; $(wc -w <<<"${tags}") golden tags"
 }
 
-workers_to_zero() {
-  kubectl -n meridian scale workerpool meridian --replicas=0
-  for _ in $(seq 1 60); do
-    [ -z "$(kubectl -n meridian get pods -l ate.dev/worker-pool=meridian -o name 2>/dev/null)" ] && return 0
-    sleep 5
-  done
-  echo "worker pods still present after 300 s" >&2
-  return 1
-}
-
 step "record the Postgres claim and the golden tags" record_state
-step "WorkerPool to 0 workers" workers_to_zero
-step "pool ${WORKER_POOL} to 0 nodes" "${gc[@]}" container clusters resize "${CLUSTER_NAME}" \
-  --location="${ZONE}" --node-pool="${WORKER_POOL}" --num-nodes=0
-step "pool ${SYSTEM_POOL} to 0 nodes" "${gc[@]}" container clusters resize "${CLUSTER_NAME}" \
-  --location="${ZONE}" --node-pool="${SYSTEM_POOL}" --num-nodes=0
+step "stop the workloads (WorkerPool, dispatcher, ate-system, Postgres)" \
+  "$(dirname "$0")/workloads.sh" --context "$(kubectl config current-context)" stop
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo "workloads still running: pools not resized (the drain would wait on them)" >&2
+  finish 1
+fi
+resize_pool "${WORKER_POOL}" 0
+resize_pool "${SYSTEM_POOL}" 0
 if bastion_exists; then
   step "stop bastion ${BASTION_NAME}" "${gc[@]}" compute instances stop "${BASTION_NAME}" --zone="${ZONE}"
 fi
