@@ -22,9 +22,9 @@ spec:
     nodeSelector:
       meridian.dev/pool: substrate
     tolerations:
-      - key: "meridian.dev/worker"
+      - key: "ate.dev/sandboxClass"
         operator: Equal
-        value: "true"
+        value: gvisor
         effect: NoSchedule
     resources:
       limits:

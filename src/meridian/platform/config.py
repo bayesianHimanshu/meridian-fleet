@@ -263,10 +263,14 @@ class SubstrateSettings(BaseModel):
     # tolerate this taint (key=value:effect). On GKE both are on the Spot node pool
     # (docs/gke-plan.md 6.5); on kind the node carries the label, and the taint only for
     # `meridian substrate placement-check` (one node: a lasting taint would keep every
-    # other pod from being scheduled again).
+    # other pod from being scheduled again). The taint is Substrate's own convention for a
+    # node pool reserved to one sandbox class, ate.dev/sandboxClass=<class>: the atelet
+    # DaemonSet tolerates that key for any value, and a worker without atelet on its node
+    # never registers (step 4: a taint of our own kept atelet off the Spot node).
     worker_node_label: str = Field("meridian.dev/pool=substrate", pattern=r"^[\w./-]+=[\w.-]+$")
     worker_taint: str = Field(
-        "meridian.dev/worker=true:NoSchedule", pattern=r"^[\w./-]+=[\w.-]+:NoSchedule$"
+        "ate.dev/sandboxClass=gvisor:NoSchedule",
+        pattern=r"^ate\.dev/sandboxClass=[\w.-]+:NoSchedule$",
     )
     registry: str = "localhost:5001"
     deploy_dir: Path = Path("deploy/substrate")

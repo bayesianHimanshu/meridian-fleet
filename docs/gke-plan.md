@@ -237,7 +237,7 @@ agent templates unchanged (`...-49d1c5259345-m384`).
 
 **What changed on kind.**
 - The node carries `meridian.dev/pool=substrate`, and the WorkerPool names it with the
-  toleration `meridian.dev/worker=true:NoSchedule`, exactly as on GKE.
+  toleration `ate.dev/sandboxClass=gvisor:NoSchedule`, exactly as on GKE.
 - The `meridian-runner` ServiceAccount is deleted (and `var/substrate/runner.token`).
 - The access policy names only the dispatcher (before: the runner and the dispatcher).
 - The router admits only the dispatcher (before: `atenet-client` and the dispatcher). The
@@ -393,7 +393,7 @@ Settings copied from `cmd/cluster.go` and `cmd/systempools.go`:
 |---|---|---|
 | Cluster | Zonal, `us-central1-a` | One zone: one management fee (covered by the free tier credit, section 5), no cross-zone traffic |
 | Pool `system` | 1 node, `c3-standard-4`, on-demand, no autoscaling | Holds ate-system (API server x2, controller, idp x2, router, egress, podcert controller, credential provider), the bundled Postgres, kube-system and the dispatcher. Postgres requests 2 vCPU and 1 GiB (`manifests/ate-install/postgres/postgres.yaml:213-219`), atenet-egress 200m and 512 MiB; nothing else in the install requests much (`atelet` 50m). A 2-vCPU machine cannot hold Postgres, and Google's minimum is `c3-standard-4` anyway. Not Spot: losing it stops Postgres and the API mid-pass. Only one pool for the system, not setup-gcp's two: the system components then run untainted on it, and the worker pool is the one tainted. |
-| Pool `substrate` | `c3-standard-4`, **Spot**, autoscaling **0 to 2**, taint `meridian.dev/worker=true:NoSchedule`, label `meridian.dev/pool=substrate`, auto-upgrade **off** | The WorkerPool's template gets the matching `nodeSelector` and `tolerations` (both are WorkerPool fields, `manifests/ate-install/generated/ate.dev_workerpools.yaml` lines 364 and 440), so only workers land there and the pool empties when the WorkerPool is scaled to 0. 12 workers at 250m and 512 MiB (today's size) fit one 4 vCPU, 16 GB node. `c3-standard-4` is the smallest Google allows (section 1), and on Spot the cheapest of the allowed series (section 5). |
+| Pool `substrate` | `c3-standard-4`, **Spot**, autoscaling **0 to 2**, taint `ate.dev/sandboxClass=gvisor:NoSchedule`, label `meridian.dev/pool=substrate`, auto-upgrade **off** | The WorkerPool's template gets the matching `nodeSelector` and `tolerations` (both are WorkerPool fields, `manifests/ate-install/generated/ate.dev_workerpools.yaml` lines 364 and 440), so only workers land there and the pool empties when the WorkerPool is scaled to 0. 12 workers at 250m and 512 MiB (today's size) fit one 4 vCPU, 16 GB node. `c3-standard-4` is the smallest Google allows (section 1), and on Spot the cheapest of the allowed series (section 5). |
 | Boot disks | `pd-balanced`, 30 GB on the worker pool, 50 GB on the system pool (C3 takes pd-balanced, not pd-standard) | Google's Substrate design page defaults to a 100 GiB hyperdisk-balanced boot disk; the agent image and gVisor need far less. **Guess** that 30 GB holds the image cache; kind's node used 10.7 GB in all. |
 | Postgres volume | **Pre-create** the claim `data-postgres-0` in `ate-system` at 10 GiB before installing | The bundled StatefulSet asks for **500 GiB** (`postgres.yaml:247-258`) and ate-setup has no flag for its size (only `--ateapi-postgres-storage-class`). A StatefulSet adopts an existing claim with the template's name (Kubernetes behaviour), so a 10 GiB claim made first is the one it uses. |
 | Snapshot bucket | `gs://$BUCKET_NAME`, Standard class, `us-central1`, uniform access, public access prevention on; plus the empty `-assets` bucket setup-gcp makes beside it | Golden snapshots only: 0.66 GB on kind for all templates and versions so far (docs/substrate-eval.md C1 table) |
@@ -607,7 +607,7 @@ gcloud container node-pools create "$WORKER_POOL" --cluster="$CLUSTER_NAME" \
   --location="$ZONE" --project="$PROJECT_ID" \
   --machine-type="$WORKER_MACHINE_TYPE" --spot \
   --enable-autoscaling --min-nodes=0 --max-nodes="$WORKER_MAX_NODES" --num-nodes=0 \
-  --node-taints=meridian.dev/worker=true:NoSchedule --node-labels=meridian.dev/pool=substrate \
+  --node-taints=ate.dev/sandboxClass=gvisor:NoSchedule --node-labels=meridian.dev/pool=substrate \
   --disk-type=pd-balanced --disk-size=30 \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring \
@@ -692,7 +692,7 @@ sets `MERIDIAN_CONFIG_OVERLAY=deploy/gke/meridian.toml` (`[substrate] target = "
 - images by digest from Artifact Registry: the digest docker recorded when you pushed must
   be the one Artifact Registry holds for the tag (`resolve_pushed`); nothing is pushed by me;
 - the WorkerPool's `nodeSelector` `meridian.dev/pool: substrate` and toleration
-  `meridian.dev/worker=true:NoSchedule` (exercised on kind by `substrate placement-check
+  `ate.dev/sandboxClass=gvisor:NoSchedule` (exercised on kind by `substrate placement-check
   --taint-node`);
 - the access policy with the dispatcher as its only member; the router's allow-list checked
   to be exactly the dispatcher (set at install, 6.7);

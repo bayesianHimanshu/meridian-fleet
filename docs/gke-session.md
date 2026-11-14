@@ -145,7 +145,7 @@ gcloud container node-pools create "$WORKER_POOL" --cluster="$CLUSTER_NAME" \
   --location="$ZONE" --project="$PROJECT_ID" \
   --machine-type="$WORKER_MACHINE_TYPE" --spot \
   --enable-autoscaling --min-nodes=0 --max-nodes="$WORKER_MAX_NODES" --num-nodes=0 \
-  --node-taints=meridian.dev/worker=true:NoSchedule --node-labels=meridian.dev/pool=substrate \
+  --node-taints=ate.dev/sandboxClass=gvisor:NoSchedule --node-labels=meridian.dev/pool=substrate \
   --disk-type=pd-balanced --disk-size=30 \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring --no-enable-autoupgrade
@@ -155,6 +155,10 @@ gcloud container node-pools describe "$WORKER_POOL" --cluster="$CLUSTER_NAME" --
 Success: autoscaling 0 to 2, `spot: true`, the taint and the label (the WorkerPool's
 `nodeSelector` and toleration name exactly these: deploy/gke/meridian.toml, exercised on
 kind), `autoUpgrade: false`.
+The taint key is Substrate's own (`ate.dev/sandboxClass=<class>`, docs/reference/api-guide.md
+of the release): the atelet DaemonSet tolerates it for any value. The first session used
+`meridian.dev/worker=true`, which kept atelet off the Spot node, so the workers there never
+registered; `substrate placement-check` now fails on a labelled node without a Ready atelet.
 
 ### 8. The bucket, Workload Identity and IAM (5 min; USD 0.08)
 
