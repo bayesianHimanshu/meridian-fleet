@@ -228,12 +228,17 @@ def ensure_access_policy(
     the server's uid and version)."""
     ate = [kubectl, "ate", "--context", context]
     try:
-        current = json.loads(_run([*ate, "get", "access-policy", "-a", atespace, "-o", "json"]))
+        out = _run([*ate, "get", "access-policy", "-a", atespace, "-o", "json"])
     except DeployError as exc:
         if "no access policy" not in str(exc) and "NotFound" not in str(exc):
             raise
+        out = ""
+    if not out.strip():
+        # A new atespace: kubectl-ate 1.0.0 exits 0 with "has no access policy" on stderr.
+        # `create` refuses if one exists after all, so this cannot overwrite one.
         _run([*ate, "create", "access-policy", "-a", atespace, "-f", str(policy_file)])
         return "created"
+    current = json.loads(out)
     if current.get("bindings") == expected_bindings:
         return "unchanged"
     meta = current.get("metadata", {})

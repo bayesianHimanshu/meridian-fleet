@@ -2,14 +2,16 @@
 
 On GKE the WorkerPool must land on the Spot pool and nothing else may: that pool's nodes
 carry the label `meridian.dev/pool=substrate` and the taint
-`meridian.dev/worker=true:NoSchedule` (docs/gke-plan.md 6.5), and the WorkerPool's template
-names both ([substrate] worker_node_label and worker_taint). The check reads, never writes,
-on GKE:
+`ate.dev/sandboxClass=gvisor:NoSchedule` (docs/gke-plan.md 6.5), and the WorkerPool's
+template names both ([substrate] worker_node_label and worker_taint). The taint key is
+Substrate's: the atelet DaemonSet tolerates it, and a worker pod whose node has no atelet
+never registers (it waits for atelet's socket and stays unready). The check reads, never
+writes, on GKE:
 
 1. the WorkerPool in the cluster has that nodeSelector and toleration;
 2. every worker pod runs on a node with the label;
-3. every labelled node carries the taint, and the dispatcher's pod is on a node without
-   the label;
+3. every labelled node carries the taint and runs a Ready atelet pod, and the dispatcher's
+   pod is on a node without the label;
 4. a pod that names the label but does not tolerate the taint stays Pending with the
    scheduler's "untolerated taint" (needs a labelled node: on GKE one is up while workers
    run).
@@ -32,6 +34,8 @@ from typing import Any
 from meridian.platform.config import SubstrateSettings
 
 PROBE_NAMESPACE = "meridian-placement"
+SYSTEM_NAMESPACE = "ate-system"
+ATELET_SELECTOR = "app=atelet"
 
 
 class PlacementError(Exception):
@@ -97,6 +101,21 @@ def label_node(s: SubstrateSettings, node: str) -> str:
 def set_taint(s: SubstrateSettings, node: str, on: bool) -> None:
     taint = s.worker_taint if on else s.worker_taint.split("=", 1)[0] + "-"
     _kubectl(s, "taint", "node", node, taint)
+
+
+def _ready(pod: dict[str, Any]) -> bool:
+    conditions = pod.get("status", {}).get("conditions") or []
+    return any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions)
+
+
+def atelet_nodes(s: SubstrateSettings) -> set[str]:
+    """The nodes with a Ready atelet pod (Substrate's per-node agent)."""
+    pods = _json(s, "-n", SYSTEM_NAMESPACE, "get", "pods", "-l", ATELET_SELECTOR)
+    return {
+        p["spec"]["nodeName"]
+        for p in pods.get("items", [])
+        if p.get("spec", {}).get("nodeName") and _ready(p)
+    }
 
 
 def worker_pods(s: SubstrateSettings) -> list[dict[str, Any]]:
@@ -173,19 +192,25 @@ def check(s: SubstrateSettings, taint_node: bool, dispatcher_selector: str) -> P
             )  # fmt: skip
         untainted = [n for n in labelled if not _tainted(s, nodes[n])]
         result.add("labelled_nodes_tainted", not untainted, f"untainted: {untainted or 'none'}")
+        bare = [n for n in labelled if n not in atelet_nodes(s)]
+        result.add("atelet_on_labelled_nodes", not bare, f"without atelet: {bare or 'none'}")
         pods = worker_pods(s)
         placed = [
             (
                 p["metadata"]["name"],
                 p.get("spec", {}).get("nodeName"),
                 p.get("status", {}).get("phase"),
+                _ready(p),
             )
             for p in pods
         ]
         result.add(
             "workers_on_labelled_nodes",
-            bool(placed) and all(n in labelled and ph == "Running" for _, n, ph in placed),
-            "; ".join(f"{name} on {n} ({ph})" for name, n, ph in placed) or "no worker pods",
+            bool(placed) and all(n in labelled and ph == "Running" and r for _, n, ph, r in placed),
+            "; ".join(
+                f"{name} on {n} ({ph}{'' if r else ', not ready'})" for name, n, ph, r in placed
+            )
+            or "no worker pods",
         )
         dispatcher = _json(
             s, "-n", s.dispatcher_namespace, "get", "pods", "-l", dispatcher_selector

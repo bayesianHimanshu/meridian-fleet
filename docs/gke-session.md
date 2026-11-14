@@ -145,7 +145,7 @@ gcloud container node-pools create "$WORKER_POOL" --cluster="$CLUSTER_NAME" \
   --location="$ZONE" --project="$PROJECT_ID" \
   --machine-type="$WORKER_MACHINE_TYPE" --spot \
   --enable-autoscaling --min-nodes=0 --max-nodes="$WORKER_MAX_NODES" --num-nodes=0 \
-  --node-taints=meridian.dev/worker=true:NoSchedule --node-labels=meridian.dev/pool=substrate \
+  --node-taints=ate.dev/sandboxClass=gvisor:NoSchedule --node-labels=meridian.dev/pool=substrate \
   --disk-type=pd-balanced --disk-size=30 \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring --no-enable-autoupgrade
@@ -155,6 +155,10 @@ gcloud container node-pools describe "$WORKER_POOL" --cluster="$CLUSTER_NAME" --
 Success: autoscaling 0 to 2, `spot: true`, the taint and the label (the WorkerPool's
 `nodeSelector` and toleration name exactly these: deploy/gke/meridian.toml, exercised on
 kind), `autoUpgrade: false`.
+The taint key is Substrate's own (`ate.dev/sandboxClass=<class>`, docs/reference/api-guide.md
+of the release): the atelet DaemonSet tolerates it for any value. The first session used
+`meridian.dev/worker=true`, which kept atelet off the Spot node, so the workers there never
+registered; `substrate placement-check` now fails on a labelled node without a Ready atelet.
 
 ### 8. The bucket, Workload Identity and IAM (5 min; USD 0.08)
 
@@ -287,6 +291,10 @@ Success: as step 15, with safety.sae_reconciler's runs included.
 
 ### 17. A full pass with measurements (15 min; USD 1.12)
 
+**First session (docs/gke-plan.md section 9):** every run uploads its inputs from the laptop
+through the port-forward at about 140 KB/s in total, so this step ran as a 48-run bench at
+12 workers instead; the 910-run pass waits until the inputs live in the cluster.
+
 ```bash
 deploy/gke/run.sh substrate bench --workers 12 --runs 200 --concurrency 12 --label gke-c12
 deploy/gke/run.sh agents run --executor zoned --rerun --all-cuts    # the 910-run pass, 12 workers
@@ -298,6 +306,11 @@ reruns are recorded once (the GKE image digests are new provenance); a second id
 pass would record nothing.
 
 ### 18. Park, then the billable check (5 min; USD 1.16)
+
+**First session:** the system pool's resize waits on the PodDisruptionBudgets of
+ate-api-server and ate-idp-server (up to an hour; gcloud stops waiting and park.sh reports
+FAILED while the operation still runs). Rerun `deploy/gke/park.sh --check` once
+`gcloud container operations list` shows it DONE.
 
 ```bash
 deploy/gke/park.sh
