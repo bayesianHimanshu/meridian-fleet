@@ -38,6 +38,8 @@ ATE_TOKEN_PATH = "/run/ate/token"  # noqa: S105 (a path)
 ROUTER_DIR = "/run/router-client"
 TOKEN_DIR = "/run/dispatcher"  # noqa: S105 (a path)
 WORKLOAD = "meridian-dispatcher"
+ENTRYPOINT = "/opt/meridian/venv/bin/meridian-dispatcher"  # the image's own entrypoint
+NO_CORE = 'ulimit -c 0 && exec "$0" "$@"'  # sh: $0 is ENTRYPOINT, "$@" the args
 
 
 class DispatcherDeployError(Exception):
@@ -58,6 +60,9 @@ def manifests(s: SubstrateSettings, image: str, kubectl_ate_sha256: str) -> list
     container = {
         "name": "dispatcher",
         "image": image,
+        # No core dumps: a dump of this process would hold the pass's inputs (the input
+        # store), so the soft and hard RLIMIT_CORE are 0 before the dispatcher starts.
+        "command": ["/usr/bin/sh", "-c", NO_CORE, ENTRYPOINT],
         "args": [
             "serve",
             "--port",
