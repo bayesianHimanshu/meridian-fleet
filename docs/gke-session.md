@@ -38,7 +38,7 @@ tear down whenever the next session is more than a day or two away.
 
 ```bash
 cd ~/meridian-fleet
-cp deploy/gke/env.sh.example deploy/gke/env.sh   # once; set PROJECT_NUMBER=932415716644
+cp deploy/gke/env.example.sh deploy/gke/env.sh   # once; set PROJECT_NUMBER=932415716644
                                                  # and BILLING_ACCOUNT=01DC09-5AAF08-94EFA4
 source deploy/gke/env.sh
 gcloud auth login && gcloud auth application-default login   # setup-gcp uses the client libraries
@@ -62,7 +62,7 @@ patch (then update env.sh). **Stop if Regular has no 1.37.**
 gcloud services enable billingbudgets.googleapis.com --project="$PROJECT_ID"
 gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
   --display-name="$BUDGET_NAME" --filter-projects="projects/$PROJECT_ID" \
-  --budget-amount=30USD --calendar-period=month \
+  --budget-amount="$BUDGET_AMOUNT" --calendar-period=month \
   --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0
 gcloud billing budgets list --billing-account="$BILLING_ACCOUNT" \
   --filter="displayName=$BUDGET_NAME" --format='yaml(displayName,amount,thresholdRules)'
@@ -122,7 +122,7 @@ The fee and the system node start billing here.
 
 ```bash
 gcloud container clusters create "$CLUSTER_NAME" --project="$PROJECT_ID" \
-  --location="$ZONE" --release-channel="$RELEASE_CHANNEL" --cluster-version="$CLUSTER_VERSION" \
+  --location="$CLUSTER_LOCATION" --release-channel="$RELEASE_CHANNEL" --cluster-version="$CLUSTER_VERSION" \
   --workload-pool="$PROJECT_ID.svc.id.goog" --enable-dataplane-v2 \
   --enable-kubernetes-unstable-apis=certificates.k8s.io/v1beta1/podcertificaterequests,certificates.k8s.io/v1beta1/clustertrustbundles \
   --enable-dns-access --no-enable-ip-access \
@@ -132,7 +132,7 @@ gcloud container clusters create "$CLUSTER_NAME" --project="$PROJECT_ID" \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring \
   --logging=SYSTEM,WORKLOAD --monitoring=SYSTEM
-gcloud container clusters describe "$CLUSTER_NAME" --location="$ZONE" \
+gcloud container clusters describe "$CLUSTER_NAME" --location="$CLUSTER_LOCATION" \
   --format='yaml(currentMasterVersion,workloadIdentityConfig,releaseChannel,networkConfig.datapathProvider)'
 ```
 Success: version 1.37.1-gke.1552000, workload pool `meridian-fleet-agents.svc.id.goog`,
@@ -142,14 +142,14 @@ datapath `ADVANCED_DATAPATH`.
 
 ```bash
 gcloud container node-pools create "$WORKER_POOL" --cluster="$CLUSTER_NAME" \
-  --location="$ZONE" --project="$PROJECT_ID" \
+  --location="$CLUSTER_LOCATION" --project="$PROJECT_ID" \
   --machine-type="$WORKER_MACHINE_TYPE" --spot \
   --enable-autoscaling --min-nodes=0 --max-nodes="$WORKER_MAX_NODES" --num-nodes=0 \
   --node-taints=ate.dev/sandboxClass=gvisor:NoSchedule --node-labels=meridian.dev/pool=substrate \
   --disk-type=pd-balanced --disk-size=30 \
   --service-account="$NODE_SA" --scopes=cloud-platform \
   --shielded-secure-boot --shielded-integrity-monitoring --no-enable-autoupgrade
-gcloud container node-pools describe "$WORKER_POOL" --cluster="$CLUSTER_NAME" --location="$ZONE" \
+gcloud container node-pools describe "$WORKER_POOL" --cluster="$CLUSTER_NAME" --location="$CLUSTER_LOCATION" \
   --format='yaml(autoscaling,config.spot,config.taints,config.labels,management.autoUpgrade)'
 ```
 Success: autoscaling 0 to 2, `spot: true`, the taint and the label (the WorkerPool's
@@ -181,7 +181,7 @@ any IAM policy names it (step 13).
 ### 9. Credentials over the DNS endpoint (1 min; USD 0.09)
 
 ```bash
-gcloud container clusters get-credentials "$CLUSTER_NAME" --location="$ZONE" --dns-endpoint
+gcloud container clusters get-credentials "$CLUSTER_NAME" --location="$CLUSTER_LOCATION" --dns-endpoint
 kubectl config current-context
 kubectl get nodes -o wide
 ```
@@ -193,7 +193,7 @@ one deploy/gke/meridian.toml names) and one node is Ready.
 ```bash
 cd ~/src/substrate-gke
 go -C tools/setup-gcp run . create cluster --project-id="$PROJECT_ID" --region="$REGION" \
-  --name="$CLUSTER_NAME" --location="$ZONE" --enable-nested-virtualization=false \
+  --name="$CLUSTER_NAME" --location="$CLUSTER_LOCATION" --enable-nested-virtualization=false \
   --separate-system-nodes=false
 cd ~/meridian-fleet
 ```

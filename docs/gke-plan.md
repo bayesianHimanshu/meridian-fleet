@@ -499,7 +499,7 @@ cold start from 0 nodes and the scale-down delay dominate a pass's cost on GKE.
 
 ## 6. Commands, in order
 
-Each block assumes `source deploy/gke/env.sh` (from `deploy/gke/env.sh.example`) and an
+Each block assumes `source deploy/gke/env.sh` (from `deploy/gke/env.example.sh`) and an
 interactive `gcloud auth login` plus `gcloud auth application-default login` (setup-gcp uses
 the client libraries, README line 33). Nothing here prints a credential. setup-gcp runs
 from the substrate-gke checkout at v1.0.0-gke.0 and needs Go (installed, go1.27.0).
@@ -523,7 +523,7 @@ gcloud services enable billingbudgets.googleapis.com --project="$PROJECT_ID"
 gcloud billing budgets create --billing-account="$BILLING_ACCOUNT" \
   --display-name="$BUDGET_NAME" \
   --filter-projects="projects/$PROJECT_ID" \
-  --budget-amount=30USD --calendar-period=month \
+  --budget-amount="$BUDGET_AMOUNT" --calendar-period=month \
   --threshold-rule=percent=0.5 --threshold-rule=percent=0.9 --threshold-rule=percent=1.0
 gcloud billing budgets list --billing-account="$BILLING_ACCOUNT" \
   --filter="displayName=$BUDGET_NAME" --format='yaml(displayName,amount,thresholdRules)'

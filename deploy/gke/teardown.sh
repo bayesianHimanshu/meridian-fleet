@@ -107,7 +107,7 @@ if [ "${check_only}" -eq 1 ]; then
   exit $?
 fi
 
-echo "This deletes cluster ${CLUSTER_NAME} (${ZONE}), bastion ${BASTION_NAME} if any,"
+echo "This deletes cluster ${CLUSTER_NAME} (${CLUSTER_LOCATION}), bastion ${BASTION_NAME} if any,"
 echo "gs://${BUCKET_NAME} and gs://${BUCKET_NAME}-assets with their contents, repository"
 echo "${AR_REPO} (${REGION}), service accounts ${NODE_GSA_NAME} and"
 echo "${SNAPSHOT_TRANSFER_GSA_NAME}, and budget ${BUDGET_NAME}, in project ${PROJECT_ID}."
@@ -116,7 +116,7 @@ read -r -p "Type the project id to continue: " answer
 [ "${answer}" = "${PROJECT_ID}" ] || { echo "not confirmed; nothing deleted" >&2; exit 2; }
 
 step "Kubernetes volumes (Postgres claim)" delete_volumes
-step "cluster ${CLUSTER_NAME}" "${gc[@]}" container clusters delete "${CLUSTER_NAME}" --location="${ZONE}"
+step "cluster ${CLUSTER_NAME}" "${gc[@]}" container clusters delete "${CLUSTER_NAME}" --location="${CLUSTER_LOCATION}"
 step "leftover volume disks" delete_leftover_disks
 step "bastion ${BASTION_NAME} and its IAP firewall rule" delete_bastion
 step "bucket ${BUCKET_NAME}" delete_bucket "${BUCKET_NAME}"
