@@ -145,6 +145,14 @@ Phase 4a status: complete. The four no-network zones run in Agent Substrate v1.0
 stay on OpenShell; runs go in parallel up to the pool's free workers. Summary, proofs and
 open gaps: [docs/phase4a-summary.md](docs/phase4a-summary.md).
 
+## Phase 4b status
+
+Phase 4b status: complete. The same four zones ran on Agent Substrate in a GKE cluster
+behind one in-cluster dispatcher, with each pass's inputs held only in its memory: a full
+pass of 910 runs in 270 s, leak checks and conformance passing, the cluster since torn
+down. Summary, measurements against kind, costs and gaps:
+[docs/phase4b-summary.md](docs/phase4b-summary.md).
+
 ## Setup
 
 ```sh
