@@ -873,3 +873,61 @@ Open:
 1. **Park or tear down** without the credit: parking saves about an hour of setup but
    costs USD 2.43 a day; I would tear down whenever the next session is more than a day or
    two away. Your call; the scripts support both.
+
+## 9. The first GKE session (step 4, 14 Nov 2026)
+
+Part 1 (yours) ran as written; the install record's name was the one guessed. Part 2 found
+two gaps kind could not show, both fixed in code, and one limit that changes the next step.
+
+**Gaps found and fixed.**
+- **The worker pool's taint.** `meridian.dev/worker=true:NoSchedule` kept the atelet
+  DaemonSet off the Spot node: it tolerates only `ate.dev/sandboxClass` (and GKE compute
+  classes). The workers there waited for atelet's socket, Running and never Ready, and
+  `substrate deploy` timed out. The taint is now Substrate's documented convention,
+  `ate.dev/sandboxClass=gvisor:NoSchedule` (you changed the pool with `node-pools update`),
+  and `placement-check` fails on a labelled node without a Ready atelet or on a worker that
+  is not Ready. Kind missed it because its taint was added after atelet was running.
+- **A new atespace has no access policy.** kubectl-ate 1.0.0 answers with exit 0 and no
+  stdout; `ensure_access_policy` now creates it instead of failing to parse.
+
+**Results.**
+
+| Step | Result |
+|---|---|
+| 13 deploy | pass: 5 golden snapshots (16 to 50 s each), images by Artifact Registry digest, the dispatcher holds no role (6 IAM policies read), router and access policy the dispatcher only, 8 placement checks pass |
+| 14 conformance | pass in all four zones; metadata server "no route to host"; dispatcher, API server, peer actor refused with a 403 at atenet-egress |
+| 15 leak check, three zones, 20 runs | pass; every source's control found (table below) |
+| 16 leak check, four zones, 24 runs | pass; the same sources |
+| 17 short bench (your choice) | 48 runs at 12 workers, 12 at a time: 0 failed, all 12 workers on one Spot node |
+| 18 park | WorkerPool 0, Spot pool 0 nodes; the system pool's drain waits on PodDisruptionBudgets (below) |
+
+Leak check sources on GKE (step 16): dispatcher pod 11,265 files, 637 MB; its logs;
+the snapshot bucket, 40 objects, 663 MB, each of the 5 golden snapshots decoded; the
+system node 158,733 files, 33.5 GB, and the Spot node 160,125 files, 32.6 GB, scanned in
+place; the laptop's `var/`; Cloud Logging, 21,313 entries over the run window. The canary
+was found nowhere, and each source's positive control was found.
+
+**The limit: the laptop's upload.** One run takes about 10 s on GKE against about 1.1 s on
+kind. Substrate is not the cause: at 12 at a time, create p50 0.26 s, resume 0.87 s (p95
+0.99 s, restore itself 0.61 s with every snapshot file a cache hit), POST /run 0.13 s,
+delete 0.56 s. The rest is the 942 KB input archive going up through the one port-forward
+over the DNS endpoint at about 140 KB/s in total, shared by concurrent runs (1 at a time:
+10.1 s a run; 2: 8.0 s; 12: 9.3 s). It barely compresses (gzip 816 KB: the inputs are
+already compressed), so a 910-run pass would take about 1.7 hours bound by the link and
+would measure the link, not Substrate. You chose the short bench and to skip that pass.
+The fix belongs to the next step: put the inputs in the cluster (staged once per cut,
+for example in a dispatcher-side cache keyed by the inputs manifest's sha256) so a run
+sends only its trigger. Not decided here.
+
+**Park and PodDisruptionBudgets.** `ate-api-server` and `ate-idp-server` have PDBs with
+`maxUnavailable: 1`. Resizing the last pool to 0 evicts one pod of each; the other can go
+nowhere, so the drain blocks and GKE waits up to an hour before removing them. `park.sh`'s
+gcloud call stopped waiting (exit 1) while the operation kept running; the node is gone
+about an hour after the resize. Cost of the wait: about USD 0.21 of system node. A drain
+that bypasses the PDBs (`kubectl drain --disable-eviction`) would end it at once; it was
+not run (the auto-mode classifier refused it), and whether park.sh should do it is yours.
+
+**Cost of the session (estimate until the billing report by SKU).** Cluster from about
+06:20 to the node's removal about 09:32 UTC: the fee 0.32, the system node (0.215/h)
+0.69, the Spot node about 1.4 h 0.11, egress about 1.4 GB (the bucket read twice by the
+leak checks) about 0.05: **about USD 1.17**. Then USD 0.10 an hour while parked.
