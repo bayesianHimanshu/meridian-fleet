@@ -1,0 +1,148 @@
+# Nonclinical studies required before a first-in-human trial (phase 5 step 2), read by
+# preclinical.ind_readiness. Each requirement quotes the guidance it rests on, with its
+# section; nothing here is a requirement that cannot be cited. Sources (FDA editions of the
+# ICH guidances, read in full for this step; sha256 of each PDF in docs/ind-readiness-eval.md):
+#   ICH M3(R2), Nonclinical Safety Studies for the Conduct of Human Clinical Trials and
+#     Marketing Authorization for Pharmaceuticals (FDA guidance, January 2010, Revision 1)
+#   ICH S7A, Safety Pharmacology Studies for Human Pharmaceuticals (FDA guidance, April 2001)
+#   ICH S7B, Nonclinical Evaluation of the Potential for Delayed Ventricular Repolarization
+#     (QT Interval Prolongation) by Human Pharmaceuticals (FDA guidance, October 2005)
+#   ICH S2(R1), Genotoxicity Testing and Data Interpretation for Pharmaceuticals Intended
+#     for Human Use (FDA guidance, June 2012). It "combines and replaces" S2A and S2B; M3(R2)
+#     cites S2B (its Ref. 10), so S2(R1) is the current text M3(R2) points to.
+#   FDA, Content and Format of INDs for Phase 1 Studies (November 1995), section III.G.
+#
+# Fields: id; title; study_types (an inventory study of one of these types may satisfy
+# it); species_class (rodent, nonrodent or in_vitro, as in [classes]); duration: "table1"
+# when the minimum duration comes from M3(R2) Table 1 and the planned clinical duration;
+# applies: "always" or "multiple_dose" (only when the planned trial gives more than one
+# dose); source and section; quote: the guidance's own words (exact, typographic quotes
+# as printed); note: anything the quote does not settle.
+
+[classes]
+rodent = ["RAT", "MOUSE"]
+nonrodent = ["DOG", "MONKEY", "MINIPIG"]
+in_vitro = ["IN VITRO"]
+
+[[requirements]]
+id = "repeat_dose_rodent"
+title = "Repeated-dose toxicity in a rodent, at least the planned clinical duration"
+study_types = ["repeat_dose_toxicity"]
+species_class = "rodent"
+duration = "table1"
+applies = "always"
+source = "ICH M3(R2)"
+section = "V (5), V.A (5.1) and Table 1"
+quote = "In principle, the duration of the animal toxicity studies conducted in two mammalian species (one nonrodent) should be equal to or exceed the duration of the human clinical trials up to the maximum recommended duration of the repeated-dose toxicity studies (Table 1)."
+
+[[requirements]]
+id = "repeat_dose_nonrodent"
+title = "Repeated-dose toxicity in a nonrodent, at least the planned clinical duration"
+study_types = ["repeat_dose_toxicity"]
+species_class = "nonrodent"
+duration = "table1"
+applies = "always"
+source = "ICH M3(R2)"
+section = "V (5), V.A (5.1) and Table 1"
+quote = "Repeated-dose toxicity studies in two species (one nonrodent) for a minimum duration of 2 weeks (Table 1) would generally support any clinical development trial up to 2 weeks in duration. Clinical trials of longer duration should be supported by repeated-dose toxicity studies of at least equivalent duration."
+
+[[requirements]]
+id = "safety_pharmacology_cns"
+title = "Safety pharmacology core battery: central nervous system"
+study_types = ["safety_pharmacology_cns"]
+species_class = "any"
+duration = "none"
+applies = "always"
+source = "ICH S7A"
+section = "2.7.1 and 2.10.1; ICH M3(R2) II (2)"
+quote = "The effects of a test substance on the functions listed in the safety pharmacology core battery should be investigated prior to first administration in humans."
+note = "S7A 2.10.1 also allows toxicology studies \"adequately designed and conducted to address safety pharmacology endpoints\" to reduce or replace separate studies; the inventory records such a study under this type."
+
+[[requirements]]
+id = "safety_pharmacology_cardiovascular"
+title = "Safety pharmacology core battery: cardiovascular system"
+study_types = ["safety_pharmacology_cardiovascular"]
+species_class = "any"
+duration = "none"
+applies = "always"
+source = "ICH S7A"
+section = "2.7.2 and 2.10.1; ICH M3(R2) II (2)"
+quote = "Effects of the test substance on the cardiovascular system should be assessed appropriately. Blood pressure, heart rate, and the electrocardiogram should be evaluated."
+
+[[requirements]]
+id = "safety_pharmacology_respiratory"
+title = "Safety pharmacology core battery: respiratory system"
+study_types = ["safety_pharmacology_respiratory"]
+species_class = "any"
+duration = "none"
+applies = "always"
+source = "ICH S7A"
+section = "2.7.3 and 2.10.1; ICH M3(R2) II (2)"
+quote = "Respiratory rate and other measures of respiratory function (e.g., tidal volume (6) or hemoglobin oxygen saturation) should be evaluated."
+
+[[requirements]]
+id = "in_vitro_ikr"
+title = "In vitro IKr (hERG) assay"
+study_types = ["in_vitro_ikr"]
+species_class = "in_vitro"
+duration = "none"
+applies = "always"
+source = "ICH S7B"
+section = "2.3.1 and 2.4; ICH M3(R2) II (2)"
+quote = "Conduct of S7B nonclinical studies assessing the risk for delayed ventricular repolarization and QT interval prolongation prior to first administration in humans should be considered."
+note = "S7B says \"should be considered\", and M3(R2) II (2) asks for the core battery \"in accordance with ICH S7A and S7B\" before human exposure; counted as required here. The in vivo QT assay (S7B 2.3.2) is the cardiovascular core battery item above."
+
+[[requirements]]
+id = "genotoxicity_gene_mutation"
+title = "Genotoxicity: a test for gene mutation in bacteria"
+study_types = ["genotoxicity_bacterial_mutation"]
+species_class = "in_vitro"
+duration = "none"
+applies = "always"
+source = "ICH M3(R2)"
+section = "IX (9); ICH S2(R1) II.B (2.2)"
+quote = "An assay for gene mutation is generally considered sufficient to support all single dose clinical development trials."
+
+[[requirements]]
+id = "genotoxicity_chromosomal"
+title = "Genotoxicity: chromosomal damage in a mammalian system"
+study_types = ["genotoxicity_in_vitro_chromosomal", "genotoxicity_in_vivo_micronucleus"]
+species_class = "any"
+duration = "none"
+applies = "multiple_dose"
+source = "ICH M3(R2)"
+section = "IX (9); ICH S2(R1) II.B (2.2)"
+quote = "To support multiple dose clinical development trials, an additional assessment capable of detecting chromosomal damage in a mammalian system(s) should be completed (Ref. 10)."
+
+[[requirements]]
+id = "toxicokinetics_rodent"
+title = "Systemic exposure (toxicokinetics) in the rodent repeated-dose species"
+study_types = ["toxicokinetics"]
+species_class = "rodent"
+duration = "none"
+applies = "always"
+source = "ICH M3(R2)"
+section = "III (3)"
+quote = "In vitro metabolic and plasma protein binding data for animals and humans and systemic exposure data (ICH S3A, Ref. 7) in the species used for repeated-dose toxicity studies generally should be evaluated before initiating human clinical trials."
+
+[[requirements]]
+id = "toxicokinetics_nonrodent"
+title = "Systemic exposure (toxicokinetics) in the nonrodent repeated-dose species"
+study_types = ["toxicokinetics"]
+species_class = "nonrodent"
+duration = "none"
+applies = "always"
+source = "ICH M3(R2)"
+section = "III (3)"
+quote = "In vitro metabolic and plasma protein binding data for animals and humans and systemic exposure data (ICH S3A, Ref. 7) in the species used for repeated-dose toxicity studies generally should be evaluated before initiating human clinical trials."
+
+[[requirements]]
+id = "in_vitro_metabolism_protein_binding"
+title = "In vitro metabolism and plasma protein binding, animals and humans"
+study_types = ["in_vitro_metabolism_protein_binding"]
+species_class = "in_vitro"
+duration = "none"
+applies = "always"
+source = "ICH M3(R2)"
+section = "III (3)"
+quote = "In vitro metabolic and plasma protein binding data for animals and humans and systemic exposure data (ICH S3A, Ref. 7) in the species used for repeated-dose toxicity studies generally should be evaluated before initiating human clinical trials."

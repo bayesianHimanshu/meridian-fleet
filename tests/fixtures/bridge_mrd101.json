@@ -1,0 +1,96 @@
+{
+  "findings": [
+    {
+      "finding_id": "PRE-0155",
+      "check": "dose_related_incidence:mi:HEART:INFLAMMATION:M:main",
+      "title": "Heart M"
+    },
+    {
+      "finding_id": "PRE-0165",
+      "check": "dose_related_change:lb:AST:F:main",
+      "title": "AST F"
+    },
+    {
+      "finding_id": "PRE-0196",
+      "check": "dose_related_incidence:mi:HEART:INFLAMMATION:F:main",
+      "title": "Heart F"
+    },
+    {
+      "finding_id": "PRE-0198",
+      "check": "dose_related_incidence:mi:LIVER:NECROSIS:F:main",
+      "title": "Liver necrosis F"
+    },
+    {
+      "finding_id": "PRE-0210",
+      "check": "recovery_only_incidence:mi:LIVER:VACUOLIZATION:M:recovery",
+      "title": "Vacuolization M"
+    },
+    {
+      "finding_id": "PRE-0214",
+      "check": "recovery_only_incidence:mi:LIVER:VACUOLIZATION:F:recovery",
+      "title": "Vacuolization F"
+    }
+  ],
+  "decisions": [
+    {
+      "seq": 41,
+      "decision_id": "NOAEL-a80dc7384e52",
+      "sex": "M",
+      "established": true,
+      "noael_dose": 2.0,
+      "loael_dose": 20.0,
+      "dose_unit": "mg/kg",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "finding_ids": [
+        "PRE-0210",
+        "PRE-0155"
+      ]
+    },
+    {
+      "seq": 42,
+      "decision_id": "NOAEL-347f3178eba5",
+      "sex": "F",
+      "established": true,
+      "noael_dose": 2.0,
+      "loael_dose": 20.0,
+      "dose_unit": "mg/kg",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "finding_ids": [
+        "PRE-0214",
+        "PRE-0196",
+        "PRE-0198",
+        "PRE-0165"
+      ]
+    },
+    {
+      "seq": 43,
+      "decision_id": "NOAEL-cd4154d72a20",
+      "sex": "combined",
+      "established": true,
+      "noael_dose": 2.0,
+      "loael_dose": 20.0,
+      "dose_unit": "mg/kg",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "finding_ids": [
+        "PRE-0198",
+        "PRE-0196",
+        "PRE-0165",
+        "PRE-0155"
+      ]
+    }
+  ],
+  "proposal": {
+    "finding_id": "PRE-0232",
+    "seq": 58,
+    "status": "accepted",
+    "decided_by": "karan.mehta",
+    "starting_dose_mg": 1.935483870967742,
+    "mrsd_mg_per_kg": 0.03225806451612903,
+    "human_weight_kg": 60.0,
+    "basis_decision_id": "NOAEL-cd4154d72a20",
+    "check": "dose_proposal"
+  }
+}

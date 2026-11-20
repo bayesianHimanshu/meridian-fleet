@@ -1,0 +1,39 @@
+{
+  "actual": {
+    "1.0.0": [
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:F:main",
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:F:main",
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:M:main"
+    ]
+  },
+  "case": "hypertrophy_incidence",
+  "description": "Hepatocellular hypertrophy (mild) in 0, 0, 3 and 8 of 10 animals per sex. Ideal: a dose-related incidence in each sex, with the severity in the evidence.",
+  "ideal": {
+    "1.0.0": [
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:F:main",
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:F:main",
+      "dose_related_incidence:mi:LIVER:HYPERTROPHY:M:main"
+    ]
+  },
+  "spec": {
+    "effects": [
+      {
+        "counts": [
+          0,
+          0,
+          3,
+          8
+        ],
+        "endpoint": "mi:LIVER:HYPERTROPHY",
+        "severity": "MILD"
+      }
+    ],
+    "seed": 23
+  }
+}

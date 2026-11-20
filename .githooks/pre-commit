@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# The fast checks before every commit (scripts/check.sh --fast, under 3 minutes): ruff
+# format and check, mypy --strict, the unit tests, the policies, the web typecheck and lint.
+# The full suite runs before every push (.githooks/pre-push) and in CI.
+# Enabled per clone with: git config core.hooksPath .githooks (never --global).
+# It checks the working tree, so stage everything you changed or stash the rest.
+set -euo pipefail
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh" --fast

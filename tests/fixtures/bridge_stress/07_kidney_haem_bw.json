@@ -1,0 +1,90 @@
+{
+  "name": "kidney_haem_bw",
+  "description": "The LOAEL rests on creatinine, haemoglobin and body weight.",
+  "study_id": "MRD-101-TOX-01",
+  "decisions": [
+    {
+      "seq": 10,
+      "decision_id": "NOAEL-00000000000a",
+      "sex": "combined",
+      "established": true,
+      "noael_dose": 2.0,
+      "loael_dose": 20.0,
+      "dose_unit": "mg/kg/day",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "recorded_at": "2026-11-19T00:00:00+00:00",
+      "finding_ids": [
+        "PRE-0107",
+        "PRE-0108",
+        "PRE-0109"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "PRE-0107",
+      "check": "dose_related_change:lb:CREAT:M:main",
+      "title": "CREAT higher with dose in males, main study"
+    },
+    {
+      "finding_id": "PRE-0108",
+      "check": "dose_related_change:lb:HGB:F:main",
+      "title": "HGB lower with dose in females, main study"
+    },
+    {
+      "finding_id": "PRE-0109",
+      "check": "dose_related_change:bw:BW:M:main",
+      "title": "Body weight lower with dose in males, main study"
+    }
+  ],
+  "proposal": {
+    "finding_id": "PRE-0900",
+    "seq": 200,
+    "status": "accepted",
+    "decided_by": "karan.mehta",
+    "starting_dose_mg": 1.935483870967742,
+    "mrsd_mg_per_kg": 0.03225806451612903,
+    "human_weight_kg": 60.0,
+    "basis_decision_id": "NOAEL-00000000000a",
+    "check": "dose_proposal"
+  },
+  "ideal": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "kidney": [
+          "PRE-0107"
+        ],
+        "haematology": [
+          "PRE-0108"
+        ],
+        "body_weight": [
+          "PRE-0109"
+        ]
+      },
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "kidney": [
+          "PRE-0107"
+        ],
+        "haematology": [
+          "PRE-0108"
+        ],
+        "body_weight": [
+          "PRE-0109"
+        ]
+      },
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
+  }
+}

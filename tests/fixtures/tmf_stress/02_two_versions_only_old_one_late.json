@@ -1,0 +1,27 @@
+{
+  "case": "two_versions_only_old_one_late",
+  "description": "Site 9002 PI CV: v1 dated 1 Jun 2012 was filed 15 Sep 2012 (106 days later, over 30); v2 dated 7 Jan 2013 (the base CV, now version 2) was filed 14 days later.",
+  "index_set": {
+    "D-2-CV": {
+      "VERSION": "2"
+    }
+  },
+  "index_add": [
+    {
+      "DOCUMENT_ID": "D-2-CV0",
+      "ARTIFACT": "Principal Investigator Curriculum Vitae",
+      "LEVEL": "site",
+      "SITE": "9002",
+      "DOC_SITE": "9002",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2012-06-01",
+      "FILED_DATE": "2012-09-15",
+      "QC_STATUS": "passed"
+    }
+  ],
+  "ideal": "Nothing: the current version was filed on time; a superseded version filed late is history.",
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": []
+  }
+}

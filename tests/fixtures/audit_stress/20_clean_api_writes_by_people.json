@@ -1,0 +1,81 @@
+{
+  "case": "clean_api_writes_by_people",
+  "description": "Phase 5 step 3b. Clean: two API decisions by two people, a NOAEL decision and a QA observation with its finding, each with the person as the event's actor.",
+  "through_seq": 6,
+  "rows": [
+    {
+      "SEQ": 1,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:00:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "ENVELOPE_ACTOR": "meridian.ingest",
+      "ENVELOPE_KIND": "system"
+    },
+    {
+      "SEQ": 2,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T10:02:00+00:00",
+      "ACTOR": "karan.mehta",
+      "ROLE": "medical_monitor",
+      "FINDING_ID": "RBQM-0001",
+      "DECISION_ACTION": "accepted",
+      "DECISION_REASON": "Accepted: the site confirmed the deviation.",
+      "ENVELOPE_ACTOR": "karan.mehta",
+      "ENVELOPE_KIND": "person",
+      "NAMED": "[[\"decision.actor\", \"karan.mehta\", \"person\"]]"
+    },
+    {
+      "SEQ": 3,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T10:03:00+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "medical_monitor",
+      "FINDING_ID": "RBQM-0002",
+      "DECISION_ACTION": "dismissed",
+      "DECISION_REASON": "Checked against the source; the deviation was logged in error at the site.",
+      "ENVELOPE_ACTOR": "asha.rao",
+      "ENVELOPE_KIND": "person",
+      "NAMED": "[[\"decision.actor\", \"asha.rao\", \"person\"]]"
+    },
+    {
+      "SEQ": 4,
+      "TYPE": "noael_decision",
+      "RECORDED_AT": "2026-11-07T10:04:00+00:00",
+      "ACTOR": "leela.nair",
+      "ENVELOPE_ACTOR": "leela.nair",
+      "ENVELOPE_KIND": "person",
+      "NAMED": "[[\"decided_by\", \"leela.nair\", \"person\"]]"
+    },
+    {
+      "SEQ": 5,
+      "TYPE": "quality_observation",
+      "RECORDED_AT": "2026-11-07T10:05:00+00:00",
+      "ACTOR": "nina.fernandes",
+      "ENVELOPE_ACTOR": "nina.fernandes",
+      "ENVELOPE_KIND": "person",
+      "NAMED": "[[\"raised_by\", \"nina.fernandes\", \"person\"]]"
+    },
+    {
+      "SEQ": 6,
+      "TYPE": "finding_raised",
+      "RECORDED_AT": "2026-11-07T10:06:00+00:00",
+      "ACTOR": "nina.fernandes",
+      "AGENT": "human.observation",
+      "VERSION": "1.0.0",
+      "FINDING_ID": "QA-0001",
+      "FINDING_GROUP": 1,
+      "CUT_ID": "LEDGER",
+      "CUT_SCOPE": "operational",
+      "ENVELOPE_ACTOR": "nina.fernandes",
+      "ENVELOPE_KIND": "person",
+      "NAMED": "[[\"finding.raised_by\", \"nina.fernandes\", \"person\"]]"
+    }
+  ],
+  "ideal": "Nothing.",
+  "ideal_findings": [],
+  "actual": {
+    "1.3.0": []
+  }
+}

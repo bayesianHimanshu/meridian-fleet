@@ -1,0 +1,9 @@
+{
+  "description": "The base \"complete\": the committed inventory with every gap filled. Applied before a case's own changes when its base is \"complete\".",
+  "changes": [
+    {"add": {"study_id": "MRD-101-DM-01", "title": "In vitro metabolic stability, metabolite profile and plasma protein binding (rat, dog, human)", "study_type": "in_vitro_metabolism_protein_binding", "species": "IN VITRO", "route": "IN VITRO", "duration_weeks": "", "glp": "N", "report_status": "qa_audited", "start_date": "2026-04-06", "report_final_date": "2026-06-26", "qa_audit_date": "2026-07-17", "part_of": ""}},
+    {"set": "MRD-101-TOX-02", "fields": {"report_status": "qa_audited", "report_final_date": "2027-02-15", "qa_audit_date": "2027-03-15"}},
+    {"set": "MRD-101-TOX-02-TK", "fields": {"report_status": "qa_audited", "report_final_date": "2027-02-15", "qa_audit_date": "2027-03-15"}},
+    {"set": "MRD-101-SP-03", "fields": {"glp": "Y"}}
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "actual": {
+    "1.1.0": [
+      "dose_related_change:bw:BW:F:main",
+      "dose_related_change:bw:BW:M:main",
+      "dose_related_change:bw:GAIN:F:main",
+      "dose_related_change:bw:GAIN:M:main",
+      "organ_weight_secondary_to_bw:F:main:r3"
+    ]
+  },
+  "case": "lower_body_weight",
+  "description": "Body weight gain x 0.55 at the high dose in both sexes (final body weight about 16% to 21% lower); organ weights unchanged in grams, so the relative liver and kidney weights rise. The relative weights go into one finding per sex and dose, as possibly secondary to lower body weight.",
+  "ideal": {
+    "1.1.0": [
+      "dose_related_change:bw:BW:F:main",
+      "dose_related_change:bw:BW:M:main",
+      "dose_related_change:bw:GAIN:F:main",
+      "dose_related_change:bw:GAIN:M:main",
+      "organ_weight_secondary_to_bw:F:main:r3",
+      "organ_weight_secondary_to_bw:M:main:r3"
+    ]
+  },
+  "spec": {
+    "effects": [
+      {
+        "endpoint": "bw:GAIN",
+        "factors": [
+          1,
+          1,
+          1,
+          0.55
+        ]
+      }
+    ],
+    "seed": 26
+  }
+}

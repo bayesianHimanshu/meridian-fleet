@@ -1,0 +1,56 @@
+{
+  "actual": {
+    "1.0.0": [
+      "dose_related_change:om:LIVER:abs:F:main",
+      "dose_related_change:om:LIVER:abs:F:recovery",
+      "dose_related_change:om:LIVER:abs:M:main",
+      "dose_related_change:om:LIVER:abs:M:recovery",
+      "dose_related_change:om:LIVER:rel:F:main",
+      "dose_related_change:om:LIVER:rel:F:recovery",
+      "dose_related_change:om:LIVER:rel:M:main",
+      "dose_related_change:om:LIVER:rel:M:recovery"
+    ],
+    "1.1.0": [
+      "dose_related_change:om:LIVER:abs:F:main",
+      "dose_related_change:om:LIVER:abs:M:main",
+      "dose_related_change:om:LIVER:rel:F:main",
+      "dose_related_change:om:LIVER:rel:M:main"
+    ]
+  },
+  "case": "recovery_persists",
+  "description": "Recovery groups present; liver weight rises with dose in both phases (it does not reverse). Ideal: absolute and relative liver weight findings in both phases and sexes.",
+  "ideal": {
+    "1.0.0": [
+      "dose_related_change:om:LIVER:abs:F:main",
+      "dose_related_change:om:LIVER:abs:F:recovery",
+      "dose_related_change:om:LIVER:abs:M:main",
+      "dose_related_change:om:LIVER:abs:M:recovery",
+      "dose_related_change:om:LIVER:rel:F:main",
+      "dose_related_change:om:LIVER:rel:F:recovery",
+      "dose_related_change:om:LIVER:rel:M:main",
+      "dose_related_change:om:LIVER:rel:M:recovery"
+    ],
+    "1.1.0": [
+      "dose_related_change:om:LIVER:abs:F:main",
+      "dose_related_change:om:LIVER:abs:M:main",
+      "dose_related_change:om:LIVER:rel:F:main",
+      "dose_related_change:om:LIVER:rel:M:main"
+    ]
+  },
+  "spec": {
+    "effects": [
+      {
+        "endpoint": "om:LIVER",
+        "factors": [
+          1,
+          1.05,
+          1.15,
+          1.35
+        ],
+        "phase": "both"
+      }
+    ],
+    "recovery": true,
+    "seed": 16
+  }
+}

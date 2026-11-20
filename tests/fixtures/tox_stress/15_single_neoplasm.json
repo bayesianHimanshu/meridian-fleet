@@ -1,0 +1,28 @@
+{
+  "actual": {
+    "1.1.0": [
+      "neoplasm:mi:LIVER:ADENOMA, HEPATOCELLULAR:M"
+    ]
+  },
+  "case": "single_neoplasm",
+  "description": "One low-dose male with a hepatocellular adenoma (BENIGN) at terminal sacrifice. Any neoplasm in a treated group is raised, even in one animal.",
+  "ideal": {
+    "1.1.0": [
+      "neoplasm:mi:LIVER:ADENOMA, HEPATOCELLULAR:M"
+    ]
+  },
+  "spec": {
+    "edits": [
+      {
+        "animal": 2,
+        "category": "BENIGN",
+        "finding": "ADENOMA, HEPATOCELLULAR",
+        "group": 1,
+        "kind": "mi_finding",
+        "sex": "M",
+        "specimen": "LIVER"
+      }
+    ],
+    "seed": 25
+  }
+}

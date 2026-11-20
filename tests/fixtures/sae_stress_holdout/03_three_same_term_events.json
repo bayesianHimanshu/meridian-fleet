@@ -1,0 +1,96 @@
+{
+  "case": "three_same_term_events",
+  "control": false,
+  "description": "Three seizure SAEs of one subject (3, 5 and 10 March). The case of the 5 March event was entered with onset 9 March, one day from the third event's date; its outcome and causality are the 5 March event's.",
+  "dm": [
+    {
+      "USUBJID": "201-9203-005",
+      "SITEID": "9203"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9203-005",
+      "AESEQ": 3,
+      "AETERM": "seizure",
+      "AEDECOD": "SEIZURE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-03-02",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    },
+    {
+      "USUBJID": "201-9203-005",
+      "AESEQ": 5,
+      "AETERM": "seizure",
+      "AEDECOD": "SEIZURE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-03-05",
+      "AEOUT": "NOT RECOVERED/NOT RESOLVED",
+      "AEREL": "POSSIBLE"
+    },
+    {
+      "USUBJID": "201-9203-005",
+      "AESEQ": 6,
+      "AETERM": "seizure",
+      "AEDECOD": "SEIZURE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-03-10",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "PROBABLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO03A",
+      "USUBJID": "201-9203-005",
+      "SITEID": "9203",
+      "REPORTED_TERM": "seizure",
+      "PREFERRED_TERM": "SEIZURE",
+      "ONSET": "2025-03-02",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-03-02T10:00:00+00:00",
+      "RECEIPT_DTC": "2025-03-02T16:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-HO03B",
+      "USUBJID": "201-9203-005",
+      "SITEID": "9203",
+      "REPORTED_TERM": "seizure",
+      "PREFERRED_TERM": "SEIZURE",
+      "ONSET": "2025-03-09",
+      "SHOSP": "Y",
+      "OUTCOME": "NOT RECOVERED/NOT RESOLVED",
+      "CAUSALITY": "POSSIBLE",
+      "AWARE_DTC": "2025-03-09T10:00:00+00:00",
+      "RECEIPT_DTC": "2025-03-09T12:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-HO03C",
+      "USUBJID": "201-9203-005",
+      "SITEID": "9203",
+      "REPORTED_TERM": "seizure",
+      "PREFERRED_TERM": "SEIZURE",
+      "ONSET": "2025-03-10",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-03-10T10:00:00+00:00",
+      "RECEIPT_DTC": "2025-03-10T14:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "onset_mismatch:201-9203-005/5"
+  ],
+  "ideal_note": "Pair each event with its case by content; one onset mismatch (4 days) on AESEQ 5.",
+  "actual": {
+    "1.1.0": [
+      "onset_mismatch:201-9203-005/5"
+    ]
+  }
+}

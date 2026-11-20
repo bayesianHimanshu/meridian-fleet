@@ -1,0 +1,76 @@
+{
+  "name": "unmapped_organ",
+  "description": "The LOAEL rests on adrenal vacuolization (no mapping entry) and liver necrosis.",
+  "study_id": "MRD-101-TOX-01",
+  "decisions": [
+    {
+      "seq": 10,
+      "decision_id": "NOAEL-00000000000a",
+      "sex": "combined",
+      "established": true,
+      "noael_dose": 2.0,
+      "loael_dose": 20.0,
+      "dose_unit": "mg/kg/day",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "recorded_at": "2026-11-19T00:00:00+00:00",
+      "finding_ids": [
+        "PRE-0105",
+        "PRE-0101"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "PRE-0105",
+      "check": "dose_related_incidence:mi:ADRENAL GLAND:VACUOLIZATION:M:main",
+      "title": "Adrenal gland: vacuolization (microscopic) more frequent with dose in males, main study"
+    },
+    {
+      "finding_id": "PRE-0101",
+      "check": "dose_related_incidence:mi:LIVER:NECROSIS:F:main",
+      "title": "Liver: necrosis (microscopic) more frequent with dose in females, main study"
+    }
+  ],
+  "proposal": {
+    "finding_id": "PRE-0900",
+    "seq": 200,
+    "status": "accepted",
+    "decided_by": "karan.mehta",
+    "starting_dose_mg": 1.935483870967742,
+    "mrsd_mg_per_kg": 0.03225806451612903,
+    "human_weight_kg": 60.0,
+    "basis_decision_id": "NOAEL-00000000000a",
+    "check": "dose_proposal"
+  },
+  "ideal": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "liver": [
+          "PRE-0101"
+        ]
+      },
+      "unmapped": [
+        "PRE-0105"
+      ],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "liver": [
+          "PRE-0101"
+        ]
+      },
+      "unmapped": [
+        "PRE-0105"
+      ],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
+  }
+}

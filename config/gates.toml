@@ -1,0 +1,79 @@
+# Stage-gate criteria (phase 5 step 3b), read by portfolio.stage_gate_pack. For each gate,
+# its criteria, what evidence satisfies each, and whether it comes from regulation (cited,
+# quoted) or is company policy (our choice). The agent reports each criterion as met, not
+# met or not applicable, with the ledger seqs behind it; it never says go or no-go. The
+# portfolio lead decides (GateDecision). docs/stage-gate-notes.md has the rules in full.
+#
+# Regulation: 21 CFR 312.23, read in the eCFR (version 2025-01-01, sha256 of the XML of
+# section 312.23: 0454953d715cc9b4661edd3dd4009c6d23876cc3de05bbaf75c4b607aa15e9d5), and the
+# FDA 2005 starting-dose guidance as already cited in docs/fih-dose-notes.md.
+#
+# Fields: id; title; basis ("regulation" or "policy"); source, section, quote (regulation
+# only, the source's own words); rule (one of the rules in meridian.portfolio.gates);
+# evidence (what satisfies it, in words); applies ("always", or "has_signal_scan": only
+# when the asset's drug has a safety signal scan).
+
+[[gates]]
+id = "ind_submission"
+asset_id = "MRD-101"
+title = "IND submission"
+
+[[gates.criteria]]
+id = "noael_decided"
+title = "The NOAEL of the pivotal toxicology study is decided"
+basis = "regulation"
+source = "21 CFR 312.23"
+section = "(a)(8)(ii)(a); FDA 2005 starting-dose guidance, section IV (step 1)"
+quote = "An integrated summary of the toxicological effects of the drug in animals and in vitro."
+rule = "noael_decided"
+evidence = "A current NoaelDecision (for each sex or combined) recorded by the toxicologist through the API. Who records it, and that a person does, is our policy."
+applies = "always"
+
+[[gates.criteria]]
+id = "starting_dose_accepted"
+title = "The first-in-human starting dose is accepted"
+basis = "regulation"
+source = "21 CFR 312.23"
+section = "(a)(6)(iii)(e)"
+quote = "The method for determining the dose(s) to be administered, the planned maximum dosage, and the duration of individual patient exposure to the drug."
+rule = "starting_dose_accepted"
+evidence = "The current dose proposal (its NOAEL basis still current) with an accepting decision by the medical monitor."
+applies = "always"
+
+[[gates.criteria]]
+id = "ind_gaps_resolved"
+title = "IND readiness gaps closed, or each accepted as an exception"
+basis = "regulation"
+source = "21 CFR 312.23"
+section = "(a)(8); the requirements themselves: config/ind_requirements.toml (ICH M3(R2), S7A, S7B, S2(R1))"
+quote = "Adequate information about pharmacological and toxicological studies of the drug involving laboratory animals or in vitro, on the basis of which the sponsor has concluded that it is reasonably safe to conduct the proposed clinical investigations."
+rule = "ind_gaps_resolved"
+evidence = "No current IND readiness finding is open or escalated. A gap is closed when a newer inventory no longer raises it (retired) or it is dismissed; it is accepted as an exception when its finding is accepted (the decision's reason is the exception). Treating an accepted gap as an exception is our policy."
+applies = "always"
+
+[[gates.criteria]]
+id = "monitoring_accepted"
+title = "The first-in-human monitoring recommendation is accepted"
+basis = "regulation"
+source = "21 CFR 312.23"
+section = "(a)(6)(iii)(g)"
+quote = "A description of clinical procedures, laboratory tests, or other measures to be taken to monitor the effects of the drug in human subjects and to minimize risk."
+rule = "monitoring_accepted"
+evidence = "The current monitoring recommendation with an accepting decision by the medical monitor."
+applies = "always"
+
+[[gates.criteria]]
+id = "no_open_high_preclinical"
+title = "No open high-severity preclinical finding"
+basis = "policy"
+rule = "no_open_high_preclinical"
+evidence = "No current (not superseded or retired) high-severity finding of a preclinical agent on the asset's studies without a closing decision. Our choice: regulation asks for the information, not for every finding to be decided."
+applies = "always"
+
+[[gates.criteria]]
+id = "safety_signals_reviewed"
+title = "Safety signals reviewed, where relevant"
+basis = "policy"
+rule = "safety_signals_reviewed"
+evidence = "Every current priority signal of the asset's latest safety signal scan has a decision. Not applicable to an asset without a scan (no marketed drug with spontaneous reports). Our choice."
+applies = "has_signal_scan"

@@ -1,0 +1,36 @@
+{
+  "name": "rodent_too_short",
+  "description": "A 6-week trial and only the 4-week rat range-finder (its report made QA audited, so duration is its only problem).",
+  "base": "complete",
+  "changes": [
+    {
+      "drop": "MRD-101-TOX-01"
+    },
+    {
+      "set": "MRD-101-DRF-01",
+      "fields": {
+        "report_status": "qa_audited",
+        "qa_audit_date": "2015-12-20"
+      }
+    }
+  ],
+  "trial": {
+    "planned_clinical_duration_days": 42
+  },
+  "ideal": {
+    "1.0.0": {
+      "findings": [
+        "duration_short:repeat_dose_rodent:MRD-101-DRF-01"
+      ],
+      "percent_met": 90.9
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "duration_short:repeat_dose_rodent:MRD-101-DRF-01"
+      ],
+      "percent_met": 90.9
+    }
+  }
+}

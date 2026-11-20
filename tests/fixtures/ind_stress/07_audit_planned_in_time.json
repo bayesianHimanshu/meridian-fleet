@@ -1,0 +1,26 @@
+{
+  "name": "audit_planned_in_time",
+  "description": "The hERG report is a draft whose QA audit is planned the day before the submission date: in time.",
+  "base": "complete",
+  "changes": [
+    {
+      "set": "MRD-101-SP-04",
+      "fields": {
+        "report_status": "draft",
+        "qa_audit_date": "2027-03-31"
+      }
+    }
+  ],
+  "ideal": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  }
+}

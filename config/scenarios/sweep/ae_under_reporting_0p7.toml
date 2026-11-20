@@ -1,0 +1,13 @@
+# Magnitude sweep 6 of 18: ae_under_reporting at 1010, the site it had in rbqm_core.
+# Swept: drop_share = 0.7. Other parameters as in rbqm_core. Seed 20261109 + 5.
+# Generated once after the phase 1 thresholds were frozen; never used for tuning.
+
+seed = 20261114
+base_cut = "DC-BASE"
+out_cut = "DC-SWEEP-AE-UNDER-REPORTING-0P7"
+
+[[faults]]
+type = "ae_under_reporting"
+target = "1010"
+[faults.params]
+drop_share = 0.7

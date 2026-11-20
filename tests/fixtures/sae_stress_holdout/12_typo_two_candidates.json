@@ -1,0 +1,67 @@
+{
+  "case": "typo_two_candidates",
+  "control": false,
+  "description": "The case's subject 201-9212-010 is not enrolled; two enrolled subjects at the site are one digit away (011 and 019) and both have an unmatched rash SAE on the same day.",
+  "dm": [
+    {
+      "USUBJID": "201-9212-011",
+      "SITEID": "9212"
+    },
+    {
+      "USUBJID": "201-9212-019",
+      "SITEID": "9212"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9212-011",
+      "AESEQ": 1,
+      "AETERM": "rash",
+      "AEDECOD": "RASH",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-05-05",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "PROBABLE"
+    },
+    {
+      "USUBJID": "201-9212-019",
+      "AESEQ": 1,
+      "AETERM": "rash",
+      "AEDECOD": "RASH",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-05-05",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "PROBABLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO12A",
+      "USUBJID": "201-9212-010",
+      "SITEID": "9212",
+      "REPORTED_TERM": "rash",
+      "PREFERRED_TERM": "RASH",
+      "ONSET": "2025-05-05",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-05-05T10:00:00+00:00",
+      "RECEIPT_DTC": "2025-05-05T15:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "sae_missing_in_safety_db:201-9212-011/1",
+    "sae_missing_in_safety_db:201-9212-019/1",
+    "case_without_clinical_sae:SC-HO12A"
+  ],
+  "ideal_note": "No guess: both SAEs without a case and the case without an SAE (its evidence names the unenrolled subject).",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO12A",
+      "sae_missing_in_safety_db:201-9212-011/1",
+      "sae_missing_in_safety_db:201-9212-019/1"
+    ]
+  }
+}

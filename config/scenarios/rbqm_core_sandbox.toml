@@ -1,0 +1,45 @@
+# A fresh copy of rbqm_core for phase 2 step 1: the same faults, sites and parameters,
+# seed 20261112, scored after the agents ran in OpenShell sandboxes.
+# The cut id is opaque: DC- plus the first 8 hex characters of sha256 of this file.
+
+seed = 20261112
+base_cut = "DC-BASE"
+label = "rbqm_core_sandbox"
+
+[[faults]]
+type = "fabricated_vitals"
+target = "1001"
+[faults.params]
+subject_share = 0.8
+sd_scale = 0.25
+terminal_zero_share = 0.4
+
+[[faults]]
+type = "ae_under_reporting"
+target = "1010"
+[faults.params]
+drop_share = 0.7
+
+[[faults]]
+type = "entry_lag_spike"
+target = "1004"
+[faults.params]
+target_median_days = 14.0
+
+[[faults]]
+type = "query_backlog"
+target = "1008"
+[faults.params]
+target_median_age_days = 40.0
+
+[[faults]]
+type = "deviation_cluster"
+target = "1016"
+[faults.params]
+rate_multiplier = 4.0
+
+[[faults]]
+type = "discontinuation_drift"
+target = "STUDY"
+[faults.params]
+target_rate = 0.667

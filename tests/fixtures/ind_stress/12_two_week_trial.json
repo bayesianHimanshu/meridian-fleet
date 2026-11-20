@@ -1,0 +1,52 @@
+{
+  "name": "two_week_trial",
+  "description": "A 14-day trial supported in the dog by the 2-week MTD study, made GLP and QA audited, with its own TK; the 13-week dog study removed.",
+  "base": "complete",
+  "changes": [
+    {
+      "drop": "MRD-101-TOX-02"
+    },
+    {
+      "drop": "MRD-101-TOX-02-TK"
+    },
+    {
+      "set": "MRD-101-DRF-02",
+      "fields": {
+        "glp": "Y",
+        "report_status": "qa_audited",
+        "qa_audit_date": "2026-06-30"
+      }
+    },
+    {
+      "add": {
+        "study_id": "MRD-101-DRF-02-TK",
+        "title": "Toxicokinetics of the 2-week dog study",
+        "study_type": "toxicokinetics",
+        "species": "DOG",
+        "route": "ORAL CAPSULE",
+        "duration_weeks": "2",
+        "glp": "Y",
+        "report_status": "qa_audited",
+        "start_date": "2026-03-02",
+        "report_final_date": "2026-05-29",
+        "qa_audit_date": "2026-06-30",
+        "part_of": "MRD-101-DRF-02"
+      }
+    }
+  ],
+  "trial": {
+    "planned_clinical_duration_days": 14
+  },
+  "ideal": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  }
+}

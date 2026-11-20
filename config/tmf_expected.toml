@@ -1,0 +1,188 @@
+# Expected Trial Master File artifacts for MRD-201 (quality.tmf_completeness, step 4a).
+#
+# Names and zones are those of the TMF Reference Model as CDISC publishes it in
+# "CDISC TMF Controlled Terminology, 2024-09-27" (NCI EVS, file "TMF Terminology.txt",
+# sha256 10adccb7a6c3e5d12f4b13ec3011336f27b2522eac194ca39fb72b07eda388d3). That
+# terminology gives zone and artifact names but no zone, section or artifact numbers, and
+# the model's own spreadsheet (TMF Reference Model v3.3.1, 11 Aug 2023, tmfrefmodel.com)
+# could not be downloaded (HTTP 404) to check them. So this file uses names only; no
+# number here was invented. docs/tmf-notes.md says more.
+#
+# A focused subset of 16 artifacts: 7 trial level, 9 site level. Each has
+#   key               the short name used in finding records (stable, lower case)
+#   name              the artifact name in the terminology; index rows match it after
+#                     upper-casing and collapsing whitespace
+#   zone              the terminology zone it belongs to
+#   level             trial (one for the trial) or site (one per active site)
+#   milestone         what makes it expected:
+#                       trial_first_subject   the trial's first subject (any site)
+#                       site_activation       the site is active: it has a site
+#                                             initiation visit or a subject
+#                       initiation_visit      each scheduled initiation visit
+#                       routine_visit         each scheduled routine monitoring visit
+#                       close_out_visit       each scheduled close-out visit
+#                       on_issue              filed when issued; never expected
+#   file_within_days  filed at most this many days after its document date
+#   dated_before      optional: site_first_subject means at least one counting version
+#                     must be dated on or before the site's first subject; a later one is
+#                     tmf_approval_after_first_subject (high)
+#   essential         a missing site-level essential record is high, anything else
+#                     missing is medium
+# These are defaults chosen for the synthetic study; ICH E6(R3) asks for essential records
+# to be filed in a timely manner and does not set a number of days.
+
+[reference]
+name = "TMF Reference Model"
+publication = "CDISC TMF Controlled Terminology, 2024-09-27"
+url = "https://evs.nci.nih.gov/ftp1/CDISC/TMF/TMF%20Terminology.txt"
+numbers = "not used: not verifiable from the publication"
+
+[rules]
+qc_within_days = 10    # a document pending QC longer than this (at export) is overdue
+visit_match_days = 3   # a visit report matches a visit dated at most this many days apart
+
+[[artifacts]]
+key = "protocol"
+name = "Protocol"
+zone = "Central Trial Documents"
+level = "trial"
+milestone = "trial_first_subject"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "protocol_amendment"
+name = "Protocol Amendment"
+zone = "Central Trial Documents"
+level = "trial"
+milestone = "on_issue"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "investigators_brochure"
+name = "Investigator's Brochure"
+zone = "Central Trial Documents"
+level = "trial"
+milestone = "trial_first_subject"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "sample_crf"
+name = "Sample Case Report Form"
+zone = "Central Trial Documents"
+level = "trial"
+milestone = "trial_first_subject"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "informed_consent_form"
+name = "Informed Consent Form"
+zone = "Central Trial Documents"
+level = "trial"
+milestone = "trial_first_subject"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "monitoring_plan"
+name = "Monitoring Plan"
+zone = "Trial Management"
+level = "trial"
+milestone = "trial_first_subject"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "regulatory_decision"
+name = "Regulatory Authority Decision"
+zone = "Regulatory"
+level = "trial"
+milestone = "trial_first_subject"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "irb_iec_decision"
+name = "IRB or IEC Decision"
+zone = "IRB or IEC and Other Approvals"
+level = "site"
+milestone = "site_activation"
+file_within_days = 14
+dated_before = "site_first_subject"
+essential = true
+
+[[artifacts]]
+key = "form_fda_1572"
+name = "Form FDA 1572"
+zone = "Site Management"
+level = "site"
+milestone = "site_activation"
+file_within_days = 30
+dated_before = "site_first_subject"
+essential = true
+
+[[artifacts]]
+key = "pi_cv"
+name = "Principal Investigator Curriculum Vitae"
+zone = "Site Management"
+level = "site"
+milestone = "site_activation"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "site_signature_sheet"
+name = "Site Signature Sheet"  # the delegation log
+zone = "Site Management"
+level = "site"
+milestone = "site_activation"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "protocol_signature_page"
+name = "Protocol Signature Page"
+zone = "Site Management"
+level = "site"
+milestone = "site_activation"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "financial_disclosure_form"
+name = "Financial Disclosure Form"
+zone = "Site Management"
+level = "site"
+milestone = "site_activation"
+file_within_days = 30
+essential = false  # a US FDA requirement (21 CFR 54), not an ICH E6(R3) essential record
+
+[[artifacts]]
+key = "initiation_report"
+name = "Trial Initiation Monitoring Report"
+zone = "Site Management"
+level = "site"
+milestone = "initiation_visit"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "monitoring_visit_report"
+name = "Monitoring Visit Report"
+zone = "Site Management"
+level = "site"
+milestone = "routine_visit"
+file_within_days = 30
+essential = true
+
+[[artifacts]]
+key = "close_out_report"
+name = "Final Trial Close Out Monitoring Report"
+zone = "Site Management"
+level = "site"
+milestone = "close_out_visit"
+file_within_days = 30
+essential = true

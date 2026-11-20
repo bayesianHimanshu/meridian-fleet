@@ -1,0 +1,48 @@
+{
+  "case": "unknown_outcome_value",
+  "control": false,
+  "description": "The case's outcome is a value outside any controlled terminology (IMPROVED WITH TREATMENT).",
+  "dm": [
+    {
+      "USUBJID": "201-9215-003",
+      "SITEID": "9215"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9215-003",
+      "AESEQ": 1,
+      "AETERM": "sepsis",
+      "AEDECOD": "SEPSIS",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-03-22",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO15A",
+      "USUBJID": "201-9215-003",
+      "SITEID": "9215",
+      "REPORTED_TERM": "sepsis",
+      "PREFERRED_TERM": "SEPSIS",
+      "ONSET": "2025-03-22",
+      "SHOSP": "Y",
+      "OUTCOME": "IMPROVED WITH TREATMENT",
+      "CAUSALITY": "None",
+      "AWARE_DTC": "2025-03-22T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-03-22T13:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "sae_data_quality:SC-HO15A#OUTCOME"
+  ],
+  "ideal_note": "One data-quality finding for the outcome; no outcome mismatch.",
+  "actual": {
+    "1.1.0": [
+      "sae_data_quality:SC-HO15A#OUTCOME"
+    ]
+  }
+}

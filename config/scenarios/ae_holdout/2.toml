@@ -1,0 +1,16 @@
+# AE holdout 2 of 3. Generated once from DC-BASE after the AE expectation
+# variant was frozen; never used for tuning. The cut id is opaque (sha256 of this file).
+#
+# Site: sites with at least 10 treated subjects that were never an AE target (1003, 1005, 1010
+# were): 1001, 1004, 1008, 1009, 1016, 1018. Three drawn without replacement by the root stream of SeedSequence(20261111);
+# this file takes draw 2. Injection seed 20261111 + 2.
+
+seed = 20261113
+base_cut = "DC-BASE"
+label = "ae_holdout/2"
+
+[[faults]]
+type = "ae_under_reporting"
+target = "1008"
+[faults.params]
+drop_share = 0.7

@@ -1,0 +1,42 @@
+{
+  "name": "empty_inventory",
+  "description": "No study at all.",
+  "base": "empty",
+  "changes": [],
+  "ideal": {
+    "1.0.0": {
+      "findings": [
+        "required_study_missing:genotoxicity_chromosomal",
+        "required_study_missing:genotoxicity_gene_mutation",
+        "required_study_missing:in_vitro_ikr",
+        "required_study_missing:in_vitro_metabolism_protein_binding",
+        "required_study_missing:repeat_dose_nonrodent",
+        "required_study_missing:repeat_dose_rodent",
+        "required_study_missing:safety_pharmacology_cardiovascular",
+        "required_study_missing:safety_pharmacology_cns",
+        "required_study_missing:safety_pharmacology_respiratory",
+        "required_study_missing:toxicokinetics_nonrodent",
+        "required_study_missing:toxicokinetics_rodent"
+      ],
+      "percent_met": 0.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "required_study_missing:genotoxicity_chromosomal",
+        "required_study_missing:genotoxicity_gene_mutation",
+        "required_study_missing:in_vitro_ikr",
+        "required_study_missing:in_vitro_metabolism_protein_binding",
+        "required_study_missing:repeat_dose_nonrodent",
+        "required_study_missing:repeat_dose_rodent",
+        "required_study_missing:safety_pharmacology_cardiovascular",
+        "required_study_missing:safety_pharmacology_cns",
+        "required_study_missing:safety_pharmacology_respiratory",
+        "required_study_missing:toxicokinetics_nonrodent",
+        "required_study_missing:toxicokinetics_rodent"
+      ],
+      "percent_met": 0.0
+    }
+  }
+}

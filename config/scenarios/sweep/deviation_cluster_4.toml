@@ -1,0 +1,13 @@
+# Magnitude sweep 15 of 18: deviation_cluster at 1016, the site it had in rbqm_core.
+# Swept: rate_multiplier = 4. Other parameters as in rbqm_core. Seed 20261109 + 14.
+# Generated once after the phase 1 thresholds were frozen; never used for tuning.
+
+seed = 20261123
+base_cut = "DC-BASE"
+out_cut = "DC-SWEEP-DEVIATION-CLUSTER-4"
+
+[[faults]]
+type = "deviation_cluster"
+target = "1016"
+[faults.params]
+rate_multiplier = 4.0

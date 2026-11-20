@@ -1,0 +1,13 @@
+# Magnitude sweep 16 of 18: discontinuation_drift at STUDY, the site it had in rbqm_core.
+# Swept: target_rate = base 144/254 = 0.5669 plus 0.03, rounded to 3 decimals. Other parameters as in rbqm_core. Seed 20261109 + 15.
+# Generated once after the phase 1 thresholds were frozen; never used for tuning.
+
+seed = 20261124
+base_cut = "DC-BASE"
+out_cut = "DC-SWEEP-DISCONTINUATION-DRIFT-PLUS0P03"
+
+[[faults]]
+type = "discontinuation_drift"
+target = "STUDY"
+[faults.params]
+target_rate = 0.597

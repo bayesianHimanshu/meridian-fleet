@@ -1,0 +1,74 @@
+{
+  "name": "heart_only",
+  "description": "Combined NOAEL 2, LOAEL 20 resting on heart inflammation in both sexes.",
+  "study_id": "MRD-101-TOX-01",
+  "decisions": [
+    {
+      "seq": 10,
+      "decision_id": "NOAEL-00000000000a",
+      "sex": "combined",
+      "established": true,
+      "noael_dose": 2.0,
+      "loael_dose": 20.0,
+      "dose_unit": "mg/kg/day",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "recorded_at": "2026-11-19T00:00:00+00:00",
+      "finding_ids": [
+        "PRE-0103",
+        "PRE-0104"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "PRE-0103",
+      "check": "dose_related_incidence:mi:HEART:INFLAMMATION:M:main",
+      "title": "Heart: inflammation (microscopic) more frequent with dose in males, main study"
+    },
+    {
+      "finding_id": "PRE-0104",
+      "check": "dose_related_incidence:mi:HEART:INFLAMMATION:F:main",
+      "title": "Heart: inflammation (microscopic) more frequent with dose in females, main study"
+    }
+  ],
+  "proposal": {
+    "finding_id": "PRE-0900",
+    "seq": 200,
+    "status": "accepted",
+    "decided_by": "karan.mehta",
+    "starting_dose_mg": 1.935483870967742,
+    "mrsd_mg_per_kg": 0.03225806451612903,
+    "human_weight_kg": 60.0,
+    "basis_decision_id": "NOAEL-00000000000a",
+    "check": "dose_proposal"
+  },
+  "ideal": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "heart": [
+          "PRE-0103",
+          "PRE-0104"
+        ]
+      },
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "heart": [
+          "PRE-0103",
+          "PRE-0104"
+        ]
+      },
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": 100.0
+    }
+  }
+}

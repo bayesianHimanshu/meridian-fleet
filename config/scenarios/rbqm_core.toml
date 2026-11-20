@@ -1,0 +1,52 @@
+# RBQM core fault scenario. Generated once from DC-BASE; always read from this file afterwards.
+#
+# Target sites: sites ranked by treated subjects (RFSTDTC not blank), descending,
+# ties broken by site id ascending. Rank 1 gets fabricated_vitals, rank 2
+# ae_under_reporting, rank 3 entry_lag_spike, rank 4 query_backlog, rank 5
+# deviation_cluster. Every target needs at least 10 treated subjects.
+# Top of the ranking (site, treated): 1001 (41), 1010 (31), 1004 (25), 1008 (25), 1016 (24), 1009 (21), 1003 (18), 1005 (16).
+#
+# target_rate: DC-BASE premature discontinuation rate 144/254 = 0.5669, plus 0.10,
+# rounded to 3 decimals.
+
+seed = 20261107
+base_cut = "DC-BASE"
+out_cut = "DC-RBQM-CORE"
+
+[[faults]]
+type = "fabricated_vitals"
+target = "1001"
+[faults.params]
+subject_share = 0.8
+sd_scale = 0.25
+terminal_zero_share = 0.4
+
+[[faults]]
+type = "ae_under_reporting"
+target = "1010"
+[faults.params]
+drop_share = 0.7
+
+[[faults]]
+type = "entry_lag_spike"
+target = "1004"
+[faults.params]
+target_median_days = 14.0
+
+[[faults]]
+type = "query_backlog"
+target = "1008"
+[faults.params]
+target_median_age_days = 40.0
+
+[[faults]]
+type = "deviation_cluster"
+target = "1016"
+[faults.params]
+rate_multiplier = 4.0
+
+[[faults]]
+type = "discontinuation_drift"
+target = "STUDY"
+[faults.params]
+target_rate = 0.667

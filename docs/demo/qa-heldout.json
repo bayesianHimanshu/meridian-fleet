@@ -1,0 +1,25 @@
+{
+  "about": "Held-out set for the demo's question box, written and committed before the decline rule was changed (run 2). 10 answerable: expected is a list of acceptable sources, a hit when any is retrieved. 10 not covered: the correct outcome is a decline. They include vendor or product names the project never uses and plausible clinical questions it does not answer. Not to be tuned on.",
+  "questions": [
+    {"id": "b01", "kind": "answerable", "question": "What does the dispatcher do, and which actions does it refuse?", "expected": [["docs/phase4b-summary.md#The dispatcher and the input store", "docs/architecture.md#The parts", "docs/architecture.md#The decisions, and why", "transcript:scene-9"]]},
+    {"id": "b02", "kind": "answerable", "question": "How many policy refusals has the ledger recorded?", "expected": [["transcript:scene-4", "docs/project-summary.md#Key numbers"]]},
+    {"id": "b03", "kind": "answerable", "question": "How many false positives did the clean cut have before and after tuning in phase 1?", "expected": [["docs/phase1-summary.md#v1, v2 and v2.1", "docs/lessons.md#Evaluation", "docs/phase1-summary.md#Five lessons"]]},
+    {"id": "b04", "kind": "answerable", "question": "What did the toxicologist decide about the deaths PRE-0221 and PRE-0222?", "expected": [["docs/phase5-summary.md#Human decisions recorded in phase 5, and by whom"]]},
+    {"id": "b05", "kind": "answerable", "question": "How are a pass's inputs held in the cluster on GKE?", "expected": [["docs/phase4b-summary.md#The dispatcher and the input store", "docs/architecture.md#Where it differs from the plan, and why", "docs/lessons.md#Containment"]]},
+    {"id": "b06", "kind": "answerable", "question": "What limits throughput on GKE?", "expected": [["docs/phase4b-summary.md#Gaps", "docs/phase4b-summary.md#Measurements, kind and GKE", "docs/lessons.md#Operations", "docs/project-summary.md#Key numbers"]]},
+    {"id": "b07", "kind": "answerable", "question": "Does the gate pack give a verdict, and who records the gate decision?", "expected": [["transcript:scene-7", "docs/architecture.md#The decisions, and why", "docs/lessons.md#People and attribution", "docs/phase5-summary.md#Lessons"]]},
+    {"id": "b08", "kind": "answerable", "question": "Why did the local narrator lose most of its summaries before the host wrote the opening?", "expected": [["docs/lessons.md#People and attribution", "docs/phase3-summary.md#Ten lessons", "docs/phase3-summary.md#Evaluation, including the misses"]]},
+    {"id": "b09", "kind": "answerable", "question": "What happened when a new signal scout version reran an old scan request?", "expected": [["docs/lessons.md#Operations", "docs/project-summary.md#The misses, as plainly", "docs/phase5-summary.md#Human decisions recorded in phase 5, and by whom"]]},
+    {"id": "b10", "kind": "answerable", "question": "How long does a sandboxed OpenShell run take compared with an in-process run?", "expected": [["docs/phase2-summary.md#Costs and timings", "docs/phase3-summary.md#Costs and timings"]]},
+    {"id": "v01", "kind": "uncovered", "question": "How do I connect the fleet to Veeva Vault?", "expected": "decline"},
+    {"id": "v02", "kind": "uncovered", "question": "Does the Command Center integrate with Medidata Rave?", "expected": "decline"},
+    {"id": "v03", "kind": "uncovered", "question": "Can the ledger be stored in Snowflake?", "expected": "decline"},
+    {"id": "v04", "kind": "uncovered", "question": "How is the fleet deployed on Amazon EKS?", "expected": "decline"},
+    {"id": "v05", "kind": "uncovered", "question": "Which Salesforce objects does the portfolio page sync?", "expected": "decline"},
+    {"id": "v06", "kind": "uncovered", "question": "What is the half-life of xanomeline in humans?", "expected": "decline"},
+    {"id": "v07", "kind": "uncovered", "question": "What dose adjustment is recommended for patients with kidney impairment?", "expected": "decline"},
+    {"id": "v08", "kind": "uncovered", "question": "How many patients have enrolled in the MRD-301 ulcerative colitis trial?", "expected": "decline"},
+    {"id": "v09", "kind": "uncovered", "question": "What were the overall survival results?", "expected": "decline"},
+    {"id": "v10", "kind": "uncovered", "question": "Which countries have approved the drug?", "expected": "decline"}
+  ]
+}

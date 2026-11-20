@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# The full suite before every push (scripts/check.sh): everything the pre-commit hook
+# runs, plus the API, property and contract tests, the web tests and the generated API
+# types. CI runs the same and the policy prover. A failing check stops the push.
+# Enabled per clone with: git config core.hooksPath .githooks (never --global).
+# It checks the working tree: push from a clean tree so it checks what you push.
+set -euo pipefail
+cat >/dev/null  # the refs git sends on stdin; the check is of the working tree
+exec "$(git rev-parse --show-toplevel)/scripts/check.sh"

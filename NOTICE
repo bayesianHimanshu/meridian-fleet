@@ -1,0 +1,36 @@
+Meridian Agent Fleet. Copyright 2026 Himanshu.
+
+This product is licensed under the Apache License, Version 2.0 (LICENSE). The Apache
+License 2.0 covers this project's code and documentation. It does not cover the CDISC pilot
+data or values derived from it, which remain under CDISC's terms; meridian data fetch
+downloads the data from CDISC's repository.
+
+Third-party material (details and where each licence was confirmed: docs/third-party.md):
+
+CDISC SDTM/ADaM Pilot Project data (CDISCPILOT01). Study MRD-201 is derived from the CDISC
+SDTM/ADaM Pilot Project data (CDISCPILOT01), relabelled and with synthetic additions, used
+under CDISC's terms of use. It is not a real study, and this project is not affiliated with
+or endorsed by CDISC. The data is not in this repository: meridian data fetch downloads it
+from https://github.com/cdisc-org/sdtm-adam-pilot-project.
+
+PHUSE PointCross SEND study (PC201708), from phuse-org/phuse-scripts, commit
+398a6d33ced9359ffb58c46650a6d488811176b1, MIT License. Downloaded by meridian preclinical
+fetch, not in this repository; MRD-101-TOX-01 is this study relabelled.
+
+openFDA. Adverse event reports and labeling are from openFDA (CC0). No endorsement by the
+FDA or the manufacturer is implied. Quotations from the US label of xanomeline and trospium
+chloride are short and cited with the label's openFDA set id and version.
+
+MedDRA, the Medical Dictionary for Regulatory Activities terminology, is the international
+medical terminology developed under the auspices of ICH. The MedDRA trademark is registered
+by ICH. This project includes only individual terms as they appear in public FAERS and CDISC
+pilot data, not the dictionary.
+
+IBM Plex fonts (web/public/fonts), Copyright 2017 IBM Corp., SIL Open Font License 1.1
+(web/public/fonts/LICENSE-IBM-Plex.txt).
+
+Demo narration (in the published video only, not in this repository): Narration voice:
+Piper en_US-libritts-high, trained on LibriTTS (CC BY 4.0). Zen, H., Dang, V., Clark, R.,
+Zhang, Y., Weiss, R. J., Jia, Y., Chen, Z. and Wu, Y. (2019). LibriTTS: A Corpus Derived
+from LibriSpeech for Text-to-Speech. Interspeech 2019. Piper (GPL-3.0-or-later) is not
+distributed with this project; it is installed separately as a uv tool.

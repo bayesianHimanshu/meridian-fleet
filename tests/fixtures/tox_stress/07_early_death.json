@@ -1,0 +1,28 @@
+{
+  "actual": {
+    "1.0.0": [],
+    "1.1.0": [
+      "unscheduled_death:SYN-TOX-01-4001"
+    ]
+  },
+  "case": "early_death",
+  "description": "One high-dose male is a moribund sacrifice on day 30: no terminal clinical pathology or organ weights, no final body weight. Ideal: nothing (one death is not dose-related, and its missing values are left out, not an error).",
+  "ideal": {
+    "1.0.0": [],
+    "1.1.0": [
+      "unscheduled_death:SYN-TOX-01-4001"
+    ]
+  },
+  "spec": {
+    "edits": [
+      {
+        "animal": 0,
+        "day": 30,
+        "group": 3,
+        "kind": "death",
+        "sex": "M"
+      }
+    ],
+    "seed": 17
+  }
+}

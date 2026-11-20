@@ -1,0 +1,40 @@
+{
+  "actual": {
+    "1.0.0": [
+      "data_quality:unit_mismatch:lb:GLUC",
+      "pairwise_change:bw:BW:M:main"
+    ],
+    "1.1.0": [
+      "data_quality:unit_mismatch:lb:GLUC",
+      "pairwise_change:bw:BW:M:main"
+    ]
+  },
+  "case": "unit_change_in_lb",
+  "description": "Three low-dose males have glucose recorded in mmol/L (value x 0.0555) while every other value is mg/dL. Ideal: a data-quality finding for the unit, those records left out, and no glucose finding.",
+  "ideal": {
+    "1.0.0": [
+      "data_quality:unit_mismatch:lb:GLUC"
+    ],
+    "1.1.0": [
+      "data_quality:unit_mismatch:lb:GLUC"
+    ]
+  },
+  "spec": {
+    "edits": [
+      {
+        "animals": [
+          0,
+          1,
+          2
+        ],
+        "factor": 0.0555,
+        "group": 1,
+        "kind": "lb_unit",
+        "sex": "M",
+        "test": "GLUC",
+        "unit": "mmol/L"
+      }
+    ],
+    "seed": 20
+  }
+}

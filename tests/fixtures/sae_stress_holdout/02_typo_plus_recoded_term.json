@@ -1,0 +1,53 @@
+{
+  "case": "typo_plus_recoded_term",
+  "control": false,
+  "description": "The case's subject id has one wrong digit (201-9202-018 for 201-9202-019, not enrolled) and the safety database coded the event to another preferred term (FACE OEDEMA for SWELLING FACE). Same site and onset.",
+  "dm": [
+    {
+      "USUBJID": "201-9202-019",
+      "SITEID": "9202"
+    },
+    {
+      "USUBJID": "201-9202-007",
+      "SITEID": "9202"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9202-019",
+      "AESEQ": 1,
+      "AETERM": "swelling face",
+      "AEDECOD": "SWELLING FACE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-07-08",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "PROBABLE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO02A",
+      "USUBJID": "201-9202-018",
+      "SITEID": "9202",
+      "REPORTED_TERM": "swollen face",
+      "PREFERRED_TERM": "FACE OEDEMA",
+      "ONSET": "2025-07-08",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-07-08T15:00:00+00:00",
+      "RECEIPT_DTC": "2025-07-08T20:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "sae_subject_mismatch:SC-HO02A"
+  ],
+  "ideal_note": "One finding: the case's subject is not enrolled and is probably 201-9202-019; the term difference belongs in its evidence. Not a missing case plus an orphan.",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO02A",
+      "sae_missing_in_safety_db:201-9202-019/1"
+    ]
+  }
+}

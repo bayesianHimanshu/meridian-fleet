@@ -1,0 +1,25 @@
+{
+  "name": "single_dose_trial",
+  "description": "A single-dose trial and no chromosomal damage test: that requirement is for multiple-dose trials only.",
+  "base": "complete",
+  "changes": [
+    {
+      "drop": "MRD-101-GT-02"
+    }
+  ],
+  "trial": {
+    "multiple_dose": false
+  },
+  "ideal": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  }
+}

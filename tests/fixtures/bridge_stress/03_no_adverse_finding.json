@@ -1,0 +1,50 @@
+{
+  "name": "no_adverse_finding",
+  "description": "NOAEL at the top dose (200), no LOAEL, no finding cited.",
+  "study_id": "MRD-101-TOX-01",
+  "decisions": [
+    {
+      "seq": 10,
+      "decision_id": "NOAEL-00000000000a",
+      "sex": "combined",
+      "established": true,
+      "noael_dose": 200.0,
+      "loael_dose": null,
+      "dose_unit": "mg/kg/day",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "recorded_at": "2026-11-19T00:00:00+00:00",
+      "finding_ids": []
+    }
+  ],
+  "findings": [],
+  "proposal": {
+    "finding_id": "PRE-0900",
+    "seq": 200,
+    "status": "accepted",
+    "decided_by": "karan.mehta",
+    "starting_dose_mg": 193.54838709677418,
+    "mrsd_mg_per_kg": 3.225806451612903,
+    "human_weight_kg": 60.0,
+    "basis_decision_id": "NOAEL-00000000000a",
+    "check": "dose_proposal"
+  },
+  "ideal": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {},
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": null
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {},
+      "unmapped": [],
+      "noael_ratio": 10.0,
+      "loael_ratio": null
+    }
+  }
+}

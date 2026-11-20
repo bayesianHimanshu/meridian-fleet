@@ -1,0 +1,386 @@
+{
+  "computed_at_seq": 20158,
+  "first_recorded_at": "2026-11-07T07:47:20.354929+00:00",
+  "last_recorded_at": "2026-11-20T07:08:37.987984+00:00",
+  "verification": {
+    "ok": true,
+    "events_checked": 20158,
+    "first_broken_seq": null,
+    "problem": null
+  },
+  "events": {
+    "total": 20158,
+    "by_type": {
+      "actor_woke": 8559,
+      "actor_suspended": 8543,
+      "finding_raised": 1334,
+      "policy_denied": 844,
+      "finding_narrative": 517,
+      "data_cut": 182,
+      "containment_check_completed": 108,
+      "finding_assessment": 30,
+      "noael_decision": 17,
+      "human_decision": 9,
+      "audit_review_requested": 5,
+      "signal_scan_requested": 2,
+      "attribution_correction": 1,
+      "gate_decision": 1,
+      "gate_pack": 1,
+      "gate_request": 1,
+      "inventory_loaded": 1,
+      "portfolio_outlook": 1,
+      "portfolio_review_requested": 1,
+      "send_study_loaded": 1
+    }
+  },
+  "findings": {
+    "total": 1334,
+    "by_zone": {
+      "safety": 489,
+      "rbqm": 336,
+      "preclinical": 237,
+      "quality": 178,
+      "portfolio": 94
+    },
+    "by_agent_version": {
+      "portfolio.safety_signal_scout 1.0.0": 76,
+      "portfolio.safety_signal_scout 1.0.1": 18,
+      "preclinical.dose_translation 1.0.0": 1,
+      "preclinical.ind_readiness 1.0.0": 4,
+      "preclinical.tox_study_monitor 1.0.0": 133,
+      "preclinical.tox_study_monitor 1.1.0": 98,
+      "preclinical.translational_bridge 1.0.0": 1,
+      "quality.audit_trail_reviewer 1.0.0": 7,
+      "quality.audit_trail_reviewer 1.1.0": 7,
+      "quality.audit_trail_reviewer 1.2.0": 7,
+      "quality.audit_trail_reviewer 1.3.0": 8,
+      "quality.tmf_completeness 1.0.0": 149,
+      "rbqm.csm 1.0.0": 26,
+      "rbqm.csm 2.0.0": 4,
+      "rbqm.csm 2.1.0": 4,
+      "rbqm.kri_monitor 1.0.0": 10,
+      "rbqm.kri_monitor 2.0.0": 34,
+      "rbqm.kri_monitor 2.1.0": 46,
+      "rbqm.kri_monitor 2.2.0": 196,
+      "rbqm.qtl_detector 1.0.0": 2,
+      "rbqm.qtl_detector 2.0.0": 7,
+      "rbqm.qtl_detector 2.1.0": 7,
+      "safety.sae_reconciler 1.0.0": 158,
+      "safety.sae_reconciler 1.1.0": 158,
+      "safety.sae_reconciler 1.1.1": 173
+    },
+    "by_status": {
+      "open (no decision)": 1325,
+      "accepted": 5,
+      "dismissed": 4
+    },
+    "by_zone_and_status": {
+      "portfolio": {
+        "open (no decision)": 94
+      },
+      "preclinical": {
+        "open (no decision)": 230,
+        "accepted": 4,
+        "dismissed": 3
+      },
+      "quality": {
+        "open (no decision)": 178
+      },
+      "rbqm": {
+        "open (no decision)": 334,
+        "accepted": 1,
+        "dismissed": 1
+      },
+      "safety": {
+        "open (no decision)": 489
+      }
+    },
+    "raised_by_a_person_by_role": {}
+  },
+  "human_decisions": {
+    "total": 28,
+    "by_role_and_action": {
+      "toxicologist: noael_decision": 17,
+      "toxicologist: dismissed": 3,
+      "medical_monitor: accepted": 2,
+      "toxicologist: accepted": 2,
+      "clinical_ops_lead: accepted": 1,
+      "clinical_ops_lead: dismissed": 1,
+      "portfolio_lead: gate_decision:conditional_go": 1,
+      "portfolio_lead: gate_request": 1
+    },
+    "seqs": {
+      "clinical_ops_lead: accepted": "787",
+      "clinical_ops_lead: dismissed": "788",
+      "medical_monitor: accepted": "19966, 20067",
+      "portfolio_lead: gate_decision:conditional_go": "20158",
+      "portfolio_lead: gate_request": "20143",
+      "toxicologist: accepted": "20141 to 20142",
+      "toxicologist: dismissed": "19944 to 19946",
+      "toxicologist: noael_decision": "19927 to 19943"
+    },
+    "attribution_corrections": [
+      {
+        "seq": 20068,
+        "corrects_seq": 19985,
+        "field": "requested_by"
+      }
+    ]
+  },
+  "runs": {
+    "completed": 8543,
+    "started": 8559,
+    "started_not_completed": 16,
+    "by_executor": {
+      "substrate (kind)": 6387,
+      "substrate (gke)": 910,
+      "inprocess": 632,
+      "openshell": 492,
+      "inprocess (phase 1, before sandboxes)": 122
+    },
+    "by_cut_scope": {
+      "evaluation": 8469,
+      "operational": 74
+    },
+    "by_executor_and_scope": {
+      "inprocess": {
+        "evaluation": 632
+      },
+      "inprocess (phase 1, before sandboxes)": {
+        "evaluation": 115,
+        "operational": 7
+      },
+      "openshell": {
+        "evaluation": 481,
+        "operational": 11
+      },
+      "substrate (gke)": {
+        "evaluation": 905,
+        "operational": 5
+      },
+      "substrate (kind)": {
+        "evaluation": 6336,
+        "operational": 51
+      }
+    }
+  },
+  "containment": {
+    "policy_refusals_recorded": 844,
+    "policy_refusals_by_source": {
+      "harness": 520,
+      "substrate_log": 228,
+      "openshell_log": 89,
+      "substrate_authz": 4,
+      "runner_guard": 3
+    },
+    "policy_refusals_by_zone": {
+      "quality": 215,
+      "rbqm": 171,
+      "safety": 163,
+      "safety_local": 69,
+      "preclinical": 59,
+      "portfolio_signal": 51,
+      "portfolio": 43,
+      "study_ops": 35,
+      "unblinded": 31,
+      "unrecorded": 7
+    },
+    "conformance_runs": {
+      "openshell: passed": 60,
+      "substrate: passed": 44,
+      "substrate: failed": 4
+    }
+  },
+  "leak_checks": {
+    "note": "result files, not ledger events",
+    "run": 13,
+    "passed": 11,
+    "by_cluster": {
+      "gke": 7,
+      "kind": 6
+    },
+    "files": [
+      {
+        "file": "var/leakcheck/gke-20261114T074818Z.json",
+        "cluster": "gke",
+        "passed": true,
+        "runs": 20,
+        "sources": 7,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/gke-20261114T080254Z.json",
+        "cluster": "gke",
+        "passed": true,
+        "runs": 24,
+        "sources": 7,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/gke-20261114T143939Z.json",
+        "cluster": "gke",
+        "passed": true,
+        "runs": 20,
+        "sources": 8,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/gke-20261114T145207Z.json",
+        "cluster": "gke",
+        "passed": true,
+        "runs": 24,
+        "sources": 8,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/gke-20261114T154231Z.json",
+        "cluster": "gke",
+        "passed": true,
+        "runs": 24,
+        "sources": 9,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/gke-20261114T160450Z.json",
+        "cluster": "gke",
+        "passed": false,
+        "runs": 24,
+        "sources": 8,
+        "failures": [
+          "dispatcher pod: positive control not found (the marker in /tmp/meridian-leakcheck-control)"
+        ]
+      },
+      {
+        "file": "var/leakcheck/gke-20261114T163138Z.json",
+        "cluster": "gke",
+        "passed": true,
+        "runs": 24,
+        "sources": 8,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/kind-20261113T201716Z.json",
+        "cluster": "kind",
+        "passed": true,
+        "runs": 20,
+        "sources": 5,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/kind-20261113T201841Z.json",
+        "cluster": "kind",
+        "passed": true,
+        "runs": 24,
+        "sources": 5,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/kind-20261114T105902Z.json",
+        "cluster": "kind",
+        "passed": true,
+        "runs": 24,
+        "sources": 6,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/kind-20261115T081613Z.json",
+        "cluster": "kind",
+        "passed": false,
+        "runs": 20,
+        "sources": 6,
+        "failures": [
+          "bucket: non_golden_tags ['10bf7a8a-8840-45ce-813f-5b473151c05c', '4419515b-16c3-443b-9d21-9539b9981e9c', '561be7ad-eb06-45c9-a1cb-7eeabc4a325b', '5b9905d5-b6c6-"
+        ]
+      },
+      {
+        "file": "var/leakcheck/kind-20261115T081914Z.json",
+        "cluster": "kind",
+        "passed": true,
+        "runs": 20,
+        "sources": 6,
+        "failures": []
+      },
+      {
+        "file": "var/leakcheck/kind-20261119T202520Z.json",
+        "cluster": "kind",
+        "passed": true,
+        "runs": 20,
+        "sources": 6,
+        "failures": []
+      }
+    ],
+    "phase4a_canary_files": [
+      "var/substrate/canary-dispatcher.json",
+      "var/substrate/canary.json"
+    ]
+  },
+  "agents": {
+    "portfolio.pipeline_intelligence": [
+      "1.0.0"
+    ],
+    "portfolio.safety_signal_scout": [
+      "1.0.0",
+      "1.0.1"
+    ],
+    "portfolio.stage_gate_pack": [
+      "1.0.0"
+    ],
+    "preclinical.dose_translation": [
+      "1.0.0"
+    ],
+    "preclinical.ind_readiness": [
+      "1.0.0"
+    ],
+    "preclinical.tox_study_monitor": [
+      "1.0.0",
+      "1.1.0"
+    ],
+    "preclinical.translational_bridge": [
+      "1.0.0"
+    ],
+    "quality.audit_trail_reviewer": [
+      "1.0.0",
+      "1.1.0",
+      "1.2.0",
+      "1.3.0"
+    ],
+    "quality.tmf_completeness": [
+      "1.0.0"
+    ],
+    "rbqm.csm": [
+      "1.0.0",
+      "2.0.0",
+      "2.1.0"
+    ],
+    "rbqm.kri_monitor": [
+      "1.0.0",
+      "2.0.0",
+      "2.1.0",
+      "2.2.0"
+    ],
+    "rbqm.narrator": [
+      "1.0.0",
+      "1.1.0",
+      "1.1.1"
+    ],
+    "rbqm.qtl_detector": [
+      "1.0.0",
+      "2.0.0",
+      "2.1.0"
+    ],
+    "safety.local_narrator": [
+      "1.0.0",
+      "1.0.1",
+      "1.0.2"
+    ],
+    "safety.sae_reconciler": [
+      "1.0.0",
+      "1.1.0",
+      "1.1.1"
+    ],
+    "safety.term_adjudicator": [
+      "1.1.0",
+      "1.1.1"
+    ]
+  }
+}

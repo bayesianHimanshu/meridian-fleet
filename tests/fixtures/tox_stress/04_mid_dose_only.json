@@ -1,0 +1,38 @@
+{
+  "actual": {
+    "1.0.0": [
+      "pairwise_change:lb:GLUC:F:main",
+      "pairwise_change:lb:GLUC:M:main"
+    ],
+    "1.1.0": [
+      "pairwise_change:lb:GLUC:F:main",
+      "pairwise_change:lb:GLUC:M:main"
+    ]
+  },
+  "case": "mid_dose_only",
+  "description": "Glucose 45% higher at the mid dose only, normal at the high dose (non-monotonic). Ideal: a change without a trend in each sex, not called dose-related.",
+  "ideal": {
+    "1.0.0": [
+      "pairwise_change:lb:GLUC:F:main",
+      "pairwise_change:lb:GLUC:M:main"
+    ],
+    "1.1.0": [
+      "pairwise_change:lb:GLUC:F:main",
+      "pairwise_change:lb:GLUC:M:main"
+    ]
+  },
+  "spec": {
+    "effects": [
+      {
+        "endpoint": "lb:GLUC",
+        "factors": [
+          1,
+          1,
+          1.45,
+          1
+        ]
+      }
+    ],
+    "seed": 14
+  }
+}

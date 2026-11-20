@@ -1,0 +1,82 @@
+{
+  "case": "person_named_outside_api",
+  "description": "Phase 5 step 3b. A signal scan recorded from the CLI naming a person as requested_by (seq 2, step 3a's mistake), corrected at seq 4; a decision whose event actor is an agent, not the person deciding (seq 3); an operator's scan (seq 5) and an API decision (seq 6) are clean.",
+  "through_seq": 6,
+  "rows": [
+    {
+      "SEQ": 1,
+      "TYPE": "data_cut",
+      "RECORDED_AT": "2026-11-07T10:00:00+00:00",
+      "ACTOR": "meridian.ingest",
+      "CUT_ID": "DC-BASE",
+      "CUT_SCOPE": "operational",
+      "ENVELOPE_ACTOR": "meridian.ingest",
+      "ENVELOPE_KIND": "system"
+    },
+    {
+      "SEQ": 2,
+      "TYPE": "signal_scan_requested",
+      "RECORDED_AT": "2026-11-07T10:02:00+00:00",
+      "ACTOR": "meridian.signals",
+      "ENVELOPE_ACTOR": "meridian.signals",
+      "ENVELOPE_KIND": "system",
+      "NAMED": "[[\"requested_by\", \"karan.mehta\", \"person\"]]"
+    },
+    {
+      "SEQ": 3,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T10:03:00+00:00",
+      "ACTOR": "asha.rao",
+      "ROLE": "medical_monitor",
+      "FINDING_ID": "RBQM-0001",
+      "DECISION_ACTION": "dismissed",
+      "DECISION_REASON": "Checked against the source; the deviation was logged in error at the site.",
+      "ENVELOPE_ACTOR": "rbqm.csm",
+      "ENVELOPE_KIND": "agent",
+      "NAMED": "[[\"decision.actor\", \"asha.rao\", \"person\"]]"
+    },
+    {
+      "SEQ": 4,
+      "TYPE": "attribution_correction",
+      "RECORDED_AT": "2026-11-07T10:04:00+00:00",
+      "ACTOR": "operator:himanshu",
+      "ENVELOPE_ACTOR": "operator:himanshu",
+      "ENVELOPE_KIND": "operator",
+      "NAMED": "[[\"corrected_by\", \"operator:himanshu\", \"operator\"]]",
+      "CORRECTS_SEQ": 2
+    },
+    {
+      "SEQ": 5,
+      "TYPE": "signal_scan_requested",
+      "RECORDED_AT": "2026-11-07T10:05:00+00:00",
+      "ACTOR": "operator:himanshu",
+      "ENVELOPE_ACTOR": "operator:himanshu",
+      "ENVELOPE_KIND": "operator",
+      "NAMED": "[[\"requested_by\", \"operator:himanshu\", \"operator\"]]"
+    },
+    {
+      "SEQ": 6,
+      "TYPE": "human_decision",
+      "RECORDED_AT": "2026-11-07T10:06:00+00:00",
+      "ACTOR": "karan.mehta",
+      "ROLE": "medical_monitor",
+      "FINDING_ID": "RBQM-0002",
+      "DECISION_ACTION": "dismissed",
+      "DECISION_REASON": "Checked against the source; the deviation was logged in error at the site.",
+      "ENVELOPE_ACTOR": "karan.mehta",
+      "ENVELOPE_KIND": "person",
+      "NAMED": "[[\"decision.actor\", \"karan.mehta\", \"person\"]]"
+    }
+  ],
+  "ideal": "Two audit_person_attribution_outside_api findings: seq 2 (with its correction at seq 4 as evidence) and seq 3. Nothing for 4, 5 or 6.",
+  "ideal_findings": [
+    "audit_person_attribution_outside_api:2",
+    "audit_person_attribution_outside_api:3"
+  ],
+  "actual": {
+    "1.3.0": [
+      "audit_person_attribution_outside_api:2",
+      "audit_person_attribution_outside_api:3"
+    ]
+  }
+}

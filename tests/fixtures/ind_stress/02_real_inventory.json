@@ -1,0 +1,28 @@
+{
+  "name": "real_inventory",
+  "description": "MRD-101's committed inventory as it is.",
+  "base": "real",
+  "changes": [],
+  "ideal": {
+    "1.0.0": {
+      "findings": [
+        "glp_status_missing:safety_pharmacology_respiratory:MRD-101-SP-03",
+        "report_not_ready:repeat_dose_nonrodent:MRD-101-TOX-02",
+        "report_not_ready:toxicokinetics_nonrodent:MRD-101-TOX-02-TK",
+        "required_study_missing:in_vitro_metabolism_protein_binding"
+      ],
+      "percent_met": 63.6
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "glp_status_missing:safety_pharmacology_respiratory:MRD-101-SP-03",
+        "report_not_ready:repeat_dose_nonrodent:MRD-101-TOX-02",
+        "report_not_ready:toxicokinetics_nonrodent:MRD-101-TOX-02-TK",
+        "required_study_missing:in_vitro_metabolism_protein_binding"
+      ],
+      "percent_met": 63.6
+    }
+  }
+}

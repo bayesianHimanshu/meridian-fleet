@@ -1,0 +1,139 @@
+# From a target organ or effect in the nonclinical studies to Phase 1 monitoring (phase 5
+# step 3a), read by preclinical.translational_bridge. Every measure, frequency, review and
+# stopping item quotes its source with its section; where a source sets no frequency or no
+# stopping threshold, the entry says so instead of inventing one. Sources, read in full for
+# this step (FDA editions; sha256 of each PDF in docs/translational-notes.md):
+#   FDA 2009 DILI: Guidance for Industry, Drug-Induced Liver Injury: Premarketing Clinical
+#     Evaluation (July 2009)
+#   ICH E14: Guidance for Industry, E14 Clinical Evaluation of QT/QTc Interval Prolongation
+#     and Proarrhythmic Potential for Non-Antiarrhythmic Drugs (FDA, October 2005)
+#   FDA 2007 grading scale: Guidance for Industry, Toxicity Grading Scale for Healthy Adult
+#     and Adolescent Volunteers Enrolled in Preventive Vaccine Clinical Trials (September
+#     2007). Written for vaccine trials; used here for its healthy-volunteer laboratory
+#     grades, which is what MRD-101's first-in-human study enrols.
+#   CTCAE v5.0: NCI, Common Terminology Criteria for Adverse Events v5.0 (November 27, 2017).
+#     A grading scale, not a monitoring guide: its grades are cited as review prompts.
+#
+# matches: endpoint prefixes of preclinical.tox_study_monitor's checks (for example
+# "mi:LIVER:" or "lb:ALT"); a finding whose endpoint matches no entry is reported as
+# unmapped. Quotes are exact (whitespace normalised; typographic quotes as printed).
+
+[basis]
+source = "FDA 2007 grading scale"
+section = "III"
+quote = "For example, additional parameters might be added based on one or more of the following: safety signals observed in pre-clinical toxicology studies, the biological plausibility of the occurrence of certain adverse events, or previous experience with a similar licensed product."
+
+[[organs]]
+id = "liver"
+label = "Liver"
+matches = ["mi:LIVER:", "ma:LIVER", "om:LIVER", "lb:ALT", "lb:AST", "lb:ALP", "lb:BILI", "lb:TBILI", "lb:GGT", "neoplasm:mi:LIVER:"]
+measure = "ALT, AST, ALP and total bilirubin; INR and direct bilirubin when they are abnormal"
+frequency = "Before dosing and after the last dose for short treatment courses; every 2 to 4 weeks in longer early trials"
+review = "ALT or AST above 3 x ULN: repeat ALT, AST, ALP and total bilirubin within 48 to 72 hours, then close observation (two or three times weekly)"
+stopping = "Consider stopping if ALT or AST > 8 x ULN; > 5 x ULN for more than 2 weeks; > 3 x ULN with total bilirubin > 2 x ULN or INR > 1.5; or > 3 x ULN with fatigue, nausea, vomiting, right upper quadrant pain or tenderness, fever, rash, or eosinophilia (> 5%)"
+
+[[organs.sources]]
+source = "FDA 2009 DILI"
+section = "IV.A.2"
+quote = "In general, early trials of a drug in trial subjects with presumably normal liver function should involve obtaining liver enzyme (ALT, AST, ALP) and bilirubin tests every 2 to 4 weeks, at least for a few months. For drugs being studied with short treatment courses, both baseline and post-treatment liver enzyme testing should be performed, since there may be a gap between the end of treatment and the onset of liver injury."
+
+[[organs.sources]]
+source = "FDA 2009 DILI"
+section = "IV.A.3"
+quote = "In general, an increase of serum AT to >3xULN should be followed by repeat testing within 48 to 72 hours of all four of the usual serum measures (ALT, AST, ALP, and TBL) to confirm the abnormalities and to determine if they are increasing or decreasing."
+
+[[organs.sources]]
+source = "FDA 2009 DILI"
+section = "IV.A.4"
+quote = "Repeating liver enzyme and serum bilirubin tests two or three times weekly."
+
+[[organs.sources]]
+source = "FDA 2009 DILI"
+section = "IV.A.5"
+quote = "Discontinuation of treatment should be considered if: • ALT or AST >8xULN • ALT or AST >5xULN for more than 2 weeks • ALT or AST >3xULN and (TBL >2xULN or INR >1.5) • ALT or AST >3xULN with the appearance of fatigue, nausea, vomiting, right upper quadrant pain or tenderness, fever, rash, and/or eosinophilia (>5%)"
+
+[[organs]]
+id = "heart"
+label = "Heart (myocardium)"
+matches = ["mi:HEART:", "ma:HEART", "om:HEART", "lb:TROP", "lb:CTNI", "lb:CTNT", "lb:CK"]
+measure = "12-lead ECG with QTc; cardiac troponin (I or T)"
+frequency = "ECG at baseline and periodically on treatment; the cited sources set no frequency for troponin"
+review = "QTc above 450 ms (CTCAE grade 1); troponin above the upper limit of normal (CTCAE grade 1)"
+stopping = "Consider discontinuation for QTc > 500 ms or an increase > 60 ms over baseline; troponin at levels consistent with myocardial infarction is CTCAE grade 3 (no stopping rule for troponin is cited)"
+
+[[organs.sources]]
+source = "ICH E14"
+section = "II.C (2.3)"
+quote = "the collection of baseline and periodic on-therapy ECGs in accordance with the current investigational practices in each therapeutic field is almost always sufficient evaluation during subsequent stages of drug development."
+
+[[organs.sources]]
+source = "ICH E14"
+section = "II.A.2 (2.1.2)"
+quote = "While increases in QT/QTc to >500 ms or of >60 ms over baseline are commonly used as thresholds for potential discontinuation, the exact criteria chosen for a given trial will depend on the risk-tolerance level considered appropriate for the indication and patient group in question."
+
+[[organs.sources]]
+source = "CTCAE v5.0"
+section = "Investigations: Cardiac troponin I increased; Cardiac troponin T increased"
+quote = "Levels above the upper limit of normal and below the level of myocardial infarction as defined by the manufacturer"
+
+[[organs.sources]]
+source = "CTCAE v5.0"
+section = "Investigations: Electrocardiogram QT corrected interval prolonged"
+quote = "Average QTc 450 - 480 ms"
+
+[[organs]]
+id = "kidney"
+label = "Kidney"
+matches = ["mi:KIDNEY:", "ma:KIDNEY", "om:KIDNEY", "lb:CREAT", "lb:BUN", "lb:UREAN"]
+measure = "Serum creatinine and blood urea nitrogen"
+frequency = "The cited sources set no frequency: at the protocol's safety laboratory visits"
+review = "Creatinine 1.5 to 1.7 mg/dL or BUN 23 to 26 mg/dL (FDA 2007 grade 1, mild); creatinine above 1.5 x baseline (CTCAE grade 2)"
+stopping = "No stopping threshold is cited; creatinine 2.1 to 2.5 mg/dL is FDA 2007 grade 3 (severe)"
+
+[[organs.sources]]
+source = "FDA 2007 grading scale"
+section = "III.B, Serum: Creatinine"
+quote = "Creatinine – mg/dL 1.5 – 1.7 1.8 – 2.0 2.1 – 2.5 > 2.5 or requires dialysis"
+
+[[organs.sources]]
+source = "FDA 2007 grading scale"
+section = "III.B, Serum: Blood Urea Nitrogen"
+quote = "Blood Urea Nitrogen 23 – 26 27 – 31 > 31 Requires BUN mg/dL dialysis"
+
+[[organs.sources]]
+source = "CTCAE v5.0"
+section = "Investigations: Creatinine increased"
+quote = ">1.5 - 3.0 x baseline"
+
+[[organs]]
+id = "haematology"
+label = "Haematology (red cells, white cells)"
+matches = ["lb:RBC", "lb:HGB", "lb:HCT", "lb:RETI", "lb:WBC", "lb:NEUT", "lb:LYM", "lb:PLAT", "lb:PLT", "lb:RDW", "lb:BASO", "lb:EOS", "lb:MONO", "lb:LGUNSCE"]
+measure = "Complete blood count: haemoglobin, haematocrit, red cells, white cells with differential, platelets"
+frequency = "The cited sources set no frequency: at the protocol's safety laboratory visits"
+review = "Haemoglobin decrease from baseline up to 1.5 g/dL is FDA 2007 grade 1, 1.6 to 2.0 g/dL grade 2; white cells 2,500 to 3,500 /mm3 grade 1"
+stopping = "No stopping threshold is cited; a haemoglobin decrease of 2.1 to 5.0 g/dL is FDA 2007 grade 3 (severe)"
+
+[[organs.sources]]
+source = "FDA 2007 grading scale"
+section = "III.B, Hematology: Hemoglobin change from baseline"
+quote = "Hemoglobin (Male) Any decrease – 1.5 1.6 – 2.0 2.1 – 5.0 > 5.0 change from baseline value – gm/dL"
+
+[[organs.sources]]
+source = "FDA 2007 grading scale"
+section = "III.B, Hematology: WBC Decrease"
+quote = "WBC Decrease - cell/mm3 2,500 – 3,500 1,500 – 2,499 1,000 – 1,499 < 1,000"
+
+[[organs]]
+id = "body_weight"
+label = "Body weight"
+matches = ["bw:", "organ_weight_secondary_to_bw:"]
+measure = "Body weight"
+frequency = "The cited source sets no frequency: at the protocol's visits"
+review = "Loss of 5 to under 10% from baseline (CTCAE grade 1)"
+stopping = "No stopping threshold is cited; a loss of 20% or more is CTCAE grade 3"
+
+[[organs.sources]]
+source = "CTCAE v5.0"
+section = "Investigations: Weight loss"
+quote = "5 to <10% from baseline; intervention not indicated"

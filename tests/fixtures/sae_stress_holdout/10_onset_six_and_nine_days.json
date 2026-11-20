@@ -1,0 +1,79 @@
+{
+  "case": "onset_six_and_nine_days",
+  "control": false,
+  "description": "Two subjects, one SAE and one case each, same term: onset 6 days apart for one, 9 days apart for the other.",
+  "dm": [
+    {
+      "USUBJID": "201-9210-002",
+      "SITEID": "9210"
+    },
+    {
+      "USUBJID": "201-9210-003",
+      "SITEID": "9210"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9210-002",
+      "AESEQ": 1,
+      "AETERM": "syncope",
+      "AEDECOD": "SYNCOPE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-01-10",
+      "AEOUT": "RECOVERED/RESOLVED",
+      "AEREL": "NONE"
+    },
+    {
+      "USUBJID": "201-9210-003",
+      "AESEQ": 1,
+      "AETERM": "anaemia",
+      "AEDECOD": "ANAEMIA",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-01-05",
+      "AEOUT": "RECOVERING/RESOLVING",
+      "AEREL": "REMOTE"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO10A",
+      "USUBJID": "201-9210-002",
+      "SITEID": "9210",
+      "REPORTED_TERM": "syncope",
+      "PREFERRED_TERM": "SYNCOPE",
+      "ONSET": "2025-01-16",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED",
+      "CAUSALITY": "NONE",
+      "AWARE_DTC": "2025-01-16T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-01-16T12:00:00+00:00"
+    },
+    {
+      "CASEID": "SC-HO10B",
+      "USUBJID": "201-9210-003",
+      "SITEID": "9210",
+      "REPORTED_TERM": "anaemia",
+      "PREFERRED_TERM": "ANAEMIA",
+      "ONSET": "2025-01-14",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERING/RESOLVING",
+      "CAUSALITY": "REMOTE",
+      "AWARE_DTC": "2025-01-14T09:00:00+00:00",
+      "RECEIPT_DTC": "2025-01-14T12:00:00+00:00"
+    }
+  ],
+  "ideal": [
+    "onset_mismatch:201-9210-002/1",
+    "onset_mismatch:201-9210-003/1"
+  ],
+  "ideal_note": "Two onset mismatches: each is the subject's only SAE and only case of that term.",
+  "actual": {
+    "1.1.0": [
+      "case_without_clinical_sae:SC-HO10B",
+      "onset_mismatch:201-9210-002/1",
+      "sae_missing_in_safety_db:201-9210-003/1"
+    ]
+  }
+}

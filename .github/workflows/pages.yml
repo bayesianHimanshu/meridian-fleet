@@ -1,0 +1,91 @@
+# The demo page on GitHub Pages (docs/demo/README.md, "Publishing"). The only place the site is
+# assembled: the release's tag is checked out, its three assets are downloaded from the release
+# and checked against docs/demo/assets.sha256, and _site holds exactly the page, the three files
+# and .nojekyll. The video is never committed.
+#
+# A release published by a person's gh login starts this workflow; one created with
+# GITHUB_TOKEN would not (GitHub does not start workflows from GITHUB_TOKEN events).
+name: Pages
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release tag to publish, for example v1.1.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Check the tag
+        run: |
+          set -euo pipefail
+          [[ "${TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "not a release tag: ${TAG}" >&2; exit 1; }
+
+      - name: Check out the release's tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - name: Download the release's assets (read only)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" --dir assets \
+            --pattern demo.mp4 --pattern captions.vtt --pattern transcript.json
+
+      - name: Verify them against docs/demo/assets.sha256
+        run: |
+          set -euo pipefail
+          cd assets
+          sha256sum --check --strict ../docs/demo/assets.sha256
+
+      - name: Build _site
+        run: |
+          set -euo pipefail
+          mkdir _site
+          cp docs/demo/index.html _site/index.html
+          cp assets/demo.mp4 assets/captions.vtt assets/transcript.json _site/
+          touch _site/.nojekyll
+          expected="$(printf '%s\n' .nojekyll captions.vtt demo.mp4 index.html transcript.json)"
+          actual="$(cd _site && find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)"
+          if [ "${actual}" != "${expected}" ]; then
+            echo "_site holds files other than the page, the three assets and .nojekyll" >&2
+            exit 1
+          fi
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload the site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

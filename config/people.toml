@@ -1,0 +1,27 @@
+# Demo people for the Fleet API (development identity only, not authentication).
+# A request names a person in X-Meridian-Actor and a role in X-Meridian-Role; the API
+# accepts it only when the role is this person's role here. Fictional people.
+
+[people."asha.rao"]
+name = "Asha Rao"
+role = "clinical_ops_lead"
+
+[people."karan.mehta"]
+name = "Dr. Karan Mehta"
+role = "medical_monitor"
+
+[people."nina.fernandes"]
+name = "Nina Fernandes"
+role = "qa_auditor"
+
+[people."rahul.iyer"]
+name = "Rahul Iyer"
+role = "portfolio_lead"
+
+[people."leela.nair"]
+name = "Dr. Leela Nair"
+role = "toxicologist"
+
+[people."omar.siddiqui"]
+name = "Dr. Omar Siddiqui"
+role = "unblinded_statistician"

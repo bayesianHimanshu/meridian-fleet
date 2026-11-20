@@ -1,0 +1,52 @@
+# RBQM holdout 2. Generated once from DC-BASE after the AE expectation variant was frozen;
+# always read from this file afterwards. Never used for tuning. The cut id is opaque:
+# DC- plus the first 8 hex characters of sha256 of this file's bytes.
+#
+# Same fault types and parameters as rbqm_core. Sites: every assignment of the five
+# site faults to distinct sites with at least 10 treated subjects (1001, 1003, 1004, 1005, 1008, 1009, 1010, 1016, 1018)
+# that repeats no fault-site pair of rbqm_core, rbqm_holdout or the sweep, in sorted
+# order; 4606 assignments, one picked by the root stream of SeedSequence(20261110).
+#
+# target_rate: base rate 144/254 = 0.5669, plus 0.07, rounded to 3 decimals.
+
+seed = 20261110
+base_cut = "DC-BASE"
+label = "rbqm_holdout2"
+
+[[faults]]
+type = "fabricated_vitals"
+target = "1016"
+[faults.params]
+subject_share = 0.8
+sd_scale = 0.25
+terminal_zero_share = 0.4
+
+[[faults]]
+type = "ae_under_reporting"
+target = "1005"
+[faults.params]
+drop_share = 0.7
+
+[[faults]]
+type = "entry_lag_spike"
+target = "1008"
+[faults.params]
+target_median_days = 14.0
+
+[[faults]]
+type = "query_backlog"
+target = "1001"
+[faults.params]
+target_median_age_days = 40.0
+
+[[faults]]
+type = "deviation_cluster"
+target = "1004"
+[faults.params]
+rate_multiplier = 4.0
+
+[[faults]]
+type = "discontinuation_drift"
+target = "STUDY"
+[faults.params]
+target_rate = 0.637

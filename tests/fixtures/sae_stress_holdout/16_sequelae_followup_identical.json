@@ -1,0 +1,62 @@
+{
+  "case": "sequelae_followup_identical",
+  "control": true,
+  "description": "Control: stroke with sequelae (hospitalisation and disability on both sides); the case has an initial and an identical follow-up version received three weeks later.",
+  "dm": [
+    {
+      "USUBJID": "201-9216-009",
+      "SITEID": "9216"
+    }
+  ],
+  "ae": [
+    {
+      "USUBJID": "201-9216-009",
+      "AESEQ": 1,
+      "AETERM": "ischaemic stroke",
+      "AEDECOD": "ISCHAEMIC STROKE",
+      "AESER": "Y",
+      "AESHOSP": "Y",
+      "AESTDTC": "2025-02-09",
+      "AEOUT": "RECOVERED/RESOLVED WITH SEQUELAE",
+      "AEREL": "PROBABLE",
+      "AESDISAB": "Y"
+    }
+  ],
+  "safety_cases": [
+    {
+      "CASEID": "SC-HO16A",
+      "USUBJID": "201-9216-009",
+      "SITEID": "9216",
+      "REPORTED_TERM": "ischaemic stroke",
+      "PREFERRED_TERM": "ISCHAEMIC STROKE",
+      "ONSET": "2025-02-09",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED WITH SEQUELAE",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-02-10T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-02-10T12:00:00+00:00",
+      "SDISAB": "Y",
+      "CASE_VERSION": 1
+    },
+    {
+      "CASEID": "SC-HO16A",
+      "USUBJID": "201-9216-009",
+      "SITEID": "9216",
+      "REPORTED_TERM": "ischaemic stroke",
+      "PREFERRED_TERM": "ISCHAEMIC STROKE",
+      "ONSET": "2025-02-09",
+      "SHOSP": "Y",
+      "OUTCOME": "RECOVERED/RESOLVED WITH SEQUELAE",
+      "CAUSALITY": "PROBABLE",
+      "AWARE_DTC": "2025-02-10T08:00:00+00:00",
+      "RECEIPT_DTC": "2025-03-03T12:00:00+00:00",
+      "SDISAB": "Y",
+      "CASE_VERSION": 2
+    }
+  ],
+  "ideal": [],
+  "ideal_note": "No finding.",
+  "actual": {
+    "1.1.0": []
+  }
+}

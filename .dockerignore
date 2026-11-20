@@ -1,0 +1,15 @@
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!LICENSE
+!NOTICE
+!src/
+!config/default.toml
+!config/sites.toml
+!config/safety_terms.toml
+!config/tmf_expected.toml
+!config/ind_requirements.toml
+!config/translational_monitoring.toml
+!config/gates.toml
+src/**/__pycache__

@@ -1,0 +1,423 @@
+# Meridian Agent Fleet default configuration.
+# Every key can be overridden by an environment variable prefixed MERIDIAN_,
+# for example MERIDIAN_LEDGER_PATH=/tmp/ledger.sqlite3.
+
+ledger_path = "var/ledger.sqlite3"
+default_seed = 20261107
+
+study_id = "MRD-201"
+raw_dir = "data/raw/cdisc_pilot"
+curated_root = "data/curated"
+sites_file = "config/sites.toml"
+ground_truth_dir = "data/ground_truth"
+safety_root = "data/safety_db"  # the synthetic safety database, one snapshot per cut
+etmf_root = "data/etmf"  # the synthetic eTMF index, one snapshot per cut
+audit_root = "var/audit"  # audit extracts of the ledger, one folder per review
+evals_dir = "data/evals"
+
+# Finding id prefix by agent zone. An agent id has the form "<zone>.<name>".
+[finding_id_prefixes]
+rbqm = "RBQM"
+safety = "SAF"
+quality = "QA"
+preclinical = "PRE"
+portfolio = "SIG"  # phase 5 step 3a: portfolio.safety_signal_scout's reporting signals
+tmf = "TMF"
+unblinded = "DSMB"
+human = "OBS"  # QA observations: raised by a person (agent id "human.observation")
+
+# Source of the CDISC pilot SDTM transport files.
+[pilot]
+base_url = "https://github.com/cdisc-org/sdtm-adam-pilot-project/raw/master/updated-pilot-submission-package/900172/m5/datasets/cdiscpilot01/tabulations/sdtm"
+domains = ["dm", "ae", "vs", "lb", "ds", "sv", "ex"]
+timeout_seconds = 120.0
+
+# MRD-101's GLP rat study: PointCross PC201708 (PHUSE phuse-scripts, MIT), relabelled.
+# docs/preclinical-data.md. Each file's sha256 is pinned; fetch and ingest refuse others.
+[preclinical]
+asset_id = "MRD-101"
+study_id = "MRD-101-TOX-01"
+cut_id = "TOX-FINAL"
+treatment = "MRD-101"
+source_study_id = "PC201708"
+source_treatment = "PCDRUG"
+base_url = "https://raw.githubusercontent.com/phuse-org/phuse-scripts/398a6d33ced9359ffb58c46650a6d488811176b1/data/send/PointCross"
+raw_dir = "data/raw/send_pointcross"
+send_root = "data/send"
+timeout_seconds = 120.0
+
+[preclinical.files]
+bg = "b8f4fd8d24c45ce802b3d65002d7f9eb113abb81765ed5f8a2e429e58f38ca04"
+bw = "dbd48fc10a754275b9d7036687134ba0a1f96aa87b22d650f45c6bcbf3da33b2"
+cl = "84a9bf432fd74b483d4802af1f7328fc6554caeecd5790bf31dd57398377e8ed"
+dd = "f58b21e4988dbafe67561be62cd8cda8286c132b4cff6e18567d48420f5e9f2b"
+dm = "ab5d342a5ae13d3b8613fc318d319f7ea642a4caa8bd8e360f080dda383b341f"
+ds = "b6a616bc71c02cc91b7b649778d472b0eedb5d702a280fd8639d0706bc74e0dd"
+ex = "3a121adbd8f8434b796f31c3a3cd81a645911acd9f080c1974954657fc942cb0"
+fw = "6bc43499ed5d47277c36275062ab7310868947a356b54037473cd4c60e51e7ab"
+lb = "d63121b6bf4bc9277532ac5ab1b10203eb23124a686200eee0e22a73f73f849e"
+ma = "712b45e1bac2baf7706cb0580e42e1c96d1bfcd529463c23b136bc32fbf490ef"
+mi = "3916977b8e778c156e055cce6bb6fa4ac339f0313e4501a9b1df338143608c16"
+om = "ad9614dab7c70f0bc169ee3549bb548ee3c4fb9c2ea56c55bc697ca919df4bbf"
+ts = "1fd59460c55cbe1a3b7ef37b5a8166769ffac6fc1e3d2cf528ade6c94d280400"
+tx = "99bae80ad3542aa5412b7f7002293f6763d2cde81fa5980460253eab9e57b224"
+
+# Operational data synthesis. Log-normal sigmas are on the natural log scale.
+[ops_synth]
+study_median_entry_lag_days = 3.0
+site_median_lag_sigma = 0.5
+entry_lag_sigma = 0.6
+queries_per_subject_visit = 0.4
+query_open_probability = 0.25
+open_query_age_mean_days = 10.0
+deviation_rate_mean = 0.15
+deviation_rate_shape = 4.0
+deviation_categories = [
+    "informed_consent",
+    "eligibility",
+    "visit_window",
+    "procedure_not_done",
+    "lab_sample_handling",
+    "concomitant_medication",
+]
+screen_failure_rate_mean = 0.3
+screen_failure_concentration = 20.0
+
+# Where agents run. zoned (the default since phase 4a): each committed policy's executor
+# from [runtime.executors] below, openshell for any policy not listed. openshell: one
+# OpenShell sandbox per run, from the agent image, with policies/<zone>.yaml. substrate:
+# one Agent Substrate actor per run, cloned from its zone template's golden snapshot
+# (deploy/substrate, docs/substrate-design.md); only for policies without network rules.
+# inprocess: in the runner's process; only when asked for (--executor inprocess), and
+# never for an operational cut ([cuts] below).
+[runtime]
+executor = "zoned"
+image = ""  # empty: meridian-agent:<package version>
+exec_timeout_seconds = 120
+keep_failed = false
+policies_dir = "policies"
+delete_workers = 4  # background deletion threads; 0 deletes synchronously
+delete_confirm_seconds = 60.0  # until a deleted sandbox must be gone from sandbox list
+sandboxes_log = "var/sandboxes.jsonl"
+conformance_log_timeout_seconds = 30.0  # wait for the NET:OPEN DENIED line
+# Phase 5 step 3a: the signal scout makes about 250 paced openFDA requests in one run.
+agent_timeouts = { "portfolio.safety_signal_scout" = 900 }
+
+# The policies that run in Agent Substrate. The narrator (rbqm.narrator) and the local
+# model (safety.local_model) have network rules and stay on OpenShell.
+[runtime.executors]
+rbqm = "substrate"
+"safety.sae_reconciler" = "substrate"
+quality = "substrate"
+"quality.audit_trail" = "substrate"
+preclinical = "substrate"  # phase 5 step 1: the SEND study, no network
+portfolio = "substrate"  # phase 5 step 3b: the portfolio facts, no network
+
+# Agent Substrate on the local kind cluster (phase 4a). version and commit pin the release
+# ate-system was deployed from; the install record must name the same version.
+[substrate]
+version = "v1.0.0"
+commit = "b34fbee742906494b5eb4f1f36987176bf8770a4"
+context = "kind-kind"
+atespace = "meridian"
+namespace = "meridian"
+worker_pool = "meridian"
+workers = 2
+# 512 MiB workers and 384 MiB actors (phase 4a step 3: peak 289 MiB per worker pod;
+# 200 runs at 16 concurrent, none failed; docs/substrate-eval.md).
+worker_memory_mib = 512
+actor_memory_mib = 384
+sandbox_class = "gvisor"
+registry = "localhost:5001"
+deploy_dir = "deploy/substrate"
+actors_log = "var/actors.jsonl"
+
+# The model the narrator (rbqm.narrator) calls, through the OpenShell provider only.
+[llm]
+model = "claude-haiku-5-5"
+max_tokens = 300
+# temperature is left out: claude-haiku-5-5 answers HTTP 400 "`temperature` is deprecated
+# for this model." Set it (for example temperature = 0.0) only for a model that accepts it.
+disable_thinking = true  # sends thinking {type: disabled}; output stays within max_tokens
+timeout_seconds = 30.0
+
+# The local model (phase 3 step 3b): Ollama on the host, reached only from the
+# safety.local_model sandbox (policies/safety.local_model.yaml). base_url must be the
+# address and port in that policy. Calls are deterministic (temperature 0, a fixed seed,
+# think false). A model is pinned by the digest /api/tags reports: a job refuses to run if
+# Ollama serves a different one. The candidates were compared in docs/local-model-eval.md.
+[local_model]
+base_url = "http://172.17.0.1:11434"
+model = "phi4-mini:3.8b-q4_K_M"  # chosen on the dev term pairs (docs/local-model-eval.md)
+# safety.term_adjudicator 1.1.0: "yes" or "no" only when every model says so, else "unsure".
+adjudicator_models = ["phi4-mini:3.8b-q4_K_M", "qwen3.5:4b-q4_K_M"]
+num_ctx = 4096
+seed = 20261109
+temperature = 0.0
+num_predict = 256
+think = false
+timeout_seconds = 120.0
+max_calls_per_pass = 200
+max_per_job = 16  # requests per sandbox: a long silent exec is cut by the gateway
+
+[local_model.digests]
+"granite4:3b" = "89962fcc75239ac434cdebceb6b7e0669397f92eaef9c487774b718bc36a3e5f"
+"phi4-mini:3.8b-q4_K_M" = "78fad5d182a7c33065e153a5f8ba210754207ba9d91973f57dffa7f487363753"
+"qwen3.5:4b-q4_K_M" = "d8b0f5e9760cd1682034f292d7ef72ec46f432149be0df7574bf2d6e92e38c04"
+
+
+# rbqm.narrator: explains findings of rbqm.kri_monitor, rbqm.qtl_detector and rbqm.csm.
+# It runs only in an OpenShell sandbox with policies/rbqm.narrator.yaml and the
+# meridian-anthropic provider, and only after that policy passed meridian sandbox
+# conformance --policy rbqm.narrator.
+[narrator]
+max_calls_per_pass = 20
+
+# Cut scope. Operational cuts are the study's current data and the only ones the review
+# queue shows by default; every other cut (null, faulted, holdout, sweep) is evaluation.
+[cuts]
+operational = ["DC-BASE", "TOX-FINAL"]  # TOX-FINAL: MRD-101-TOX-01, the SEND study (phase 5)
+# Operational cuts are processed in OpenShell sandboxes or Substrate actors only: the
+# runner refuses the in-process executor for them (evaluation cuts may use any).
+operational_executors = ["openshell", "substrate"]
+
+# The Fleet API (phase 3): `meridian api serve`. Binds to 127.0.0.1 only; identity is
+# development-only (config/people.toml), not authentication.
+[api]
+port = 8765
+people_file = "config/people.toml"
+portfolio_file = "config/portfolio.toml"
+openapi_file = "openapi/meridian-api.json"
+
+# Phase 1 thresholds are frozen (commit "Freeze phase 1 thresholds before holdout").
+# They were tuned only on DC-BASE, DC-RBQM-CORE and DC-NULL-S1 to S5; the defaults were
+# kept (see docs/tuning-phase1.md). Do not change them in response to holdout or sweep results.
+#
+# Agents. enabled lists the agent ids the runner wakes; [agents.<name>] is each agent's
+# own configuration and is all the agent ever sees.
+[agents]
+enabled = [
+    "rbqm.kri_monitor",
+    "rbqm.qtl_detector",
+    "rbqm.csm",
+    "safety.sae_reconciler",
+    "quality.tmf_completeness",
+    "quality.audit_trail_reviewer",
+    "preclinical.tox_study_monitor",
+    "preclinical.dose_translation",
+    "preclinical.ind_readiness",
+    "preclinical.translational_bridge",
+    "portfolio.safety_signal_scout",
+    "portfolio.pipeline_intelligence",
+    "portfolio.stage_gate_pack",
+]
+
+[agents.kri_monitor]
+alpha = 0.01
+lag_days = 7.0
+query_age_days = 21.0
+min_subjects = 5
+min_open_queries = 5
+# Expected-AE variant (meridian.stats.ae_expectation), chosen on the dev cuts by the
+# pre-registered experiment in docs/ae-experiment.md and frozen (commit "Freeze AE
+# expectation variant before holdout 2"): no variant beat a, so a is kept. Do not change
+# it in response to holdout 2. W of the early_window variant, in treatment days.
+ae_variant = "a"
+early_window_days = 42
+
+[agents.qtl_detector]
+# Computed once from DC-BASE: premature discontinuation 144/254 = 0.5669 (base rate)
+# plus margin 0.05 = 0.6169, rounded to 3 decimals. Do not recompute from later cuts.
+discontinuation_limit = 0.617
+# Approaching from limit - approach_band, breached from the limit.
+approach_band = 0.02
+
+[agents.csm]
+# Between-site robust z of log SD; flag when z < -z_threshold and SD ratio < sd_ratio_max.
+z_threshold = 3.5
+sd_ratio_max = 0.6
+min_subjects = 5
+min_readings = 50
+parameters = ["SYSBP", "DIABP", "PULSE"]
+
+[agents.sae_reconciler]
+# SAE reconciliation (1.0 in phase 3 step 3a, 1.1 in step 3a2), deterministic. Set before
+# each evaluation in docs/safety-eval.md and not changed in response to it. Matching rule:
+# docs/safety-notes.md. Outcome and causality terms: config/safety_terms.toml.
+onset_tolerance_days = 1   # onsets more than 1 day apart are an onset mismatch
+fallback_window_days = 7   # pairing window (1.1): same subject and term, within 7 days
+cost_per_day = 1           # pairing cost per day between onsets
+cost_outcome = 3           # pairing cost when the outcomes differ
+cost_causality = 1         # pairing cost when the causalities differ
+term_mismatch_days = 1     # recoded term: lone SAE and lone case within 1 day
+late_after_hours = 24.0    # receipt more than 24 hours after site awareness is late
+site_late_min = 2          # a site with 2 or more late cases gets a site-level finding
+# Who may see which finding. Subject-level findings carry the subject id; the site-level
+# finding (sae_late_reporting_site) carries no subject id and may also reach portfolio_lead.
+subject_visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor"]
+site_visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
+
+[agents.tmf_completeness]
+# quality.tmf_completeness 1.0.0 (phase 3 step 4a), deterministic. The expected artifacts,
+# their milestones and timing rules are in config/tmf_expected.toml (docs/tmf-notes.md).
+# Site milestones from DM: RFICDTC is empty for every pilot subject, so the first subject
+# at a site is its earliest RFSTDTC and the last its latest RFENDTC.
+first_subject_field = "RFSTDTC"
+last_subject_field = "RFENDTC"
+# No TMF finding carries subject data, so portfolio_lead may see them; not toxicologist,
+# and not the unblinded statistician (as for every blinded finding today).
+visible_to = ["clinical_ops_lead", "medical_monitor", "qa_auditor", "portfolio_lead"]
+
+[agents.audit_trail_reviewer]
+# quality.audit_trail_reviewer 1.3.0 (1.0.0 phase 3 step 4b; 1.1.0 phase 4a: substrate is
+# a sandboxed executor; 1.2.0: a run starts at ActorWoke's started_at; 1.3.0 phase 5 step
+# 3b: a person named outside the Fleet API), deterministic. It reads the audit
+# extract of the ledger (no evidence, narratives or subject ids), staged only for
+# policies/quality.audit_trail.yaml. Thresholds (docs/audit-notes.md):
+rapid_decisions = 10        # 10 or more decisions by one person ...
+rapid_window_minutes = 5.0  # ... within 5 minutes is a signal of review without reading
+min_reason_chars = 12       # a dismissal reason shorter than this is too thin to check
+reuse_others = 3            # the same dismissal reason as 3 or more others by that person
+in_progress_seconds = 120   # a run started this recently may still be running
+# Segregation of duties: QA and clinical operations see audit findings; clinical_ops_lead
+# decides them, qa_auditor never does, and nobody decides a finding about their own actions.
+visible_to = ["clinical_ops_lead", "qa_auditor"]
+
+[agents.tox_study_monitor]
+# preclinical.tox_study_monitor 1.1.0 (1.0.0 in phase 5 step 1; 1.1.0 in step 1b). Each
+# version pre-registered in docs/preclinical-eval.md before it ran on any study; not
+# changed in response to a result. Against the concurrent control only. The agent may say "dose-related", never
+# "adverse": adversity, the NOAEL and the LOAEL are the toxicologist's decisions.
+alpha_pairwise = 0.05              # Dunnett, two-sided: a dose group is flagged below this
+alpha_trend = 0.01                 # Jonckheere-Terpstra, two-sided: "dose-related" below this
+alpha_pairwise_alone = 0.01        # a flagged change with no trend is raised only below this
+min_per_group = 3                  # fewer usable values: the group is not tested
+alpha_incidence_trend = 0.05       # Cochran-Armitage, one-sided (increase), dose-rank scores
+alpha_incidence_pairwise_alone = 0.01  # Fisher exact, one-sided, without a trend
+incidence_min_excess_animals = 2   # top dose over control, in animals
+incidence_min_excess_points = 20.0 # and in percentage points
+dunnett_seed = 20261115            # scipy's Dunnett integration, fixed for reproducibility
+# 1.1.0 (docs/preclinical-eval.md, "1.1.0: changes and targets"). Incidence trends use the
+# exact Cochran-Armitage p (no setting).
+red_cell_tests = ["RBC", "HGB", "HCT"]
+red_cell_magnitude_pct = 3.0       # with another red cell parameter flagged the same way
+bw_secondary_pct = 10.0            # body weight this far down: relative organ weights grouped
+recovery_persists_fraction = 0.5   # recovery difference at least half the main: persists
+# Toxicologist, portfolio lead and QA auditor only; clinical roles do not see preclinical
+# findings in this step.
+visible_to = ["toxicologist", "portfolio_lead", "qa_auditor"]
+
+[agents.tox_study_monitor.magnitude_pct]
+# Minimum absolute percent difference from the control mean, by endpoint class.
+body_weight = 5.0
+body_weight_gain = 10.0
+hematology = 10.0
+coagulation = 10.0
+clinical_chemistry = 20.0
+urinalysis = 25.0
+organ_weight = 10.0
+other = 20.0
+
+[agents.dose_translation]
+# preclinical.dose_translation 1.0.0 (phase 5 step 2): the toxicologist's NOAEL to a
+# proposed maximum recommended starting dose by FDA, "Estimating the Maximum Safe Starting
+# Dose in Initial Clinical Trials for Therapeutics in Adult Healthy Volunteers" (July 2005).
+# Every figure quotes the guidance; a species not listed here gets no starting dose.
+# docs/fih-dose-notes.md.
+human_km = 37.0
+human_km_citation = "section V.A, Table 1: Human, km 37"
+safety_factor = 10.0
+safety_factor_citation = "section VII: \"The default safety factor that should normally be used is 10.\""
+human_weight_kg = 60.0
+human_weight_citation = "section V.A, Table 1, footnote a: \"Assumes 60 kg human.\""
+# The medical monitor decides the proposal; the clinical side of the hand-off sees it.
+visible_to = ["toxicologist", "medical_monitor", "portfolio_lead", "qa_auditor"]
+
+# Table 1 rows, by SEND TS SPECIES: divide the animal dose in mg/kg by divide_by (or
+# multiply by multiply_by) for the HED in mg/kg; km converts mg/kg to mg/m2.
+[agents.dose_translation.conversions.RAT]
+km = 6.0
+divide_by = 6.2
+multiply_by = 0.16
+citation = "section V.A, Table 1: Rat, km 6, divide animal dose by 6.2 (or multiply by 0.16)"
+
+[agents.dose_translation.conversions.DOG]
+km = 20.0
+divide_by = 1.8
+multiply_by = 0.54
+citation = "section V.A, Table 1: Dog, km 20, divide animal dose by 1.8 (or multiply by 0.54)"
+
+[agents.ind_readiness]
+# preclinical.ind_readiness 1.0.0 (phase 5 step 2), pre-registered in
+# docs/ind-readiness-eval.md before its code. The requirements are
+# config/ind_requirements.toml. The planned trial is MRD-101's own first-in-human study,
+# assumed single and multiple ascending doses in healthy volunteers of at most 14 days of
+# dosing (step 2 took this from MRD-110 by mistake; MRD-110 is a separate asset, and no
+# MRD-101 design is recorded). The IND is planned for Q2 2027 (the portfolio): its first day.
+asset_id = "MRD-101"
+planned_clinical_duration_days = 14
+multiple_dose = true
+planned_submission_date = 2027-04-01
+visible_to = ["toxicologist", "portfolio_lead", "qa_auditor"]
+
+[agents.translational_bridge]
+# preclinical.translational_bridge 1.0.0 (phase 5 step 3a), pre-registered in
+# docs/translational-notes.md before its code. The mapping is
+# config/translational_monitoring.toml; the margins use [agents.dose_translation] itself
+# (copied in by AgentsSettings: never set a conversion here). Decided by the medical monitor.
+asset_id = "MRD-101"
+visible_to = ["toxicologist", "medical_monitor", "portfolio_lead", "qa_auditor"]
+
+[agents.safety_signal_scout]
+# portfolio.safety_signal_scout 1.0.0 (phase 5 step 3a), pre-registered in
+# docs/signal-scout.md before its code: signals of disproportionate reporting for MRD-201's
+# drug in public FAERS data (openFDA count queries, no API key), in the portfolio_signal
+# sandbox (egress to api.fda.gov only). Evans et al. 2001: a >= 3, PRR >= 2, chi-squared
+# (Yates) >= 4. Visible to the medical monitor and the portfolio lead; the monitor decides.
+study_id = "MRD-201"
+drug = "xanomeline (with trospium chloride, COBENFY)"
+product_field = "patient.drug.openfda.generic_name.exact"
+product_term = "XANOMELINE AND TROSPIUM CHLORIDE"
+total_field = "fulfillexpeditecriteria"
+limit = 999
+min_reports = 3
+prr_min = 2.0
+chi2_min = 4.0
+request_interval_seconds = 0.3
+max_requests = 900
+# 1.0.1 (phase 5 step 3b; docs/signal-scout.md "1.0.1"): retry openFDA's throttling (429,
+# or 500 with details "Too Many Requests") after these waits; then triage the signals.
+retry_backoff_seconds = [2.0, 4.0, 8.0, 16.0]
+priority_prr_low_above = 2.0
+priority_min_reports = 10
+indication_terms = [
+    "SCHIZOPHRENIA", "SCHIZOAFFECTIVE DISORDER", "PSYCHOTIC DISORDER",
+    "PSYCHIATRIC DECOMPENSATION", "PSYCHIATRIC SYMPTOM", "DELUSION", "PARANOIA",
+    "HALLUCINATION", "HALLUCINATION, AUDITORY", "HALLUCINATION, VISUAL", "THINKING ABNORMAL",
+    "TACHYPHRENIA", "SOLILOQUY", "CATATONIA", "BLUNTED AFFECT", "INAPPROPRIATE AFFECT",
+    "APATHY", "NEGATIVE THOUGHTS", "INTRUSIVE THOUGHTS",
+]
+indication_source = "American Psychiatric Association, DSM-5 (2013), Schizophrenia, criterion A"
+use_terms = [
+    "TREATMENT NONCOMPLIANCE", "LOSS OF THERAPEUTIC RESPONSE", "THERAPY NON-RESPONDER",
+    "DRUG INEFFECTIVE", "ADVERSE EVENT", "DRUG SCREEN POSITIVE", "PRODUCT SUPPLY ISSUE",
+    "INABILITY TO AFFORD MEDICATION", "DRUG INTERACTION",
+]
+label_spellings = [["oesophag", "esophag"], ["haem", "hem"], ["oedema", "edema"], ["diarrhoea", "diarrhea"], ["behaviour", "behavior"]]
+label_synonyms = { "GASTROOESOPHAGEAL REFLUX DISEASE" = ["gastrointestinal reflux disease"] }
+context = [
+    "FAERS reports here concern COBENFY: oral xanomeline with trospium chloride. COBENFY label 12.1: \"Trospium chloride is a muscarinic antagonist.\" Label 5.8 names \"anticholinergic adverse reactions (including dry mouth, constipation, dyspepsia, urinary tract infection, and urinary retention)\": anticholinergic terms such as urinary retention and dry mouth are likely explained by trospium.",
+    "COBENFY is \"indicated for the treatment of schizophrenia in adults\" (label 1). MRD-201 is transdermal xanomeline alone in mild to moderate Alzheimer's disease: route, combination and population all differ.",
+]
+indication_caveat = "Reported with a drug for schizophrenia, this term is confounded by indication: the illness being treated, not necessarily an effect of the drug."
+visible_to = ["medical_monitor", "portfolio_lead"]
+
+[agents.pipeline_intelligence]
+# portfolio.pipeline_intelligence 1.1.0 (phase 5 step 3b, 1.1.0 at the wrap-up; docs/stage-gate-notes.md):
+# a PortfolioOutlook event per review, from the facts the portfolio lead may see.
+visible_to = ["portfolio_lead", "qa_auditor"]
+
+[agents.stage_gate_pack]
+# portfolio.stage_gate_pack 1.0.0 (phase 5 step 3b): the evidence pack of a gate request,
+# from config/gates.toml. Never go or no-go; the portfolio lead records a GateDecision.
+visible_to = ["portfolio_lead", "qa_auditor"]

@@ -1,0 +1,164 @@
+{
+  "name": "like_mrd101_today",
+  "description": "As MRD-101 stands: four gaps open, two high findings open, no scan.",
+  "gate": "ind_submission",
+  "asset_id": "MRD-101",
+  "facts": [
+    {
+      "asset_id": "MRD-101",
+      "group": "noael",
+      "key": "noael:combined",
+      "label": "noael:combined",
+      "value": "2 mg/kg/day",
+      "status": "established",
+      "severity": null,
+      "seq": 10,
+      "finding_id": null,
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "starting_dose",
+      "key": "dose",
+      "label": "dose",
+      "value": "1.94 mg",
+      "status": "accepted",
+      "severity": null,
+      "seq": 20,
+      "finding_id": "PRE-0232",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "ind_readiness",
+      "key": "ind",
+      "label": "ind",
+      "value": "assessed",
+      "status": "assessed",
+      "severity": null,
+      "seq": 30,
+      "finding_id": null,
+      "number": 100.0,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "monitoring",
+      "key": "monitoring",
+      "label": "monitoring",
+      "value": "accepted",
+      "status": "accepted",
+      "severity": null,
+      "seq": 40,
+      "finding_id": "PRE-0237",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "ind_gap",
+      "key": "gap:0",
+      "label": "gap:0",
+      "value": "open",
+      "status": "open",
+      "severity": "medium",
+      "seq": 33,
+      "finding_id": "PRE-030",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "ind_gap",
+      "key": "gap:1",
+      "label": "gap:1",
+      "value": "open",
+      "status": "open",
+      "severity": "medium",
+      "seq": 34,
+      "finding_id": "PRE-031",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "ind_gap",
+      "key": "gap:2",
+      "label": "gap:2",
+      "value": "open",
+      "status": "open",
+      "severity": "medium",
+      "seq": 35,
+      "finding_id": "PRE-032",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "ind_gap",
+      "key": "gap:3",
+      "label": "gap:3",
+      "value": "open",
+      "status": "open",
+      "severity": "medium",
+      "seq": 36,
+      "finding_id": "PRE-033",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "open_finding",
+      "key": "PRE-0155",
+      "label": "PRE-0155",
+      "value": "open",
+      "status": "open",
+      "severity": "high",
+      "seq": 52,
+      "finding_id": "PRE-0155",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "open_finding",
+      "key": "PRE-0196",
+      "label": "PRE-0196",
+      "value": "open",
+      "status": "open",
+      "severity": "high",
+      "seq": 53,
+      "finding_id": "PRE-0196",
+      "number": null,
+      "static": false
+    }
+  ],
+  "ideal": {
+    "1.0.0": {
+      "criteria": {
+        "noael_decided": "met",
+        "starting_dose_accepted": "met",
+        "ind_gaps_resolved": "not_met",
+        "monitoring_accepted": "met",
+        "no_open_high_preclinical": "not_met",
+        "safety_signals_reviewed": "not_applicable"
+      },
+      "open_items": 6
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "criteria": {
+        "noael_decided": "met",
+        "starting_dose_accepted": "met",
+        "ind_gaps_resolved": "not_met",
+        "monitoring_accepted": "met",
+        "no_open_high_preclinical": "not_met",
+        "safety_signals_reviewed": "not_applicable"
+      },
+      "open_items": 6
+    }
+  }
+}

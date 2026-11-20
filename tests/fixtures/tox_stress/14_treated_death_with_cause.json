@@ -1,0 +1,31 @@
+{
+  "actual": {
+    "1.1.0": [
+      "neoplasm:mi:LIVER:HEPATOCELLULAR CARCINOMA:F",
+      "unscheduled_death:SYN-TOX-01-3051"
+    ]
+  },
+  "case": "treated_death_with_cause",
+  "description": "A female of the mid dose dies on day 50; the MI record of her liver, a hepatocellular carcinoma (MALIGNANT), is marked as the cause (MIDTHREL Y). One unscheduled death in a treated group with its cause, and a single-animal neoplasm; no statistics could raise either.",
+  "ideal": {
+    "1.1.0": [
+      "neoplasm:mi:LIVER:HEPATOCELLULAR CARCINOMA:F",
+      "unscheduled_death:SYN-TOX-01-3051"
+    ]
+  },
+  "spec": {
+    "edits": [
+      {
+        "animal": 0,
+        "category": "MALIGNANT",
+        "day": 50,
+        "finding": "HEPATOCELLULAR CARCINOMA",
+        "group": 2,
+        "kind": "death",
+        "sex": "F",
+        "specimen": "LIVER"
+      }
+    ],
+    "seed": 24
+  }
+}

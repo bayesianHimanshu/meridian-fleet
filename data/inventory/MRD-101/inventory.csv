@@ -1,0 +1,13 @@
+study_id,title,study_type,species,route,duration_weeks,glp,report_status,start_date,report_final_date,qa_audit_date,part_of
+MRD-101-TOX-01,13-Week Repeat Dose Toxicity Study on MRD-101 in Rats,repeat_dose_toxicity,RAT,ORAL GAVAGE,13,Y,qa_audited,2016-01-15,2016-09-30,2016-10-28,
+MRD-101-TOX-01-TK,Toxicokinetics of the 13-week rat study (satellite groups),toxicokinetics,RAT,ORAL GAVAGE,13,Y,qa_audited,2016-01-15,2016-09-18,2016-10-04,MRD-101-TOX-01
+MRD-101-DRF-01,4-week dose range-finding study in rats,repeat_dose_toxicity,RAT,ORAL GAVAGE,4,N,final,2015-09-16,2015-12-24,,
+MRD-101-DRF-02,2-week maximum tolerated dose study in dogs,repeat_dose_toxicity,DOG,ORAL CAPSULE,2,N,final,2026-03-08,2026-05-18,,
+MRD-101-TOX-02,13-week repeat dose toxicity study in beagle dogs with a 4-week recovery,repeat_dose_toxicity,DOG,ORAL CAPSULE,13,Y,ongoing,2026-09-11,2027-05-14,2027-06-16,
+MRD-101-TOX-02-TK,Toxicokinetics of the 13-week dog study,toxicokinetics,DOG,ORAL CAPSULE,13,Y,ongoing,2026-09-11,2027-05-16,2027-06-13,MRD-101-TOX-02
+MRD-101-SP-01,Functional observational battery in rats (CNS),safety_pharmacology_cns,RAT,ORAL GAVAGE,,Y,qa_audited,2026-02-23,2026-05-25,2026-06-20,
+MRD-101-SP-02,Cardiovascular telemetry in conscious beagle dogs,safety_pharmacology_cardiovascular,DOG,ORAL CAPSULE,,Y,draft,2026-07-21,2026-12-19,2027-01-23,
+MRD-101-SP-03,Respiratory function by whole-body plethysmography in rats,safety_pharmacology_respiratory,RAT,ORAL GAVAGE,,,qa_audited,2026-03-16,2026-06-14,2026-07-09,
+MRD-101-SP-04,hERG (IKr) patch-clamp assay in HEK293 cells,in_vitro_ikr,IN VITRO,IN VITRO,,Y,qa_audited,2025-11-03,2025-12-18,2026-01-03,
+MRD-101-GT-01,Bacterial reverse mutation assay (Ames),genotoxicity_bacterial_mutation,IN VITRO,IN VITRO,,Y,qa_audited,2025-10-20,2025-12-18,2026-01-05,
+MRD-101-GT-02,In vitro micronucleus assay in human peripheral blood lymphocytes,genotoxicity_in_vitro_chromosomal,IN VITRO,IN VITRO,,Y,final,2026-07-07,2026-09-29,2026-12-08,

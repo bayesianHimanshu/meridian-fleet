@@ -1,0 +1,30 @@
+{
+  "name": "draft_report_late",
+  "description": "The hERG report is a draft whose QA audit is planned after the submission date.",
+  "base": "complete",
+  "changes": [
+    {
+      "set": "MRD-101-SP-04",
+      "fields": {
+        "report_status": "draft",
+        "qa_audit_date": "2027-05-10"
+      }
+    }
+  ],
+  "ideal": {
+    "1.0.0": {
+      "findings": [
+        "report_not_ready:in_vitro_ikr:MRD-101-SP-04"
+      ],
+      "percent_met": 90.9
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "report_not_ready:in_vitro_ikr:MRD-101-SP-04"
+      ],
+      "percent_met": 90.9
+    }
+  }
+}

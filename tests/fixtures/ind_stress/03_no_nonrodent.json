@@ -1,0 +1,34 @@
+{
+  "name": "no_nonrodent",
+  "description": "No dog study at all: the 13-week study, its TK and the 2-week MTD study removed (the dog telemetry study stays: safety pharmacology takes any species).",
+  "base": "complete",
+  "changes": [
+    {
+      "drop": "MRD-101-TOX-02"
+    },
+    {
+      "drop": "MRD-101-TOX-02-TK"
+    },
+    {
+      "drop": "MRD-101-DRF-02"
+    }
+  ],
+  "ideal": {
+    "1.0.0": {
+      "findings": [
+        "required_study_missing:repeat_dose_nonrodent",
+        "required_study_missing:toxicokinetics_nonrodent"
+      ],
+      "percent_met": 81.8
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "required_study_missing:repeat_dose_nonrodent",
+        "required_study_missing:toxicokinetics_nonrodent"
+      ],
+      "percent_met": 81.8
+    }
+  }
+}

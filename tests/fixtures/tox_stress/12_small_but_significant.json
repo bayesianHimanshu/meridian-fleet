@@ -1,0 +1,44 @@
+{
+  "actual": {
+    "1.0.0": [],
+    "1.1.0": []
+  },
+  "case": "small_but_significant",
+  "description": "ALT varies little (CV 3%) and is 5%, 8% and 12% higher with dose: significant, but below the 20% magnitude for clinical chemistry. Ideal: nothing.",
+  "ideal": {
+    "1.0.0": [],
+    "1.1.0": []
+  },
+  "spec": {
+    "effects": [
+      {
+        "endpoint": "lb:ALT",
+        "factors": [
+          1,
+          1.05,
+          1.08,
+          1.12
+        ]
+      }
+    ],
+    "lb": [
+      {
+        "category": "CLINICAL CHEMISTRY",
+        "code": "ALT",
+        "cv": 0.03,
+        "mean_f": 32,
+        "mean_m": 40,
+        "unit": "U/L"
+      },
+      {
+        "category": "CLINICAL CHEMISTRY",
+        "code": "CREAT",
+        "cv": 0.12,
+        "mean_f": 0.55,
+        "mean_m": 0.5,
+        "unit": "mg/dL"
+      }
+    ],
+    "seed": 22
+  }
+}

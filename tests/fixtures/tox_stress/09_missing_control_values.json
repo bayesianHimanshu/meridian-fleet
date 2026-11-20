@@ -1,0 +1,42 @@
+{
+  "actual": {
+    "1.0.0": [
+      "data_quality:control_too_few:lb:ALT:M:main"
+    ],
+    "1.1.0": [
+      "data_quality:control_too_few:lb:ALT:M:main"
+    ]
+  },
+  "case": "missing_control_values",
+  "description": "ALT not done for 9 of the 10 control males. Ideal: a data-quality finding naming the endpoint, and no ALT finding for males (nothing to compare with); females as normal.",
+  "ideal": {
+    "1.0.0": [
+      "data_quality:control_too_few:lb:ALT:M:main"
+    ],
+    "1.1.0": [
+      "data_quality:control_too_few:lb:ALT:M:main"
+    ]
+  },
+  "spec": {
+    "edits": [
+      {
+        "animals": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ],
+        "group": 0,
+        "kind": "lb_missing",
+        "sex": "M",
+        "test": "ALT"
+      }
+    ],
+    "seed": 19
+  }
+}

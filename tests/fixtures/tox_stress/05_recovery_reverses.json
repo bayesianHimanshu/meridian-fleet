@@ -1,0 +1,42 @@
+{
+  "actual": {
+    "1.0.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main",
+      "dose_related_change:om:KIDNEY:rel:F:recovery"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main",
+      "recovery_only_change:om:KIDNEY:rel:F:recovery"
+    ]
+  },
+  "case": "recovery_reverses",
+  "description": "Recovery groups present; ALT rises with dose in the main phase and is normal after recovery. Ideal: main-phase findings only, recovery animals not pooled with main.",
+  "ideal": {
+    "1.0.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
+    ]
+  },
+  "spec": {
+    "effects": [
+      {
+        "endpoint": "lb:ALT",
+        "factors": [
+          1,
+          1.2,
+          1.6,
+          2.5
+        ],
+        "phase": "main"
+      }
+    ],
+    "recovery": true,
+    "seed": 15
+  }
+}

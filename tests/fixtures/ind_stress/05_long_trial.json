@@ -1,0 +1,27 @@
+{
+  "name": "long_trial",
+  "description": "A 9-month trial: Table 1 asks 6 months in a rodent and 9 in a nonrodent; both 13-week studies are short.",
+  "base": "complete",
+  "changes": [],
+  "trial": {
+    "planned_clinical_duration_days": 270
+  },
+  "ideal": {
+    "1.0.0": {
+      "findings": [
+        "duration_short:repeat_dose_nonrodent:MRD-101-TOX-02",
+        "duration_short:repeat_dose_rodent:MRD-101-TOX-01"
+      ],
+      "percent_met": 81.8
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [
+        "duration_short:repeat_dose_nonrodent:MRD-101-TOX-02",
+        "duration_short:repeat_dose_rodent:MRD-101-TOX-01"
+      ],
+      "percent_met": 81.8
+    }
+  }
+}

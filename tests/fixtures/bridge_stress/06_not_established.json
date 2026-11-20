@@ -1,0 +1,56 @@
+{
+  "name": "not_established",
+  "description": "NOAEL not established, LOAEL 2 resting on ALT; no proposal with a starting dose.",
+  "study_id": "MRD-101-TOX-01",
+  "decisions": [
+    {
+      "seq": 10,
+      "decision_id": "NOAEL-00000000000a",
+      "sex": "combined",
+      "established": false,
+      "noael_dose": null,
+      "loael_dose": 2.0,
+      "dose_unit": "mg/kg/day",
+      "decided_by": "leela.nair",
+      "supersedes": null,
+      "recorded_at": "2026-11-19T00:00:00+00:00",
+      "finding_ids": [
+        "PRE-0106"
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "PRE-0106",
+      "check": "dose_related_change:lb:ALT:M:main",
+      "title": "ALT higher with dose in males, main study"
+    }
+  ],
+  "proposal": null,
+  "ideal": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "liver": [
+          "PRE-0106"
+        ]
+      },
+      "unmapped": [],
+      "noael_ratio": null,
+      "loael_ratio": null
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "raised": true,
+      "organs": {
+        "liver": [
+          "PRE-0106"
+        ]
+      },
+      "unmapped": [],
+      "noael_ratio": null,
+      "loael_ratio": null
+    }
+  }
+}

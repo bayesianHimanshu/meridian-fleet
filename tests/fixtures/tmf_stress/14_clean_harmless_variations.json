@@ -1,0 +1,63 @@
+{
+  "case": "clean_harmless_variations",
+  "description": "Control: the Investigator's Brochure has three versions (annual updates), artifact names are indexed with other case and extra spaces, the delegation log of 9001 and two monitoring reports were filed the same day as their date, and the 9002 1572 is indexed as a second version after a superseded one.",
+  "index_add": [
+    {
+      "DOCUMENT_ID": "D-T-IB2",
+      "ARTIFACT": "INVESTIGATOR'S BROCHURE",
+      "LEVEL": "trial",
+      "SITE": "",
+      "DOC_SITE": "",
+      "VERSION": "2",
+      "DOCUMENT_DATE": "2013-10-01",
+      "FILED_DATE": "2013-10-08",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-T-IB3",
+      "ARTIFACT": "investigator's  brochure",
+      "LEVEL": "trial",
+      "SITE": "",
+      "DOC_SITE": "",
+      "VERSION": "3",
+      "DOCUMENT_DATE": "2014-04-01",
+      "FILED_DATE": "2014-04-01",
+      "QC_STATUS": "passed"
+    },
+    {
+      "DOCUMENT_ID": "D-2-1572A",
+      "ARTIFACT": "Form FDA 1572",
+      "LEVEL": "site",
+      "SITE": "9002",
+      "DOC_SITE": "9002",
+      "VERSION": "1",
+      "DOCUMENT_DATE": "2013-02-28",
+      "FILED_DATE": "2013-03-05",
+      "QC_STATUS": "passed"
+    }
+  ],
+  "index_set": {
+    "D-2-1572": {
+      "VERSION": "2"
+    },
+    "D-1-DEL": {
+      "FILED_DATE": "2013-02-12",
+      "ARTIFACT": "site signature sheet"
+    },
+    "D-1-MV1": {
+      "FILED_DATE": "2013-04-15",
+      "ARTIFACT": " Monitoring  Visit Report "
+    },
+    "D-2-MV2": {
+      "FILED_DATE": "2013-08-19"
+    },
+    "D-2-IRB": {
+      "ARTIFACT": "IRB OR IEC DECISION"
+    }
+  },
+  "ideal": "Nothing.",
+  "ideal_findings": [],
+  "actual": {
+    "1.0.0": []
+  }
+}

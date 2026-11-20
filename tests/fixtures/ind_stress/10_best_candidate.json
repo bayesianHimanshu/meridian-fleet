@@ -1,0 +1,35 @@
+{
+  "name": "best_candidate",
+  "description": "A 26-week rat study whose report is late, next to the 13-week rat study with no problem: the one with fewer problems is chosen.",
+  "base": "complete",
+  "changes": [
+    {
+      "add": {
+        "study_id": "MRD-101-TOX-03",
+        "title": "26-week repeat dose toxicity study in rats",
+        "study_type": "repeat_dose_toxicity",
+        "species": "RAT",
+        "route": "ORAL GAVAGE",
+        "duration_weeks": "26",
+        "glp": "Y",
+        "report_status": "ongoing",
+        "start_date": "2026-10-05",
+        "report_final_date": "2027-08-30",
+        "qa_audit_date": "2027-09-30",
+        "part_of": ""
+      }
+    }
+  ],
+  "ideal": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "findings": [],
+      "percent_met": 100.0
+    }
+  }
+}

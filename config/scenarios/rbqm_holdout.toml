@@ -1,0 +1,55 @@
+# RBQM holdout fault scenario. Generated once from DC-BASE after the phase 1 thresholds were frozen;
+# always read from this file afterwards. It is never used for tuning.
+#
+# Same fault types and parameters as rbqm_core, at sites rbqm_core did not touch:
+# sites ranked by treated subjects descending (ties by site id), and the five site
+# faults go, in rbqm_core's order, to ranks 6, 7, 8, 9, 10, skipping sites with
+# fewer than 10 treated subjects. Faults left over go to ranks 5, 4, 3, 2, 1 in
+# that order, never to the site the fault type had in rbqm_core.
+# Ranking (site, treated): 1001 (41), 1010 (31), 1004 (25), 1008 (25), 1016 (24), 1009 (21), 1003 (18), 1005 (16), 1018 (13), 1013 (9), 1015 (8), 1017 (7).
+# Skipped for size: 1013 (rank 10, 9).
+# deviation_cluster falls back to rank 4 (1008); it had 1016 in rbqm_core.
+#
+# target_rate: base rate 144/254 = 0.5669, plus 0.08, rounded to 3 decimals.
+
+seed = 20261108
+base_cut = "DC-BASE"
+out_cut = "DC-RBQM-HOLDOUT"
+
+[[faults]]
+type = "fabricated_vitals"
+target = "1009"
+[faults.params]
+subject_share = 0.8
+sd_scale = 0.25
+terminal_zero_share = 0.4
+
+[[faults]]
+type = "ae_under_reporting"
+target = "1003"
+[faults.params]
+drop_share = 0.7
+
+[[faults]]
+type = "entry_lag_spike"
+target = "1005"
+[faults.params]
+target_median_days = 14.0
+
+[[faults]]
+type = "query_backlog"
+target = "1018"
+[faults.params]
+target_median_age_days = 40.0
+
+[[faults]]
+type = "deviation_cluster"
+target = "1008"
+[faults.params]
+rate_multiplier = 4.0
+
+[[faults]]
+type = "discontinuation_drift"
+target = "STUDY"
+[faults.params]
+target_rate = 0.647

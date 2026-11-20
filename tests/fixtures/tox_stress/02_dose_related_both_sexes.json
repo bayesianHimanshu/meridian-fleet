@@ -1,0 +1,38 @@
+{
+  "actual": {
+    "1.0.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
+    ]
+  },
+  "case": "dose_related_both_sexes",
+  "description": "ALT rises with dose in both sexes (x1.2, x1.6, x2.5). Ideal: a dose-related change in each sex.",
+  "ideal": {
+    "1.0.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
+    ],
+    "1.1.0": [
+      "dose_related_change:lb:ALT:F:main",
+      "dose_related_change:lb:ALT:M:main"
+    ]
+  },
+  "spec": {
+    "effects": [
+      {
+        "endpoint": "lb:ALT",
+        "factors": [
+          1,
+          1.2,
+          1.6,
+          2.5
+        ]
+      }
+    ],
+    "seed": 12
+  }
+}

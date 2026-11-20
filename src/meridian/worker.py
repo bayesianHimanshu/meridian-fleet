@@ -1,0 +1,280 @@
+"""meridian-worker: run one agent on one staged cut and print its drafts.
+
+    meridian-worker run --agent AGENT_ID --trigger /stage/meta/trigger.json --cut-dir /stage
+    meridian-worker serve --areas meta,blinded,ops     (a Substrate actor: meridian.worker_serve)
+    meridian-worker probe                               (conformance only: meridian.worker_probe)
+
+This is what runs inside a sandbox. It reads a trigger (a DataCut event as JSON) and a
+cut directory holding meta/ (the trigger and inputs_manifest.json) and the cut areas
+its zone may read, checks every staged file against the host's manifest, builds the
+agent from the packaged config, and prints one canonical JSON document {"agent_id",
+"agent_version", "drafts"} on stdout. Logs go to stderr. It never opens the ledger, never
+touches the network and never sees unblinded data or ground truth.
+
+Exit codes: 0 success, 2 bad arguments, 3 data error, 4 agent error.
+"""
+
+import argparse
+import os
+import sys
+import tomllib
+from collections.abc import Sequence
+from pathlib import Path
+
+import polars as pl
+import structlog
+from pydantic import ValidationError
+
+from meridian.agents.base import zone_of
+from meridian.agents.catalog import build_registry
+from meridian.agents.execute import drafts_document, run_agent
+from meridian.agents.registry import RegistrationError
+from meridian.data.inputs_manifest import MANIFEST_FILE, InputsManifestError, verify_manifest
+from meridian.data.stage_layout import META
+from meridian.data.study_store import (
+    TMF_STAGE_AREA,
+    TMF_ZONES,
+    AuditStageReader,
+    InventoryStageReader,
+    LayeredStudyReader,
+    MissingTableError,
+    NoaelStageReader,
+    ParquetStudyReader,
+    PortfolioStageReader,
+    SendStudyReader,
+    StudyAccessError,
+    StudyReader,
+    TmfStageReader,
+)
+from meridian.domain.audit import LEDGER_SCOPE
+from meridian.domain.events import (
+    AuditReviewRequested,
+    DataCut,
+    Event,
+    GateRequest,
+    HumanDecision,
+    InventoryLoaded,
+    NoaelDecision,
+    PortfolioReviewRequested,
+    SendStudyLoaded,
+    portfolio_study,
+)
+from meridian.platform.agent_settings import (
+    IND_REQUIREMENTS_FILE,
+    SAFETY_TERMS_FILE,
+    TRANSLATIONAL_FILE,
+    load_ind_requirements,
+    load_safety_terms,
+    load_translational_mapping,
+)
+from meridian.platform.config import CONFIG_FILE_ENV, AgentsSettings
+from meridian.platform.tmf_reference import TMF_EXPECTED_FILE, load_tmf_reference
+from meridian.portfolio.gates import GATES_FILE, load_gates
+from meridian.preclinical.noael_stage import read_noael_context
+
+EXIT_OK = 0
+EXIT_BAD_ARGS = 2
+EXIT_DATA = 3
+EXIT_AGENT = 4
+IMAGE_CONFIG = Path("/opt/meridian/config/default.toml")
+DATA_ERRORS = (MissingTableError, StudyAccessError, OSError, pl.exceptions.PolarsError)
+
+
+class _Parser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:  # type: ignore[override]
+        self.print_usage(sys.stderr)
+        print(f"meridian-worker: error: {message}", file=sys.stderr)
+        raise SystemExit(EXIT_BAD_ARGS)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = _Parser(prog="meridian-worker", description=__doc__.split("\n\n")[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+    run = sub.add_parser("run", help="run one agent on one staged cut")
+    run.add_argument("--agent", required=True, help="agent id, for example rbqm.csm")
+    run.add_argument("--trigger", required=True, type=Path, help="DataCut event as JSON")
+    run.add_argument("--cut-dir", required=True, type=Path, help="holds blinded/ and ops/")
+    serve = sub.add_parser("serve", help="serve exactly one run over HTTP (a Substrate actor)")
+    serve.add_argument("--port", type=int, default=8080)
+    serve.add_argument(
+        "--areas", required=True, help="the stage areas this zone may receive, comma separated"
+    )
+    serve.add_argument("--max-bytes", type=int, default=512 * 1024 * 1024)
+    probe = sub.add_parser("probe", help="answer fixed containment checks (conformance only)")
+    probe.add_argument("--port", type=int, default=8080)
+    for p in (run, serve):
+        p.add_argument(
+            "--config",
+            type=Path,
+            default=None,
+            help=f"TOML config (default: ${CONFIG_FILE_ENV}, else {IMAGE_CONFIG})",
+        )
+    return parser
+
+
+def _logger() -> structlog.typing.FilteringBoundLogger:
+    structlog.configure(
+        processors=[structlog.processors.add_log_level, structlog.processors.JSONRenderer()],
+        wrapper_class=structlog.make_filtering_bound_logger(20),
+        logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
+        cache_logger_on_first_use=False,
+    )
+    logger: structlog.typing.FilteringBoundLogger = structlog.get_logger()
+    return logger
+
+
+def load_agents_settings(path: Path) -> AgentsSettings:
+    """The [agents] table of the packaged config. Environment overrides do not apply."""
+    with path.open("rb") as handle:
+        agents = tomllib.load(handle)["agents"]
+    # The safety terminology table sits next to this config file, whatever the working
+    # directory of the sandbox is.
+    reconciler = dict(agents.get("sae_reconciler", {}))
+    if "terms" not in reconciler:
+        terms = load_safety_terms(path.parent / SAFETY_TERMS_FILE)
+        agents = {**agents, "sae_reconciler": {**reconciler, "terms": terms.model_dump()}}
+    # The expected TMF artifacts sit there too (config/tmf_expected.toml).
+    tmf = dict(agents.get("tmf_completeness", {}))
+    if "reference" not in tmf:
+        reference = load_tmf_reference(path.parent / TMF_EXPECTED_FILE)
+        agents = {**agents, "tmf_completeness": {**tmf, "reference": reference.model_dump()}}
+    # And the first-in-human requirements (config/ind_requirements.toml, phase 5 step 2).
+    ind = dict(agents.get("ind_readiness", {}))
+    if "requirements" not in ind:
+        requirements = load_ind_requirements(path.parent / IND_REQUIREMENTS_FILE)
+        agents = {**agents, "ind_readiness": {**ind, "requirements": requirements.model_dump()}}
+    # And the translational monitoring mapping (config/translational_monitoring.toml, 3a).
+    bridge = dict(agents.get("translational_bridge", {}))
+    if "mapping" not in bridge:
+        mapping = load_translational_mapping(path.parent / TRANSLATIONAL_FILE)
+        agents = {**agents, "translational_bridge": {**bridge, "mapping": mapping.model_dump()}}
+    # And the stage gates (config/gates.toml, phase 5 step 3b).
+    gate = dict(agents.get("stage_gate_pack", {}))
+    if "gates" not in gate:
+        gates = load_gates(path.parent / GATES_FILE)
+        agents = {**agents, "stage_gate_pack": {**gate, "gates": gates.model_dump()}}
+    return AgentsSettings.model_validate(agents)
+
+
+def _config_path(given: Path | None) -> Path:
+    if given is not None:
+        return given
+    env = os.environ.get(CONFIG_FILE_ENV)
+    return Path(env) if env else IMAGE_CONFIG
+
+
+def execute(
+    agent_id: str,
+    trigger_file: Path,
+    cut_dir: Path,
+    config: Path,
+    log: structlog.typing.FilteringBoundLogger,
+) -> tuple[int, str | None]:
+    """One run on a staged cut: (exit code, drafts document or None). Shared by `run`
+    (the OpenShell sandbox) and `serve` (a Substrate actor)."""
+    try:
+        registry = build_registry(load_agents_settings(config))
+        registered = registry.get(agent_id)
+    except KeyError:
+        log.error("worker.unknown_agent", agent=agent_id)
+        return EXIT_BAD_ARGS, None
+    except (OSError, tomllib.TOMLDecodeError, ValidationError, RegistrationError) as exc:
+        log.error("worker.bad_config", error=f"{type(exc).__name__}: {exc}")
+        return EXIT_BAD_ARGS, None
+    try:
+        # Before any data is read: the staged files must be exactly the host's manifest,
+        # which sits in meta/ (the sandbox cannot list the stage root itself).
+        verify_manifest(cut_dir, at=cut_dir / META / MANIFEST_FILE)
+    except InputsManifestError as exc:
+        log.error("worker.inputs_rejected", error=str(exc))
+        return EXIT_DATA, None
+    try:
+        trigger = Event.model_validate_json(trigger_file.read_bytes())
+        study: StudyReader
+        if isinstance(trigger.payload, AuditReviewRequested):
+            # An audit review reads only the audit extract staged under audit/.
+            study = AuditStageReader.at_cut_dir(
+                cut_dir, cut_id=LEDGER_SCOPE, study_id=trigger.payload.study_id
+            )
+        elif isinstance(trigger.payload, SendStudyLoaded):
+            # A SEND study (preclinical zone): only send/ is staged, and read.
+            study = SendStudyReader.at_cut_dir(
+                cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.study_id
+            )
+        elif isinstance(trigger.payload, NoaelDecision | HumanDecision):
+            # A NOAEL decision (phase 5 step 2): send/ and noael/ are staged; the SEND cut
+            # comes from the host's context table, the decisions from noael/.
+            study_id, send_cut = read_noael_context(cut_dir)
+            send = SendStudyReader.at_cut_dir(cut_dir, cut_id=send_cut, study_id=study_id)
+            study = LayeredStudyReader(
+                send, NoaelStageReader.at_cut_dir(cut_dir, cut_id=send_cut, study_id=study_id)
+            )
+        elif isinstance(trigger.payload, InventoryLoaded):
+            # An asset's study inventory (phase 5 step 2): only inventory/ is staged.
+            study = InventoryStageReader.at_cut_dir(
+                cut_dir, cut_id=trigger.payload.cut_id, study_id=trigger.payload.asset_id
+            )
+        elif isinstance(trigger.payload, PortfolioReviewRequested | GateRequest):
+            # A portfolio review or gate request (phase 5 step 3b): only portfolio/ is
+            # staged, the facts the host built as the portfolio lead sees them.
+            cut = (
+                trigger.payload.review_id
+                if isinstance(trigger.payload, PortfolioReviewRequested)
+                else trigger.payload.gate_request_id
+            )
+            study = PortfolioStageReader.at_cut_dir(
+                cut_dir, cut_id=cut, study_id=portfolio_study(trigger)
+            )
+        elif isinstance(trigger.payload, DataCut):
+            ids = {"cut_id": trigger.payload.cut_id, "study_id": trigger.payload.study_id}
+            study = ParquetStudyReader.at_cut_dir(cut_dir, **ids)
+            if zone_of(agent_id) in TMF_ZONES and (cut_dir / TMF_STAGE_AREA).is_dir():
+                # The quality zone also reads the eTMF index staged under tmf/.
+                study = LayeredStudyReader(study, TmfStageReader.at_cut_dir(cut_dir, **ids))
+        else:
+            raise ValueError(f"trigger is a {trigger.payload.type}, not a data cut or SEND study")
+    except (OSError, ValidationError, ValueError, StudyAccessError) as exc:
+        log.error("worker.bad_input", error=f"{type(exc).__name__}: {exc}")
+        return EXIT_DATA, None
+    bound = log.bind(agent_id=agent_id, trigger_seq=trigger.seq, cut_id=study.cut_id)
+    try:
+        drafts = run_agent(registered, trigger, study, bound)
+    except DATA_ERRORS as exc:
+        bound.error("worker.data_error", error=f"{type(exc).__name__}: {exc}")
+        return EXIT_DATA, None
+    except Exception as exc:  # any other failure is the agent's
+        bound.error("worker.agent_error", error=f"{type(exc).__name__}: {exc}")
+        return EXIT_AGENT, None
+    bound.info("worker.done", drafts=len(drafts))
+    return EXIT_OK, drafts_document(registered, drafts)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    if args.command == "serve":
+        from meridian.worker_serve import serve
+
+        return serve(
+            port=args.port,
+            areas=tuple(a for a in args.areas.split(",") if a),
+            config=_config_path(args.config),
+            max_bytes=args.max_bytes,
+        )
+    if args.command == "probe":
+        from meridian.worker_probe import probe
+
+        return probe(port=args.port)
+    log = _logger()
+    code, document = execute(args.agent, args.trigger, args.cut_dir, _config_path(args.config), log)
+    if document is not None:
+        sys.stdout.write(document)
+        sys.stdout.flush()
+    return code
+
+
+def entry() -> None:
+    raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    entry()

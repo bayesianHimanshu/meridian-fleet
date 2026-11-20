@@ -1,0 +1,23 @@
+# Pilot SITEID to Meridian site id, generated once from the CDISC pilot DM domain.
+# Rule: meridian_id = str(1000 + int(SITEID) - 700). This file is the source of truth; ingest always reads it.
+
+rule = "meridian_id = str(1000 + int(SITEID) - 700)"
+
+[sites]
+"701" = "1001"
+"702" = "1002"
+"703" = "1003"
+"704" = "1004"
+"705" = "1005"
+"706" = "1006"
+"707" = "1007"
+"708" = "1008"
+"709" = "1009"
+"710" = "1010"
+"711" = "1011"
+"713" = "1013"
+"714" = "1014"
+"715" = "1015"
+"716" = "1016"
+"717" = "1017"
+"718" = "1018"

@@ -1,0 +1,25 @@
+{
+  "actual": {
+    "1.0.0": [],
+    "1.1.0": []
+  },
+  "case": "single_animal_outlier",
+  "description": "One high-dose male's creatinine is 2.5 mg/dL, five times its group's median; the other nine are normal. Ideal: nothing.",
+  "ideal": {
+    "1.0.0": [],
+    "1.1.0": []
+  },
+  "spec": {
+    "edits": [
+      {
+        "animal": 0,
+        "group": 3,
+        "kind": "lb_factor",
+        "sex": "M",
+        "test": "CREAT",
+        "value": 2.5
+      }
+    ],
+    "seed": 21
+  }
+}

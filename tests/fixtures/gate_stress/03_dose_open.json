@@ -1,0 +1,86 @@
+{
+  "name": "dose_open",
+  "description": "The dose proposal is open.",
+  "gate": "ind_submission",
+  "asset_id": "MRD-101",
+  "facts": [
+    {
+      "asset_id": "MRD-101",
+      "group": "noael",
+      "key": "noael:combined",
+      "label": "noael:combined",
+      "value": "2 mg/kg/day",
+      "status": "established",
+      "severity": null,
+      "seq": 10,
+      "finding_id": null,
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "ind_readiness",
+      "key": "ind",
+      "label": "ind",
+      "value": "assessed",
+      "status": "assessed",
+      "severity": null,
+      "seq": 30,
+      "finding_id": null,
+      "number": 100.0,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "monitoring",
+      "key": "monitoring",
+      "label": "monitoring",
+      "value": "accepted",
+      "status": "accepted",
+      "severity": null,
+      "seq": 40,
+      "finding_id": "PRE-0237",
+      "number": null,
+      "static": false
+    },
+    {
+      "asset_id": "MRD-101",
+      "group": "starting_dose",
+      "key": "dose",
+      "label": "dose",
+      "value": "open",
+      "status": "open",
+      "severity": null,
+      "seq": 21,
+      "finding_id": "PRE-0232",
+      "number": null,
+      "static": false
+    }
+  ],
+  "ideal": {
+    "1.0.0": {
+      "criteria": {
+        "noael_decided": "met",
+        "starting_dose_accepted": "not_met",
+        "ind_gaps_resolved": "met",
+        "monitoring_accepted": "met",
+        "no_open_high_preclinical": "met",
+        "safety_signals_reviewed": "not_applicable"
+      },
+      "open_items": 1
+    }
+  },
+  "actual": {
+    "1.0.0": {
+      "criteria": {
+        "noael_decided": "met",
+        "starting_dose_accepted": "not_met",
+        "ind_gaps_resolved": "met",
+        "monitoring_accepted": "met",
+        "no_open_high_preclinical": "met",
+        "safety_signals_reviewed": "not_applicable"
+      },
+      "open_items": 1
+    }
+  }
+}

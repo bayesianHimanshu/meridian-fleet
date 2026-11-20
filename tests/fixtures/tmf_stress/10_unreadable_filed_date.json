@@ -1,0 +1,18 @@
+{
+  "case": "unreadable_filed_date",
+  "description": "Site 9001's delegation log has its filed date written as 20/02/2013, not as an ISO date. It is the only version.",
+  "index_set": {
+    "D-1-DEL": {
+      "FILED_DATE": "20/02/2013"
+    }
+  },
+  "ideal": "One data-quality finding for the date. The delegation log is filed, so it is not missing; its timeliness cannot be judged.",
+  "ideal_findings": [
+    "tmf_data_quality:D-1-DEL#FILED_DATE"
+  ],
+  "actual": {
+    "1.0.0": [
+      "tmf_data_quality:D-1-DEL#FILED_DATE"
+    ]
+  }
+}
